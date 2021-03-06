@@ -1,0 +1,44 @@
+{
+  "packages": [
+    {
+      "name": "TleraCorp",
+      "maintainer": "Tlera Corp",
+      "websiteURL": "https://github.com/grumpyoldpizza/ArduinoCore-stm32wb",
+      "email": "grumpyoldpizza@gmail.com",
+      "help": {
+        "online": "https://github.com/grumpyoldpizza/ArduinoCore-stm32wb/issues"
+      },
+      "platforms": [
+        {
+          "name": "Tlera Corp STM32WB Boards",
+          "architecture": "stm32wb",
+          "version": "0.1.0",
+          "category": "Contributed",
+          "url": "https://github.com/GrumpyOldPizza/ArduinoCore-stm32wb/archive/0.1.0.tar.gz",
+          "archiveFileName": "ArduinoCore-stm32wb-0.1.0.tar.gz",
+          "checksum": "SHA-256:cdb873688ef9045e918d362ce457e7aefb5291b06ec5f89db767a6f33963efb5",
+          "size": "9632857",
+          "boards": [
+            { "name": "Firefly-WB55CG" },
+            { "name": "Katydid-WB55CG" },
+            { "name": "NUCLEO-WB55RG"  }
+          ],
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.10.0-arduino13"
+            },
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            }
+          ]
+        }
+      ],
+      "tools": [
+      ]
+    }
+  ]
+}
