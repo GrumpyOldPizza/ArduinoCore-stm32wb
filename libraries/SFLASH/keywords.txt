@@ -1,0 +1,39 @@
+#######################################
+# Syntax Coloring Map For Wire
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+end	KEYWORD2
+identify	KEYWORD2
+capacity	KEYWORD2
+blockSize	KEYWORD2
+pageSize	KEYWORD2
+length	KEYWORD2
+busy	KEYWORD2
+status	KEYWORD2
+erase	KEYWORD2
+program	KEYWORD2
+read	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+SFLASH	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+SFLASH_STATUS_SUCCESS	LITERAL1
+SFLASH_STATUS_FAILURE	LITERAL1
+SFLASH_STATUS_BUSY	LITERAL1
+

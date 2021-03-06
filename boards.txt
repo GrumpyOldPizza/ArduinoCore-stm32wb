@@ -1,0 +1,167 @@
+menu.usb=USB Type
+menu.storage=Extenal Storage
+menu.speed=CPU Speed
+
+##############################################################
+
+# Tlera Firefly
+# ---------------------------------------
+Firefly-WB55CG.name=Firefly-WB55CG
+Firefly-WB55CG.vid.0=0x1209
+Firefly-WB55CG.pid.0=0x6671
+
+Firefly-WB55CG.build.f_cpu=64000000L
+Firefly-WB55CG.build.board=STM32WB_FIREFLY
+Firefly-WB55CG.build.arch=stm32wb
+Firefly-WB55CG.build.core=arduino
+Firefly-WB55CG.build.mcu=cortex-m4
+Firefly-WB55CG.build.architecture=armv7e-m
+Firefly-WB55CG.build.fpu=fpv4-sp-d16
+Firefly-WB55CG.build.float-abi=hard
+Firefly-WB55CG.build.vid=0x1209
+Firefly-WB55CG.build.pid=0x6671
+Firefly-WB55CG.build.did=0x0100
+Firefly-WB55CG.build.usb_manufacturer="Tlera Corporation"
+Firefly-WB55CG.build.usb_product="Firefly"
+Firefly-WB55CG.build.extra_flags=-DSTM32WB55xx -fsingle-precision-constant "-D__SYSTEM_CORE_CLOCK__={build.f_cpu}" {build.usb_flags} {build.storage_flags} 
+Firefly-WB55CG.build.ldscript=STM32WB55xx_FLASH.ld 
+Firefly-WB55CG.build.openocdscript=openocd_scripts/firefly-wb55cg.cfg
+Firefly-WB55CG.build.variant=Firefly-WB55CG
+Firefly-WB55CG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
+Firefly-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+
+Firefly-WB55CG.upload.tool=dfu-util
+Firefly-WB55CG.upload.protocol=dfu
+Firefly-WB55CG.upload.address=0x08000000
+Firefly-WB55CG.upload.interface=0
+Firefly-WB55CG.upload.vid=0x1209
+Firefly-WB55CG.upload.pid=0x6671
+Firefly-WB55CG.upload.use_1200bps_touch=false
+Firefly-WB55CG.upload.wait_for_upload_port=false
+Firefly-WB55CG.upload.native_usb=true
+Firefly-WB55CG.upload.maximum_size=786432
+Firefly-WB55CG.upload.maximum_data_size=196608
+
+Firefly-WB55CG.menu.usb.cdc=Serial
+Firefly-WB55CG.menu.usb.cdc.build.usb_type=1
+Firefly-WB55CG.menu.usb.cdc_msc=Serial + Mass Storage
+Firefly-WB55CG.menu.usb.cdc_msc.build.usb_type=2
+Firefly-WB55CG.menu.usb.none=No USB
+Firefly-WB55CG.menu.usb.none.build.usb_type=0
+
+Firefly-WB55CG.menu.storage.none=None
+Firefly-WB55CG.menu.storage.none.build.storage_type=0
+Firefly-WB55CG.menu.storage.sflash=SFLASH
+Firefly-WB55CG.menu.storage.sflash.build.storage_type=1
+Firefly-WB55CG.menu.storage.sdspi=SDCARD
+Firefly-WB55CG.menu.storage.sdspi.build.storage_type=2
+
+Firefly-WB55CG.menu.speed.64=64 MHz
+Firefly-WB55CG.menu.speed.64.build.f_cpu=64000000L
+Firefly-WB55CG.menu.speed.32=32 MHz
+Firefly-WB55CG.menu.speed.32.build.f_cpu=32000000L
+Firefly-WB55CG.menu.speed.16=16 MHz (No USB)
+Firefly-WB55CG.menu.speed.16.build.f_cpu=16000000L
+Firefly-WB55CG.menu.speed.2=2 MHz (No USB)
+Firefly-WB55CG.menu.speed.2.build.f_cpu=2000000L
+
+# ---------------------------------------
+# Tlera Katydid
+# ---------------------------------------
+Katydid-WB55CG.name=Katydid-WB55CG
+Katydid-WB55CG.vid.0=0x1209
+Katydid-WB55CG.pid.0=0x6672
+
+Katydid-WB55CG.build.f_cpu=64000000L
+Katydid-WB55CG.build.board=STM32WB_KATYDID
+Katydid-WB55CG.build.arch=stm32wb
+Katydid-WB55CG.build.core=arduino
+Katydid-WB55CG.build.mcu=cortex-m4
+Katydid-WB55CG.build.architecture=armv7e-m
+Katydid-WB55CG.build.fpu=fpv4-sp-d16
+Katydid-WB55CG.build.float-abi=hard
+Katydid-WB55CG.build.vid=0x1209
+Katydid-WB55CG.build.pid=0x6672
+Katydid-WB55CG.build.did=0x0100
+Katydid-WB55CG.build.usb_manufacturer="Tlera Corporation"
+Katydid-WB55CG.build.usb_product="Katydid"
+Katydid-WB55CG.build.extra_flags=-DSTM32WB55xx -fsingle-precision-constant "-D__SYSTEM_CORE_CLOCK__={build.f_cpu}" {build.usb_flags}
+Katydid-WB55CG.build.ldscript=STM32WB55xx_FLASH.ld 
+Katydid-WB55CG.build.openocdscript=openocd_scripts/firefly-wb55cg.cfg
+Katydid-WB55CG.build.variant=Katydid-WB55CG
+Katydid-WB55CG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
+Katydid-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+
+Katydid-WB55CG.upload.tool=dfu-util
+Katydid-WB55CG.upload.protocol=dfu
+Katydid-WB55CG.upload.address=0x08000000
+Katydid-WB55CG.upload.interface=0
+Katydid-WB55CG.upload.vid=0x1209
+Katydid-WB55CG.upload.pid=0x6672
+Katydid-WB55CG.upload.use_1200bps_touch=false
+Katydid-WB55CG.upload.wait_for_upload_port=false
+Katydid-WB55CG.upload.native_usb=true
+Katydid-WB55CG.upload.maximum_size=786432
+Katydid-WB55CG.upload.maximum_data_size=196608
+
+Katydid-WB55CG.menu.usb.cdc=Serial
+Katydid-WB55CG.menu.usb.cdc.build.usb_type=1
+Katydid-WB55CG.menu.usb.cdc_msc=Serial + Mass Storage
+Katydid-WB55CG.menu.usb.cdc_msc.build.usb_type=2
+Katydid-WB55CG.menu.usb.none=No USB
+Katydid-WB55CG.menu.usb.none.build.usb_type=0
+
+Katydid-WB55CG.menu.speed.64=64 MHz
+Katydid-WB55CG.menu.speed.64.build.f_cpu=64000000L
+Katydid-WB55CG.menu.speed.32=32 MHz
+Katydid-WB55CG.menu.speed.32.build.f_cpu=32000000L
+Katydid-WB55CG.menu.speed.16=16 MHz (No USB)
+Katydid-WB55CG.menu.speed.16.build.f_cpu=16000000L
+Katydid-WB55CG.menu.speed.2=2 MHz (No USB)
+Katydid-WB55CG.menu.speed.2.build.f_cpu=2000000L
+
+
+# ST Nucleo
+# ---------------------------------------
+NUCLEO-WB55RG.name=NUCLEO-WB55RG
+NUCLEO-WB55RG.vid.0=0x0483
+NUCLEO-WB55RG.pid.0=0x374b
+
+NUCLEO-WB55RG.build.f_cpu=64000000L
+NUCLEO-WB55RG.build.board=STM32WB_NUCLEO
+NUCLEO-WB55RG.build.arch=stm32wb
+NUCLEO-WB55RG.build.core=arduino
+NUCLEO-WB55RG.build.mcu=cortex-m4
+NUCLEO-WB55RG.build.architecture=armv7e-m
+NUCLEO-WB55RG.build.fpu=fpv4-sp-d16
+NUCLEO-WB55RG.build.float-abi=hard
+NUCLEO-WB55RG.build.extra_flags=-DSTM32WB55xx -fsingle-precision-constant "-D__SYSTEM_CORE_CLOCK__={build.f_cpu}" {build.storage_flags} 
+NUCLEO-WB55RG.build.ldscript=STM32WB55xx_FLASH.ld 
+NUCLEO-WB55RG.build.openocdscript=openocd_scripts/nucleo-wb55rg.cfg
+NUCLEO-WB55RG.build.variant=NUCLEO-WB55RG
+NUCLEO-WB55RG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
+NUCLEO-WB55RG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+
+NUCLEO-WB55RG.upload.tool=openocd
+NUCLEO-WB55RG.upload.protocol=stlink
+NUCLEO-WB55RG.upload.use_1200bps_touch=false
+NUCLEO-WB55RG.upload.wait_for_upload_port=false
+NUCLEO-WB55RG.upload.native_usb=false
+NUCLEO-WB55RG.upload.maximum_size=786432
+NUCLEO-WB55RG.upload.maximum_data_size=196608
+
+NUCLEO-WB55RG.menu.storage.none=None
+NUCLEO-WB55RG.menu.storage.none.build.storage_type=0
+NUCLEO-WB55RG.menu.storage.sflash=SFLASH
+NUCLEO-WB55RG.menu.storage.sflash.build.storage_type=1
+NUCLEO-WB55RG.menu.storage.sdspi=SDCARD
+NUCLEO-WB55RG.menu.storage.sdspi.build.storage_type=2
+
+NUCLEO-WB55RG.menu.speed.64=64 MHz
+NUCLEO-WB55RG.menu.speed.64.build.f_cpu=64000000L
+NUCLEO-WB55RG.menu.speed.32=32 MHz
+NUCLEO-WB55RG.menu.speed.32.build.f_cpu=32000000L
+NUCLEO-WB55RG.menu.speed.16=16 MHz (No USB)
+NUCLEO-WB55RG.menu.speed.16.build.f_cpu=16000000L
+NUCLEO-WB55RG.menu.speed.2=2 MHz (No USB)
+NUCLEO-WB55RG.menu.speed.2.build.f_cpu=2000000L

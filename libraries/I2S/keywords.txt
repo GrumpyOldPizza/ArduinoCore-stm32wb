@@ -1,0 +1,32 @@
+#######################################
+# Syntax Coloring Map I2S
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+I2S	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+begin			KEYWORD2
+end			KEYWORD2
+available		KEYWORD2
+peek			KEYWORD2
+read			KEYWORD2
+availableForWrite	KEYWORD2
+write			KEYWORD2
+flush			KEYWORD2
+onReceive		KEYWORD2
+onTransmit		KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+I2S_PHILIPS_MODE	LITERAL1
+I2S_RIGHT_JUSTTIFIED	LITERAL1
+I2S_LEFT_JUSTIFIED	LITERAL1
+

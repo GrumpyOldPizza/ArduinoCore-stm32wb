@@ -1,0 +1,40 @@
+#######################################
+# Syntax Coloring Map For Wire
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+end	KEYWORD2
+setClock	KEYWORD2
+beginTransmission	KEYWORD2
+endTransmission	KEYWORD2
+requestFrom	KEYWORD2
+onReceive	KEYWORD2
+onRequest	KEYWORD2
+onTransmit	KEYWORD2
+setClockLowTimeout	KEYWORD2
+isGeneralCall		KEYWORD2
+transfer	KEYWORD2
+reset	KEYWORD2
+scan	KEYWORD2
+suspend	KEYWORD2
+resume	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+Wire	KEYWORD2
+Wire1	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
