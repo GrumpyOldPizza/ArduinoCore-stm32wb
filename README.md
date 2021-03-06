@@ -18,7 +18,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 
 ### Board Manager
 
- 1. [Download and install the Arduino IDE](https://www.arduino.cc/en/Main/Software) (at least version v1.6.13)
+ 1. [Download and install the Arduino IDE](https://www.arduino.cc/en/Main/Software) (at least version v1.8.13)
  2. Start the Arduino IDE
  3. Go into Preferences
  4. Add ```https://grumpyoldpizza.github.io/ArduinoCore-stm32wb/package_stm32wb_boards_index.json``` as an "Additional Board Manager URL"
