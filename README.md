@@ -38,7 +38,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 ###### STM32 BOOTLOADER driver setup for Tlera Corp boards
 
  1. Plugin STM32WB board and toggle the RESET button while holding down the BOOT button
- 2. Go to ```%AppData%``` and navigate from to AppData\Local\Arduino15\packages\TleraCorp\hardware\stm32wb\```<VERSION>```\drivers\windows
+ 2. Go to ```%AppData%``` and navigate from to AppData\\Local\\Arduino15\\packages\\TleraCorp\\hardware\\stm32wb\\```<VERSION>```\\drivers\\windows
  3. Right-click on ```STM32Bootloader.bat``` and select ```Run as administrator```
 
 ###### ST-LINK V2.1 driver setup for NUCLEO boards
