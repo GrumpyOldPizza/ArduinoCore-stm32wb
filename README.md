@@ -33,7 +33,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
  2. `sudo cp *.rules /etc/udev/rules.d`
  3. reboot
 
-#####  Windows
+##### Windows
 
 ###### STM32 BOOTLOADER driver setup for Tlera Corp boards
 
@@ -41,7 +41,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
  2. Go to `%AppData%` and navigate from to `AppData\Local\Arduino15\packages\TleraCorp\hardware\stm32wb\<VERSION>\drivers\windows`
  3. Right-click on `STM32Bootloader.bat` and select `Run as administrator`
 
-###### ST-LINK V2.1 driver setup for NUCLEO boards
+###### ST-LINK driver setup for NUCLEO boards
 
  1. Plugin NUCLEO board
  2. Download and install [ST-Link USB Drivers](http://www.st.com/en/embedded-software/stsw-link009.html)
