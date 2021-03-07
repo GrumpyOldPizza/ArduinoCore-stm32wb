@@ -52,7 +52,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
  2. `cd <SKETCHBOOK>`, where `<SKETCHBOOK>` is your Arduino Sketch folder:
   * OS X: `~/Documents/Arduino`
   * Linux: `~/Arduino`
-  * Windows: `Documents/Arduino`
+  * Windows: `Documents\Arduino`
  3. Create a folder named `hardware`, if it does not exist, and change directories to it
  4. Clone this repo: `git clone https://github.com/grumpyoldpizza/ArduinoCore-stm32wb.git TleraCorp/stm32wb`
  5. Restart the Arduino IDE
