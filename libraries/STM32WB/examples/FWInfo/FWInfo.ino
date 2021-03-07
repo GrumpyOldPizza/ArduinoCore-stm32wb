@@ -5,7 +5,7 @@
 void setup(void) {
     stm32wb_ipcc_sys_info_t info;
 
-    Serial.begin(38400);
+    Serial.begin(9600);
 
     while (!Serial) { }
 

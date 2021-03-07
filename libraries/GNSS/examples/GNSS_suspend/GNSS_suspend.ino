@@ -40,7 +40,7 @@ void callbackResume(void)
 
 void setup( void )
 {
-    Serial.begin(115200);
+    Serial.begin(9600);
 
     GNSS.begin(GNSS_MODE_UBLOX, GNSS_RATE_1HZ, Serial1, PIN_PPS);
 

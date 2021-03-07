@@ -4,8 +4,6 @@
 #include "../Firmware/stm32wb5x_FUS_fw_1_0_2.h"
 #include "../Firmware/stm32wb5x_FUS_fw_1_1_0.h"
 #include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_10_0.h"
-//#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_9_0.h"
-//#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_8_0.h"
 
 bool connected = false;
 bool success = true;
@@ -37,7 +35,7 @@ void setup(void) {
     USBDevice.attach();
 #endif
 
-    Serial.begin(38400);
+    Serial.begin(9600);
 }
 
 void loop(void) {
