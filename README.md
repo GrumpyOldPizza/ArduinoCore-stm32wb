@@ -8,7 +8,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 ## Supported boards
 
 ### Tlera Corp
- * [Firefly-STM32WB55CG](https://www.tindie.com/products/TleraCorp/firefly-stm32wb55-development-board)
+ * [Firefly-STM32WB55CG](https://www.tindie.com/products/TleraCorp/firefly-ble-development-board)
 
 ### STMicroelectronics
  * [NUCLEO-WB55RG](https://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/stm32-nucleo-expansion-boards/p-nucleo-wb55.html)
