@@ -1334,27 +1334,17 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
     
     m_update_value = true;
 
-    if (m_server.handle && (m_subscribed || callback)) {
-        m_update_type = m_subscribed;
-        m_update_value = false;
+    m_update_type = m_subscribed;
+    m_update_value = false;
 
-	if (p_status_return) {
-	    *p_status_return = BLE_STATUS_BUSY;
-	}
-
-	m_status = p_status_return;
-        m_done_callback = callback ? callback : Callback(__emptyCallback);
-        
-        BLEHost.request(this);
-    } else {
-        m_update_value = true;
-
-	if (p_status_return) {
-	    *p_status_return = BLE_STATUS_SUCCESS;
-	}
-	
-        armv7m_atomic_storeb(&m_busy, 0);
+    if (p_status_return) {
+	*p_status_return = BLE_STATUS_BUSY;
     }
+    
+    m_status = p_status_return;
+    m_done_callback = callback ? callback : Callback(__emptyCallback);
+        
+    BLEHost.request(this);
 
     return true;
 }
@@ -4156,7 +4146,7 @@ void BLELocalDevice::process() {
         m_process.request_tail = request_tail;
     }
     
-    while (!m_process.request_current && m_process.request_head) {
+    if (!m_process.request_current && m_process.request_head) {
         characteristic = m_process.request_head;
             
         if (m_process.request_head == m_process.request_tail)
@@ -4169,26 +4159,10 @@ void BLELocalDevice::process() {
             m_process.request_head = characteristic->m_process.request;
         }
 
-        if (characteristic->m_update_type) {
-            m_process.request_current = characteristic;
-            m_process.request_offset = 0;
-            m_process.request_count = 0;
-            m_process.request_length = characteristic->m_value_length;
-        } else {
-#if (BLE_TRACE_SUPPORTED == 1)
-            printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", BLE_STATUS_SUCCESS, characteristic->m_uuid, characteristic->m_update_type);
-#endif
-
-            characteristic->m_update_value = true;
-
-	    armv7m_atomic_storeb(&characteristic->m_busy, 0);
-	    
-	    if (characteristic->m_status) {
-		*characteristic->m_status = BLE_STATUS_SUCCESS;
-	    }
-
-            characteristic->m_done_callback();
-        }
+	m_process.request_current = characteristic;
+	m_process.request_offset = 0;
+	m_process.request_count = 0;
+	m_process.request_length = characteristic->m_value_length;
     }
 
     if (!m_process.value_current && m_process.sync_value) {
