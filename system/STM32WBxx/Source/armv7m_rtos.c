@@ -529,20 +529,17 @@ static void armv7m_rtos_task_schedule(void)
 	armv7m_rtos_task_timeout_restart();
     }
 
-    task = armv7m_rtos_control.task_self;
-
-    if (task != armv7m_rtos_control.task_ready)
+    if (armv7m_rtos_control.task_next != armv7m_rtos_control.task_ready)
     {
+	task = armv7m_rtos_control.task_self;
+
 	if (!task ||
 	    !(task->state & K_TASK_STATE_READY) ||
 	    !(task->mode & (K_TASK_MODE_NOCONCURRENT | K_TASK_MODE_NODISPATCH | K_TASK_MODE_NOPREEMPT)))
 	{
-	    if (armv7m_rtos_control.task_next != armv7m_rtos_control.task_ready)
-	    {
-		armv7m_rtos_control.task_next = armv7m_rtos_control.task_ready;
-		
-		armv7m_pendsv_hook(armv7m_rtos_pendsv_epilogue);
-	    }
+	    armv7m_rtos_control.task_next = armv7m_rtos_control.task_ready;
+
+	    armv7m_pendsv_hook(armv7m_rtos_pendsv_epilogue);
 	}
     }
 }
@@ -939,8 +936,6 @@ static void armv7m_rtos_sem_wait_acquire(k_sem_t *sem)
 
     task = sem->waiting.head;
 
-    if (!task) { __BKPT(); }
-    
     if (task->next == NULL)
     {
 	sem->waiting.head = NULL;
