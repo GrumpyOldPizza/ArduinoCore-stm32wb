@@ -96,12 +96,12 @@ static void stm32wb_usbd_disconnect(void)
 
     if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_CONFIGURED)
     {
-	info = stm32wb_usbd_control.info;
-	
-	for (function = 0; function < info->function_count; function++)
-	{
-	    (*info->function_table[function].interface->stop)(info->function_table[function].context);
-	}
+        info = stm32wb_usbd_control.info;
+        
+        for (function = 0; function < info->function_count; function++)
+        {
+            (*info->function_table[function].interface->stop)(info->function_table[function].context);
+        }
     }
     
     stm32wb_usbd_dcd_disconnect();
@@ -117,23 +117,23 @@ static void stm32wb_usbd_vbus_timeout(void)
     
     if (stm32wb_usbd_control.pin_vbus == STM32WB_GPIO_PIN_NONE)
     {
-	vbus_status = stm32wb_system_pvm1_sense();
+        vbus_status = stm32wb_system_pvm1_sense();
     }
     else
     {
-	vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
+        vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
     }
 
     if (vbus_status && stm32wb_usbd_control.vbus_status)
     {
-	stm32wb_usbd_control.state = STM32WB_USBD_STATE_ATTACHED;
+        stm32wb_usbd_control.state = STM32WB_USBD_STATE_ATTACHED;
 
-	if (stm32wb_usbd_control.evt_callback)
-	{
-	    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_ATTACH);
-	}
+        if (stm32wb_usbd_control.evt_callback)
+        {
+            (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_ATTACH);
+        }
 
-	stm32wb_usbd_dcd_enable(&stm32wb_usbd_control.ep0_setup[0], STM32WB_USBD_DCD_OPTION_DETECT, stm32wb_usbd_event_callback, NULL);
+        stm32wb_usbd_dcd_enable(&stm32wb_usbd_control.ep0_setup[0], STM32WB_USBD_DCD_OPTION_DETECT, stm32wb_usbd_event_callback, NULL);
     }
 }
 
@@ -145,43 +145,43 @@ static void stm32wb_usbd_vbus_changed(void)
     
     if (stm32wb_usbd_control.pin_vbus == STM32WB_GPIO_PIN_NONE)
     {
-	stm32wb_usbd_control.vbus_status = stm32wb_system_pvm1_sense();
+        stm32wb_usbd_control.vbus_status = stm32wb_system_pvm1_sense();
     }
     else
     {
-	stm32wb_usbd_control.vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
+        stm32wb_usbd_control.vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
     }
     
     if (stm32wb_usbd_control.vbus_status)
     {
         if (!vbus_status_previous)
         {
-	    stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
+            stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
         }
     }
     else
     {
-	stm32wb_lptim_timeout_stop(&stm32wb_usbd_control.timeout);
+        stm32wb_lptim_timeout_stop(&stm32wb_usbd_control.timeout);
 
         if (vbus_status_previous)
         {
-	    stm32wb_usbd_control.bcd_status = STM32WB_USBD_BCD_STATUS_UNKNOWN;
+            stm32wb_usbd_control.bcd_status = STM32WB_USBD_BCD_STATUS_UNKNOWN;
 
-	    if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_POWERED)
-	    {
-		stm32wb_usbd_disconnect();
-	    }
-	    
-	    if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_ATTACHED)
-	    {
-		stm32wb_usbd_control.state = STM32WB_USBD_STATE_READY;
-		
-		if (stm32wb_usbd_control.evt_callback)
-		{
-		    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_DETACH);
-		}
-	    }
-	}
+            if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_POWERED)
+            {
+                stm32wb_usbd_disconnect();
+            }
+            
+            if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_ATTACHED)
+            {
+                stm32wb_usbd_control.state = STM32WB_USBD_STATE_READY;
+                
+                if (stm32wb_usbd_control.evt_callback)
+                {
+                    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_DETACH);
+                }
+            }
+        }
     }
 }
 
@@ -230,7 +230,7 @@ static bool stm32wb_usbd_configuration(uint8_t *data, const uint8_t **p_data_ret
 
     if (!configuration)
     {
-	return false;
+        return false;
     }
     
     *p_data_return = configuration;
@@ -249,7 +249,7 @@ static bool stm32wb_usbd_bos(uint8_t *data, const uint8_t **p_data_return, uint3
 
     if (!bos)
     {
-	return false;
+        return false;
     }
     
     *p_data_return = bos;
@@ -268,7 +268,7 @@ static bool stm32wb_usbd_msos20(uint8_t *data, const uint8_t **p_data_return, ui
 
     if (!msos20)
     {
-	return false;
+        return false;
     }
     
     *p_data_return = msos20;
@@ -284,14 +284,14 @@ static bool stm32wb_usbd_string(const char *string, uint8_t *data, const uint8_t
 
     if (!string)
     {
-	return false;
+        return false;
     }
     
     count = strlen(string);
 
     if (count > ((STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE / 2) -1))
     {
-	count = (STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE / 2) -1;
+        count = (STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE / 2) -1;
     }
 
     length = (2 + (count * 2));
@@ -306,8 +306,8 @@ static bool stm32wb_usbd_string(const char *string, uint8_t *data, const uint8_t
 
     while (data != data_e)
     {
-	*data++ = *string++;
-	*data++ = 0;
+        *data++ = *string++;
+        *data++ = 0;
     }
     
     return true;
@@ -316,10 +316,10 @@ static bool stm32wb_usbd_string(const char *string, uint8_t *data, const uint8_t
 static bool stm32wb_usbd_language(uint8_t *data, const uint8_t **p_data_return, uint32_t *p_length_return)
 {
     static const uint8_t language[4] = {
-	4,
-	USB_DESCRIPTOR_TYPE_STRING,
-	(uint8_t)((1033) & 255),
-	(uint8_t)((1033) >> 8)
+        4,
+        USB_DESCRIPTOR_TYPE_STRING,
+        (uint8_t)((1033) & 255),
+        (uint8_t)((1033) >> 8)
     };
 
     *p_data_return = (uint8_t*)&language[0];
@@ -351,14 +351,14 @@ static bool stm32wb_usbd_serial(uint8_t *data, const uint8_t **p_data_return, ui
 
     for (shift = (16-4); shift >= 0; shift -= 4)
     {
-	*data++ = hex2ascii[(serial_h >> shift) & 15];
-	*data++ = 0;
+        *data++ = hex2ascii[(serial_h >> shift) & 15];
+        *data++ = 0;
     }
 
     for (shift = (32-4); shift >= 0; shift -= 4)
     {
-	*data++ = hex2ascii[(serial_l >> shift) & 15];
-	*data++ = 0;
+        *data++ = hex2ascii[(serial_l >> shift) & 15];
+        *data++ = 0;
     }
     
     return true;
@@ -378,367 +378,367 @@ bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t *data, 
     
     switch (request->bmRequestType & USB_REQ_RECIPIENT_MASK) {
     case USB_REQ_RECIPIENT_DEVICE:
-	for (function = 0; function < info->function_count; function++)
-	{
-	    success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
+        for (function = 0; function < info->function_count; function++)
+        {
+            success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
 
-	    if (success)
-	    {
-		break;
-	    }
-	}
+            if (success)
+            {
+                break;
+            }
+        }
 
-	if (!success)
-	{
-	    switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
-	    case USB_REQ_TYPE_STANDARD: {
-		switch (request->bRequest) {
-		case USB_REQ_CODE_GET_STATUS: {
-		    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
-		    {
-			*p_data_return = data;
-			*p_length_return = 2;
-			
-			data[0] = stm32wb_usbd_control.remote_wakeup ? 0x02 : 0x00;
-			data[1] = 0x00;
-			
-			success = true;
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_CLEAR_FEATURE: {
-		    if (request->wValue == USB_FEATURE_DEVICE_REMOTE_WAKEUP)
-		    {
-			if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
-			{
-			    stm32wb_usbd_control.remote_wakeup = false;
-			    
-			    success = true;
-			}
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_SET_FEATURE: {
-		    if (request->wValue == USB_FEATURE_DEVICE_REMOTE_WAKEUP)
-		    {
-			if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
-			{
-			    stm32wb_usbd_control.remote_wakeup = true;
-			
-			    success = true;
-			}
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_SET_ADDRESS: {
-		    if ((state == USB_STATE_DEFAULT) || (state == USB_STATE_ADDRESSED))
-		    {
-			stm32wb_usbd_dcd_set_address(request->wValue & 0x7f);
-			
-			stm32wb_usbd_control.state = (request->wValue & 0x7f) ? STM32WB_USBD_STATE_ADDRESSED : STM32WB_USBD_STATE_DEFAULT;
+        if (!success)
+        {
+            switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
+            case USB_REQ_TYPE_STANDARD: {
+                switch (request->bRequest) {
+                case USB_REQ_CODE_GET_STATUS: {
+                    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
+                    {
+                        *p_data_return = data;
+                        *p_length_return = 2;
+                        
+                        data[0] = stm32wb_usbd_control.remote_wakeup ? 0x02 : 0x00;
+                        data[1] = 0x00;
+                        
+                        success = true;
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_CLEAR_FEATURE: {
+                    if (request->wValue == USB_FEATURE_DEVICE_REMOTE_WAKEUP)
+                    {
+                        if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
+                        {
+                            stm32wb_usbd_control.remote_wakeup = false;
+                            
+                            success = true;
+                        }
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_SET_FEATURE: {
+                    if (request->wValue == USB_FEATURE_DEVICE_REMOTE_WAKEUP)
+                    {
+                        if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
+                        {
+                            stm32wb_usbd_control.remote_wakeup = true;
+                        
+                            success = true;
+                        }
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_SET_ADDRESS: {
+                    if ((state == USB_STATE_DEFAULT) || (state == USB_STATE_ADDRESSED))
+                    {
+                        stm32wb_usbd_dcd_set_address(request->wValue & 0x7f);
+                        
+                        stm32wb_usbd_control.state = (request->wValue & 0x7f) ? STM32WB_USBD_STATE_ADDRESSED : STM32WB_USBD_STATE_DEFAULT;
 
-			success = true;
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_GET_DESCRIPTOR: {
-		    type = request->wValue >> 8;
-		    index = request->wValue & 255;
+                        success = true;
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_GET_DESCRIPTOR: {
+                    type = request->wValue >> 8;
+                    index = request->wValue & 255;
 
-		    switch (type) {
-		    case USB_DESCRIPTOR_TYPE_DEVICE: {
-			success = stm32wb_usbd_device(data, p_data_return, p_length_return);
-			break;
-		    }
-			
-		    case USB_DESCRIPTOR_TYPE_CONFIGURATION: {
-			success = stm32wb_usbd_configuration(data, p_data_return, p_length_return);
-			break;
-		    }
+                    switch (type) {
+                    case USB_DESCRIPTOR_TYPE_DEVICE: {
+                        success = stm32wb_usbd_device(data, p_data_return, p_length_return);
+                        break;
+                    }
+                        
+                    case USB_DESCRIPTOR_TYPE_CONFIGURATION: {
+                        success = stm32wb_usbd_configuration(data, p_data_return, p_length_return);
+                        break;
+                    }
 
-		    case USB_DESCRIPTOR_TYPE_STRING: {
-			switch (index) {
-			case USB_STRING_INDEX_LANGID: {
-			    success = stm32wb_usbd_language(data, p_data_return, p_length_return);
-			    break;
-			}
+                    case USB_DESCRIPTOR_TYPE_STRING: {
+                        switch (index) {
+                        case USB_STRING_INDEX_LANGID: {
+                            success = stm32wb_usbd_language(data, p_data_return, p_length_return);
+                            break;
+                        }
 
-			case USB_STRING_INDEX_MANUFACTURER: {
-			    success = stm32wb_usbd_string(stm32wb_usbd_control.device->manufacturer, data, p_data_return, p_length_return);
-			    break;
-			}
+                        case USB_STRING_INDEX_MANUFACTURER: {
+                            success = stm32wb_usbd_string(stm32wb_usbd_control.device->manufacturer, data, p_data_return, p_length_return);
+                            break;
+                        }
 
-			case USB_STRING_INDEX_PRODUCT: {
-			    success = stm32wb_usbd_string(stm32wb_usbd_control.device->product, data, p_data_return, p_length_return);
-			    break;
-			}
+                        case USB_STRING_INDEX_PRODUCT: {
+                            success = stm32wb_usbd_string(stm32wb_usbd_control.device->product, data, p_data_return, p_length_return);
+                            break;
+                        }
 
-			case USB_STRING_INDEX_SERIAL: {
-			    success = stm32wb_usbd_serial(data, p_data_return, p_length_return);
-			    break;
-			}
+                        case USB_STRING_INDEX_SERIAL: {
+                            success = stm32wb_usbd_serial(data, p_data_return, p_length_return);
+                            break;
+                        }
 
-			default: {
-			    if ((index - USB_STRING_INDEX_CUSTOM) < info->string_count)
-			    {
-				success = stm32wb_usbd_string(info->string_table[index - USB_STRING_INDEX_CUSTOM], data, p_data_return, p_length_return);
-			    }
-			    break;
-			}
-			}
-			break;
-		    }
+                        default: {
+                            if ((index - USB_STRING_INDEX_CUSTOM) < info->string_count)
+                            {
+                                success = stm32wb_usbd_string(info->string_table[index - USB_STRING_INDEX_CUSTOM], data, p_data_return, p_length_return);
+                            }
+                            break;
+                        }
+                        }
+                        break;
+                    }
 
-		    case USB_DESCRIPTOR_TYPE_BOS: {
-			success = stm32wb_usbd_bos(data, p_data_return, p_length_return);
-			break;
-		    }
-			
-		    default:
-			break;
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_SET_DESCRIPTOR: {
-		    break;
-		}
-		    
-		case USB_REQ_CODE_GET_CONFIGURATION: {
-		    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
-		    {
-			*p_data_return = data;
-			*p_length_return = 1;
-			
-			data[0] = (state == USB_STATE_ADDRESSED) ? 0 : 1;
+                    case USB_DESCRIPTOR_TYPE_BOS: {
+                        success = stm32wb_usbd_bos(data, p_data_return, p_length_return);
+                        break;
+                    }
+                        
+                    default:
+                        break;
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_SET_DESCRIPTOR: {
+                    break;
+                }
+                    
+                case USB_REQ_CODE_GET_CONFIGURATION: {
+                    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
+                    {
+                        *p_data_return = data;
+                        *p_length_return = 1;
+                        
+                        data[0] = (state == USB_STATE_ADDRESSED) ? 0 : 1;
 
-			success = true;
-		    }
-		    break;
-		}
-		    
-		case USB_REQ_CODE_SET_CONFIGURATION: {
-		    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
-		    {
-			if (request->wValue == 0)
-			{
-			    if (state == USB_STATE_CONFIGURED)
-			    {
-				for (function = 0; function < info->function_count; function++)
-				{
-				    (*info->function_table[function].interface->stop)(info->function_table[function].context);
-				}
-			    }
-				
-			    stm32wb_usbd_control.state = STM32WB_USBD_STATE_ADDRESSED;
-			}
-			else
-			{
-			    if (state == USB_STATE_ADDRESSED)
-			    {
-				for (function = 0; function < info->function_count; function++)
-				{
-				    (*info->function_table[function].interface->start)(info->function_table[function].context);
-				}
-			    }
-			    
-			    stm32wb_usbd_control.state = STM32WB_USBD_STATE_CONFIGURED;
-			}
-			
-			success = true;
-		    }
-		    break;
-		}
-		    
-		default:
-		    break;
-		}
-		break;
-	    }
+                        success = true;
+                    }
+                    break;
+                }
+                    
+                case USB_REQ_CODE_SET_CONFIGURATION: {
+                    if ((state == USB_STATE_ADDRESSED) || (state == USB_STATE_CONFIGURED))
+                    {
+                        if (request->wValue == 0)
+                        {
+                            if (state == USB_STATE_CONFIGURED)
+                            {
+                                for (function = 0; function < info->function_count; function++)
+                                {
+                                    (*info->function_table[function].interface->stop)(info->function_table[function].context);
+                                }
+                            }
+                                
+                            stm32wb_usbd_control.state = STM32WB_USBD_STATE_ADDRESSED;
+                        }
+                        else
+                        {
+                            if (state == USB_STATE_ADDRESSED)
+                            {
+                                for (function = 0; function < info->function_count; function++)
+                                {
+                                    (*info->function_table[function].interface->start)(info->function_table[function].context);
+                                }
+                            }
+                            
+                            stm32wb_usbd_control.state = STM32WB_USBD_STATE_CONFIGURED;
+                        }
+                        
+                        success = true;
+                    }
+                    break;
+                }
+                    
+                default:
+                    break;
+                }
+                break;
+            }
 
-	    case USB_REQ_TYPE_VENDOR: {
-		switch (request->bRequest) {
-		case USB_REQ_MS_VENDOR_CODE: {
-		    switch (request->wIndex) {
-		    case MS_OS_2O_DESCRIPTOR_INDEX: {
-			success = stm32wb_usbd_msos20(data, p_data_return, p_length_return);
-			break;
-		    }
-			
-		    default:
-			break;
-		    }
-		    break;
-		}
-		    
-		default:
-		    break;
-		}
-		break;
-	    }
+            case USB_REQ_TYPE_VENDOR: {
+                switch (request->bRequest) {
+                case USB_REQ_MS_VENDOR_CODE: {
+                    switch (request->wIndex) {
+                    case MS_OS_2O_DESCRIPTOR_INDEX: {
+                        success = stm32wb_usbd_msos20(data, p_data_return, p_length_return);
+                        break;
+                    }
+                        
+                    default:
+                        break;
+                    }
+                    break;
+                }
+                    
+                default:
+                    break;
+                }
+                break;
+            }
 
-	    default:
-		break;
-	    }
-	}
-	break;
+            default:
+                break;
+            }
+        }
+        break;
 
     case USB_REQ_RECIPIENT_INTERFACE:
-	interface = request->wIndex;
+        interface = request->wIndex;
 
-	if (interface < stm32wb_usbd_control.if_count)
-	{
-	    for (function = 0, if_base = 0; function < info->function_count; function++)
-	    {
-		if ((if_base <= interface) && ((if_base + info->function_table[function].if_count) > interface))
-		{
-		    success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
-			
-		    break;
-		}
+        if (interface < stm32wb_usbd_control.if_count)
+        {
+            for (function = 0, if_base = 0; function < info->function_count; function++)
+            {
+                if ((if_base <= interface) && ((if_base + info->function_table[function].if_count) > interface))
+                {
+                    success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
+                        
+                    break;
+                }
 
-		if_base += info->function_table[function].if_count;
-	    }
-		
-	    if (!success)
-	    {
-		switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
-		case USB_REQ_TYPE_STANDARD: {
-		    switch (request->bRequest) {
-		    case USB_REQ_CODE_GET_STATUS: {
-			if (((state == USB_STATE_ADDRESSED) && !interface) || (state == USB_STATE_CONFIGURED))
-			{
-			    *p_data_return = data;
-			    *p_length_return = 2;
-			    
-			    data[0] = 0x00;
-			    data[1] = 0x00;
-			    
-			    success = true;
-			}
-			break;
-		    }
-			
-		    case USB_REQ_CODE_CLEAR_FEATURE: {
-			/* No standard features defined */
-			break;
-		    }
-			    
-		    case USB_REQ_CODE_SET_FEATURE: {
-			/* No standard features defined */
-			break;
-		    }
-			    
-		    case USB_REQ_CODE_GET_INTERFACE: {
-			/* Must be handled by the function, defaults to 0 */
-			if (state == USB_STATE_CONFIGURED)
-			{
-			    *p_data_return = data;
-			    *p_length_return = 1;
-			    
-			    data[0] = 0x00;
-			    
-			    success = true;
-			}
-			break;
-		    }
-			    
-		    case USB_REQ_CODE_SET_INTERFACE: {
-			/* Must be handled by the function, or default to error */
-			break;
-		    }
-			    
-		    default:
-			break;
-		    }
+                if_base += info->function_table[function].if_count;
+            }
+                
+            if (!success)
+            {
+                switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
+                case USB_REQ_TYPE_STANDARD: {
+                    switch (request->bRequest) {
+                    case USB_REQ_CODE_GET_STATUS: {
+                        if (((state == USB_STATE_ADDRESSED) && !interface) || (state == USB_STATE_CONFIGURED))
+                        {
+                            *p_data_return = data;
+                            *p_length_return = 2;
+                            
+                            data[0] = 0x00;
+                            data[1] = 0x00;
+                            
+                            success = true;
+                        }
+                        break;
+                    }
+                        
+                    case USB_REQ_CODE_CLEAR_FEATURE: {
+                        /* No standard features defined */
+                        break;
+                    }
+                            
+                    case USB_REQ_CODE_SET_FEATURE: {
+                        /* No standard features defined */
+                        break;
+                    }
+                            
+                    case USB_REQ_CODE_GET_INTERFACE: {
+                        /* Must be handled by the function, defaults to 0 */
+                        if (state == USB_STATE_CONFIGURED)
+                        {
+                            *p_data_return = data;
+                            *p_length_return = 1;
+                            
+                            data[0] = 0x00;
+                            
+                            success = true;
+                        }
+                        break;
+                    }
+                            
+                    case USB_REQ_CODE_SET_INTERFACE: {
+                        /* Must be handled by the function, or default to error */
+                        break;
+                    }
+                            
+                    default:
+                        break;
+                    }
 
-		    break;
-		}
-		    
-		default:
-		    break;
-		}
-	    }
-	}
-	break;
+                    break;
+                }
+                    
+                default:
+                    break;
+                }
+            }
+        }
+        break;
 
     case USB_REQ_RECIPIENT_ENDPOINT:
-	ep_addr = request->wIndex & 0x8f;
-	ep_mask = STM32WB_USBD_EP_MASK(ep_addr);
+        ep_addr = request->wIndex & 0x8f;
+        ep_mask = STM32WB_USBD_EP_MASK(ep_addr);
 
-	if (ep_mask & stm32wb_usbd_control.ep_mask)
-	{
-	    for (function = 0; function < info->function_count; function++)
-	    {
-		if (ep_mask & info->function_table[function].ep_mask)
-		{
-		    success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
-			
-		    break;
-		}
-	    }
-		
-	    if (!success)
-	    {
-		switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
-		case USB_REQ_TYPE_STANDARD: {
-		    switch (request->bRequest) {
-		    case USB_REQ_CODE_GET_STATUS: {
-			if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
-			{
-			    *p_data_return = data;
-			    *p_length_return = 2;
-			    
-			    data[0] = ((ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_is_stalled(ep_addr)) ? 0x01 : 0x00;
-			    data[1] = 0x00;
-			
-			    success = true;
-			}
-			break;
-		    }
-			
-		    case USB_REQ_CODE_CLEAR_FEATURE: {
-			if (request->wValue == USB_FEATURE_ENDPOINT_HALT)
-			{
-			    if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
-			    {
-				success = (ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_unstall(ep_addr);
-			    }
-			}
-			break;
-		    }
-			
-		    case USB_REQ_CODE_SET_FEATURE: {
-			if (request->wValue == USB_FEATURE_ENDPOINT_HALT)
-			{
-			    if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
-			    {
-				success = (ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_stall(ep_addr);
-			    }
-			}
-			break;
-		    }
-			
-		    default:
-			break;
-		    }
+        if (ep_mask & stm32wb_usbd_control.ep_mask)
+        {
+            for (function = 0; function < info->function_count; function++)
+            {
+                if (ep_mask & info->function_table[function].ep_mask)
+                {
+                    success = (*info->function_table[function].interface->request)(info->function_table[function].context, state, request, data, p_data_return, p_length_return);
+                        
+                    break;
+                }
+            }
+                
+            if (!success)
+            {
+                switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
+                case USB_REQ_TYPE_STANDARD: {
+                    switch (request->bRequest) {
+                    case USB_REQ_CODE_GET_STATUS: {
+                        if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
+                        {
+                            *p_data_return = data;
+                            *p_length_return = 2;
+                            
+                            data[0] = ((ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_is_stalled(ep_addr)) ? 0x01 : 0x00;
+                            data[1] = 0x00;
+                        
+                            success = true;
+                        }
+                        break;
+                    }
+                        
+                    case USB_REQ_CODE_CLEAR_FEATURE: {
+                        if (request->wValue == USB_FEATURE_ENDPOINT_HALT)
+                        {
+                            if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
+                            {
+                                success = (ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_unstall(ep_addr);
+                            }
+                        }
+                        break;
+                    }
+                        
+                    case USB_REQ_CODE_SET_FEATURE: {
+                        if (request->wValue == USB_FEATURE_ENDPOINT_HALT)
+                        {
+                            if (((state == USB_STATE_ADDRESSED) && !(ep_addr & 0x0f)) || (state == USB_STATE_CONFIGURED))
+                            {
+                                success = (ep_addr & 0x0f) && stm32wb_usbd_dcd_ep_stall(ep_addr);
+                            }
+                        }
+                        break;
+                    }
+                        
+                    default:
+                        break;
+                    }
 
-		    break;
-		}
+                    break;
+                }
 
-		default:
-		    break;
-		}
-	    }
-	}
-	break;
+                default:
+                    break;
+                }
+            }
+        }
+        break;
 
     default:
-	break;
+        break;
     }
     
     return success;
@@ -755,96 +755,96 @@ static void stm32wb_usbd_event_process(void)
     
     if (events & STM32WB_USBD_DCD_EVENT_EP0_REQUEST)
     {
-	stm32wb_usbd_control.ep0_status = stm32wb_usbd_request(&stm32wb_usbd_control.ep0_request, stm32wb_usbd_control.ep0_out_data, &stm32wb_usbd_control.ep0_in_data, &stm32wb_usbd_control.ep0_in_length);
+        stm32wb_usbd_control.ep0_status = stm32wb_usbd_request(&stm32wb_usbd_control.ep0_request, stm32wb_usbd_control.ep0_out_data, &stm32wb_usbd_control.ep0_in_data, &stm32wb_usbd_control.ep0_in_length);
 
-	stm32wb_usbd_dcd_ep0_request();
+        stm32wb_usbd_dcd_ep0_request();
     }
 
     if (events & STM32WB_USBD_DCD_EVENT_DETECT)
     {
-	stm32wb_usbd_control.state = STM32WB_USBD_STATE_DETECTED;
+        stm32wb_usbd_control.state = STM32WB_USBD_STATE_DETECTED;
 
-	stm32wb_usbd_control.bcd_status = stm32wb_usbd_dcd_bcd_status();
+        stm32wb_usbd_control.bcd_status = stm32wb_usbd_dcd_bcd_status();
 
-	if (stm32wb_usbd_control.evt_callback)
-	{
-	    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_DETECT);
-	}
+        if (stm32wb_usbd_control.evt_callback)
+        {
+            (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_DETECT);
+        }
 
-	if ((stm32wb_usbd_control.bcd_status == STM32WB_USBD_BCD_STATUS_PORT) || (stm32wb_usbd_control.bcd_status == STM32WB_USBD_BCD_STATUS_PORT_AND_CHARGER))
-	{
-	    if (stm32wb_usbd_control.connect)
-	    {
-		stm32wb_usbd_connect();
-	    }
-	    else
-	    {
-		stm32wb_usbd_dcd_disable();
-	    }
-	}
-	else
-	{
-	    stm32wb_usbd_dcd_disable();
-	}
+        if ((stm32wb_usbd_control.bcd_status == STM32WB_USBD_BCD_STATUS_PORT) || (stm32wb_usbd_control.bcd_status == STM32WB_USBD_BCD_STATUS_PORT_AND_CHARGER))
+        {
+            if (stm32wb_usbd_control.connect)
+            {
+                stm32wb_usbd_connect();
+            }
+            else
+            {
+                stm32wb_usbd_dcd_disable();
+            }
+        }
+        else
+        {
+            stm32wb_usbd_dcd_disable();
+        }
     }
     
     if (events & STM32WB_USBD_DCD_EVENT_RESET)
     {
-	if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_CONFIGURED)
-	{
-	    for (function = 0; function < info->function_count; function++)
-	    {
-		(*info->function_table[function].interface->stop)(info->function_table[function].context);
-	    }
-	}
+        if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_CONFIGURED)
+        {
+            for (function = 0; function < info->function_count; function++)
+            {
+                (*info->function_table[function].interface->stop)(info->function_table[function].context);
+            }
+        }
 
-	stm32wb_usbd_dcd_reset();
+        stm32wb_usbd_dcd_reset();
 
-	if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_POWERED)
-	{
-	    if (stm32wb_usbd_control.evt_callback)
-	    {
-		(*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_CONNECT);
-	    }
-	}
-	
-	stm32wb_usbd_control.state = STM32WB_USBD_STATE_DEFAULT;
+        if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_POWERED)
+        {
+            if (stm32wb_usbd_control.evt_callback)
+            {
+                (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_CONNECT);
+            }
+        }
+        
+        stm32wb_usbd_control.state = STM32WB_USBD_STATE_DEFAULT;
 
-	stm32wb_usbd_control.remote_wakeup = false;
+        stm32wb_usbd_control.remote_wakeup = false;
     }
     
     if (events & STM32WB_USBD_DCD_EVENT_SUSPEND)
     {
-	for (function = 0; function < info->function_count; function++)
-	{
-	    (*info->function_table[function].interface->suspend)(info->function_table[function].context);
-	}
+        for (function = 0; function < info->function_count; function++)
+        {
+            (*info->function_table[function].interface->suspend)(info->function_table[function].context);
+        }
 
-	if (stm32wb_usbd_control.evt_callback)
-	{
-	    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_SUSPEND);
-	}
+        if (stm32wb_usbd_control.evt_callback)
+        {
+            (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_SUSPEND);
+        }
     }
 
     if (events & STM32WB_USBD_DCD_EVENT_RESUME)
     {
-	if (stm32wb_usbd_control.evt_callback)
-	{
-	    (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_RESUME);
-	}
+        if (stm32wb_usbd_control.evt_callback)
+        {
+            (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_RESUME);
+        }
 
-	for (function = 0; function < info->function_count; function++)
-	{
-	    (*info->function_table[function].interface->resume)(info->function_table[function].context);
-	}
+        for (function = 0; function < info->function_count; function++)
+        {
+            (*info->function_table[function].interface->resume)(info->function_table[function].context);
+        }
     }
     
     if (events & STM32WB_USBD_DCD_EVENT_SOF)
     {
-	for (function = 0; function < info->function_count; function++)
-	{
-	    (*info->function_table[function].interface->sof)(info->function_table[function].context);
-	}
+        for (function = 0; function < info->function_count; function++)
+        {
+            (*info->function_table[function].interface->sof)(info->function_table[function].context);
+        }
     }
 }
 
@@ -854,204 +854,204 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
 
     if (events & STM32WB_USBD_DCD_EVENT_EP0_REQUEST)
     {
-	if (stm32wb_usbd_control.ep0_cancel)
-	{
-	    stm32wb_usbd_control.ep0_cancel = false;
-	    
-	    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+        if (stm32wb_usbd_control.ep0_cancel)
+        {
+            stm32wb_usbd_control.ep0_cancel = false;
+            
+            stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
 
-	    events |= STM32WB_USBD_DCD_EVENT_EP0_SETUP;
-	}
-	else
-	{
-	    if (stm32wb_usbd_control.ep0_status)
-	    {
-		if (stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST)
-		{
-		    if (stm32wb_usbd_control.ep0_in_length >= stm32wb_usbd_control.ep0_request.wLength)
-		    {
-			stm32wb_usbd_control.ep0_in_length = stm32wb_usbd_control.ep0_request.wLength;
-			stm32wb_usbd_control.ep0_zlp = false;
-		    }
-		    else
-		    {
-			stm32wb_usbd_control.ep0_zlp = !(stm32wb_usbd_control.ep0_in_length & (STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE -1));
-		    }
-		
-		    if (stm32wb_usbd_control.ep0_in_length)
-		    {
-			count = stm32wb_usbd_control.ep0_in_length;
-		    
-			if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
-			{
-			    count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
-			}
-		    
-			stm32wb_usbd_dcd_ep0_transmit(stm32wb_usbd_control.ep0_in_data, count);
-		    
-			stm32wb_usbd_control.ep0_in_data += count;
-			stm32wb_usbd_control.ep0_in_length -= count;
-		    
-			stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_IN;
-		    }
-		    else
-		    {
-			stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
-		    
-			stm32wb_usbd_control.ep0_zlp = false;
-			stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_IN;
-		    }
-		}
-		else
-		{
-		    stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
+            events |= STM32WB_USBD_DCD_EVENT_EP0_SETUP;
+        }
+        else
+        {
+            if (stm32wb_usbd_control.ep0_status)
+            {
+                if (stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST)
+                {
+                    if (stm32wb_usbd_control.ep0_in_length >= stm32wb_usbd_control.ep0_request.wLength)
+                    {
+                        stm32wb_usbd_control.ep0_in_length = stm32wb_usbd_control.ep0_request.wLength;
+                        stm32wb_usbd_control.ep0_zlp = false;
+                    }
+                    else
+                    {
+                        stm32wb_usbd_control.ep0_zlp = !(stm32wb_usbd_control.ep0_in_length & (STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE -1));
+                    }
+                
+                    if (stm32wb_usbd_control.ep0_in_length)
+                    {
+                        count = stm32wb_usbd_control.ep0_in_length;
+                    
+                        if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
+                        {
+                            count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
+                        }
+                    
+                        stm32wb_usbd_dcd_ep0_transmit(stm32wb_usbd_control.ep0_in_data, count);
+                    
+                        stm32wb_usbd_control.ep0_in_data += count;
+                        stm32wb_usbd_control.ep0_in_length -= count;
+                    
+                        stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_IN;
+                    }
+                    else
+                    {
+                        stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
+                    
+                        stm32wb_usbd_control.ep0_zlp = false;
+                        stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_IN;
+                    }
+                }
+                else
+                {
+                    stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
 
-		    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
-		}
-	    }
-	    else
-	    {
-		stm32wb_usbd_dcd_ep0_stall();
+                    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+                }
+            }
+            else
+            {
+                stm32wb_usbd_dcd_ep0_stall();
 
-		stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
-	    }
-	}
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+            }
+        }
 
-	events &= ~STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
+        events &= ~STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
     }
 
     if (events & STM32WB_USBD_DCD_EVENT_EP0_SETUP)
     {
-	if (stm32wb_usbd_control.ep0_state != STM32WB_USBD_EP0_STATE_REQUEST)
-	{
-	    memcpy(&stm32wb_usbd_control.ep0_request, &stm32wb_usbd_control.ep0_setup, sizeof(stm32wb_usbd_control.ep0_request));
+        if (stm32wb_usbd_control.ep0_state != STM32WB_USBD_EP0_STATE_REQUEST)
+        {
+            memcpy(&stm32wb_usbd_control.ep0_request, &stm32wb_usbd_control.ep0_setup, sizeof(stm32wb_usbd_control.ep0_request));
 
-	    stm32wb_usbd_control.ep0_cancel = false;
-	    stm32wb_usbd_control.ep0_zlp = false;
-	    stm32wb_usbd_control.ep0_status = false;
-	    stm32wb_usbd_control.ep0_out_data = stm32wb_usbd_control.info->ep0_data;
-	    stm32wb_usbd_control.ep0_out_size = stm32wb_usbd_control.info->ep0_size;
-	    stm32wb_usbd_control.ep0_out_count = 0;
-	    stm32wb_usbd_control.ep0_in_data = NULL;
-	    stm32wb_usbd_control.ep0_in_length = 0;
+            stm32wb_usbd_control.ep0_cancel = false;
+            stm32wb_usbd_control.ep0_zlp = false;
+            stm32wb_usbd_control.ep0_status = false;
+            stm32wb_usbd_control.ep0_out_data = stm32wb_usbd_control.info->ep0_data;
+            stm32wb_usbd_control.ep0_out_size = stm32wb_usbd_control.info->ep0_size;
+            stm32wb_usbd_control.ep0_out_count = 0;
+            stm32wb_usbd_control.ep0_in_data = NULL;
+            stm32wb_usbd_control.ep0_in_length = 0;
 
-	    if ((stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST) || (stm32wb_usbd_control.ep0_request.wLength == 0))
-	    {
-		stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
-		
-		events |= STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
-	    }
-	    else
-	    {
-		if (stm32wb_usbd_control.ep0_request.wLength <= stm32wb_usbd_control.ep0_out_size)
-		{
-		    count = stm32wb_usbd_control.ep0_request.wLength;
-		    
-		    if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
-		    {
-			count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
-		    }
+            if ((stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST) || (stm32wb_usbd_control.ep0_request.wLength == 0))
+            {
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
+                
+                events |= STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
+            }
+            else
+            {
+                if (stm32wb_usbd_control.ep0_request.wLength <= stm32wb_usbd_control.ep0_out_size)
+                {
+                    count = stm32wb_usbd_control.ep0_request.wLength;
+                    
+                    if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
+                    {
+                        count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
+                    }
 
-		    stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
+                    stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
 
-		    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_OUT;
-		}
-		else
-		{
-		    stm32wb_usbd_dcd_ep0_stall();
-		    
-		    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
-		}
-	    }
-	}
-	else
-	{
-	    stm32wb_usbd_control.ep0_cancel = true;
-	}
-	
-	events &= ~STM32WB_USBD_DCD_EVENT_EP0_SETUP;
+                    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_OUT;
+                }
+                else
+                {
+                    stm32wb_usbd_dcd_ep0_stall();
+                    
+                    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+                }
+            }
+        }
+        else
+        {
+            stm32wb_usbd_control.ep0_cancel = true;
+        }
+        
+        events &= ~STM32WB_USBD_DCD_EVENT_EP0_SETUP;
     }
     
     if (events & STM32WB_USBD_DCD_EVENT_EP0_DATA_IN)
     {
-	if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_IN)
-	{
-	    if (stm32wb_usbd_control.ep0_in_length)
-	    {
-		count = stm32wb_usbd_control.ep0_in_length;
-	    
-		if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
-		{
-		    count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
-		}
-	    
-		stm32wb_usbd_dcd_ep0_transmit(stm32wb_usbd_control.ep0_in_data, count);
-	    
-		stm32wb_usbd_control.ep0_in_data += count;
-		stm32wb_usbd_control.ep0_in_length -= count;
-	    }
-	    else if (stm32wb_usbd_control.ep0_zlp)
-	    {
-		stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
+        if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_IN)
+        {
+            if (stm32wb_usbd_control.ep0_in_length)
+            {
+                count = stm32wb_usbd_control.ep0_in_length;
+            
+                if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
+                {
+                    count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
+                }
+            
+                stm32wb_usbd_dcd_ep0_transmit(stm32wb_usbd_control.ep0_in_data, count);
+            
+                stm32wb_usbd_control.ep0_in_data += count;
+                stm32wb_usbd_control.ep0_in_length -= count;
+            }
+            else if (stm32wb_usbd_control.ep0_zlp)
+            {
+                stm32wb_usbd_dcd_ep0_transmit(NULL, 0);
 
-		stm32wb_usbd_control.ep0_zlp = false;
-	    }
-	    else
-	    {
-		stm32wb_usbd_dcd_ep0_receive(NULL, 0);
+                stm32wb_usbd_control.ep0_zlp = false;
+            }
+            else
+            {
+                stm32wb_usbd_dcd_ep0_receive(NULL, 0);
 
-		stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
-	    }
-	}
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+            }
+        }
 
-	events &= ~STM32WB_USBD_DCD_EVENT_EP0_DATA_IN;
+        events &= ~STM32WB_USBD_DCD_EVENT_EP0_DATA_IN;
     }
 
     if (events & STM32WB_USBD_DCD_EVENT_EP0_DATA_OUT)
     {
-	if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_OUT)
-	{
-	    count = stm32wb_usbd_dcd_ep0_count();
+        if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_OUT)
+        {
+            count = stm32wb_usbd_dcd_ep0_count();
 
-	    if (count && ((stm32wb_usbd_control.ep0_out_count + count) <= stm32wb_usbd_control.ep0_request.wLength))
-	    {
-		stm32wb_usbd_control.ep0_out_count += count;
-		
-		if (stm32wb_usbd_control.ep0_out_count != stm32wb_usbd_control.ep0_request.wLength)
-		{
-		    count = (stm32wb_usbd_control.ep0_request.wLength - stm32wb_usbd_control.ep0_out_count);
-		    
-		    if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
-		    {
-			count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
-		    }
+            if (count && ((stm32wb_usbd_control.ep0_out_count + count) <= stm32wb_usbd_control.ep0_request.wLength))
+            {
+                stm32wb_usbd_control.ep0_out_count += count;
+                
+                if (stm32wb_usbd_control.ep0_out_count != stm32wb_usbd_control.ep0_request.wLength)
+                {
+                    count = (stm32wb_usbd_control.ep0_request.wLength - stm32wb_usbd_control.ep0_out_count);
+                    
+                    if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
+                    {
+                        count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
+                    }
 
-		    stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
-		}
-		else
-		{
-		    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
+                    stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
+                }
+                else
+                {
+                    stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
 
-		    events |= STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
-		}
-	    }
-	    else
-	    {
-		stm32wb_usbd_dcd_ep0_stall();
+                    events |= STM32WB_USBD_DCD_EVENT_EP0_REQUEST;
+                }
+            }
+            else
+            {
+                stm32wb_usbd_dcd_ep0_stall();
 
-		stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
-	    }
-	}
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_STATUS;
+            }
+        }
 
-	events &= ~STM32WB_USBD_DCD_EVENT_EP0_DATA_OUT;
+        events &= ~STM32WB_USBD_DCD_EVENT_EP0_DATA_OUT;
     }
 
     if (events)
     {
-	if (!armv7m_atomic_or(&stm32wb_usbd_control.events, events))
-	{
-	    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_USBD_DCD);
-	}
+        if (!armv7m_atomic_or(&stm32wb_usbd_control.events, events))
+        {
+            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_USBD_DCD);
+        }
     }
 }
 
@@ -1061,7 +1061,7 @@ bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_u
     
     if (stm32wb_usbd_control.state != STM32WB_USBD_STATE_NONE)
     {
-	return false;
+        return false;
     }
 
     stm32wb_lptim_timeout_create(&stm32wb_usbd_control.timeout);
@@ -1076,11 +1076,11 @@ bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_u
     
     for (function = 0, if_base = 0; function < info->function_count; function++)
     {
-	(*info->function_table[function].interface->configure)(info->function_table[function].context, if_base, info->function_table[function].options);
-	
-	if_base += info->function_table[function].if_count;
+        (*info->function_table[function].interface->configure)(info->function_table[function].context, if_base, info->function_table[function].options);
+        
+        if_base += info->function_table[function].if_count;
 
-	stm32wb_usbd_control.ep_mask |= info->function_table[function].ep_mask;
+        stm32wb_usbd_control.ep_mask |= info->function_table[function].ep_mask;
     }
 
     stm32wb_usbd_control.if_count = if_base;
@@ -1092,7 +1092,7 @@ static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, vo
 {
     if (stm32wb_usbd_control.state != STM32WB_USBD_STATE_INIT)
     {
-	return false;
+        return false;
     }
 
     stm32wb_usbd_control.state = STM32WB_USBD_STATE_NOT_READY;
@@ -1104,21 +1104,21 @@ static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, vo
 
     if (stm32wb_usbd_control.pin_vbus == STM32WB_GPIO_PIN_NONE)
     {
-	stm32wb_system_pvm1_enable((stm32wb_system_pvm1_callback_t)stm32wb_usbd_pvm1_changed, NULL);
-	
-	stm32wb_usbd_control.vbus_status = stm32wb_system_pvm1_sense();
+        stm32wb_system_pvm1_enable((stm32wb_system_pvm1_callback_t)stm32wb_usbd_pvm1_changed, NULL);
+        
+        stm32wb_usbd_control.vbus_status = stm32wb_system_pvm1_sense();
     }
     else
     {
-	stm32wb_gpio_pin_configure(stm32wb_usbd_control.pin_vbus, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_LOW | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
-	stm32wb_exti_attach(stm32wb_usbd_control.pin_vbus, (STM32WB_EXTI_CONTROL_PRIORITY_LOW | STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_EDGE_FALLING), (stm32wb_exti_callback_t)stm32wb_usbd_vbus_changed, NULL);
+        stm32wb_gpio_pin_configure(stm32wb_usbd_control.pin_vbus, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_LOW | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
+        stm32wb_exti_attach(stm32wb_usbd_control.pin_vbus, (STM32WB_EXTI_CONTROL_PRIORITY_LOW | STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_EDGE_FALLING), (stm32wb_exti_callback_t)stm32wb_usbd_vbus_changed, NULL);
 
-	stm32wb_usbd_control.vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
+        stm32wb_usbd_control.vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
     }
     
     if (stm32wb_usbd_control.vbus_status)
     {
-	stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
+        stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
     }
     
     return true;
@@ -1133,14 +1133,14 @@ static bool __svc_stm32wb_usbd_attach(void)
 {
     if (!stm32wb_usbd_control.connect)
     {
-	stm32wb_usbd_control.connect = true;
+        stm32wb_usbd_control.connect = true;
 
-	if ((stm32wb_usbd_control.state == STM32WB_USBD_STATE_DETECTED) && (stm32wb_usbd_control.bcd_status != STM32WB_USBD_BCD_STATUS_CHARGER))
-	{
-	    stm32wb_usbd_dcd_enable(&stm32wb_usbd_control.ep0_setup[0], 0, stm32wb_usbd_event_callback, NULL);
+        if ((stm32wb_usbd_control.state == STM32WB_USBD_STATE_DETECTED) && (stm32wb_usbd_control.bcd_status != STM32WB_USBD_BCD_STATUS_CHARGER))
+        {
+            stm32wb_usbd_dcd_enable(&stm32wb_usbd_control.ep0_setup[0], 0, stm32wb_usbd_event_callback, NULL);
 
-	    stm32wb_usbd_connect();
-	}
+            stm32wb_usbd_connect();
+        }
     }
     
     return true;
@@ -1150,12 +1150,12 @@ static bool __svc_stm32wb_usbd_detach(void)
 {
     if (stm32wb_usbd_control.connect)
     {
-	stm32wb_usbd_control.connect = false;
+        stm32wb_usbd_control.connect = false;
 
-	if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_POWERED)
-	{
-	    stm32wb_usbd_disconnect();
-	}
+        if (stm32wb_usbd_control.state >= STM32WB_USBD_STATE_POWERED)
+        {
+            stm32wb_usbd_disconnect();
+        }
     }
 
     return true;
@@ -1165,7 +1165,7 @@ static bool __svc_stm32wb_usbd_wakeup(void)
 {
     if (stm32wb_usbd_control.remote_wakeup)
     {
-	return stm32wb_usbd_dcd_wakeup();
+        return stm32wb_usbd_dcd_wakeup();
     }
 
     return false;
@@ -1175,12 +1175,12 @@ bool stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context)
 {
     if (armv7m_core_is_in_thread())
     {
-	return armv7m_svcall_2((uint32_t)&__svc_stm32wb_usbd_enable, (uint32_t)callback, (uint32_t)context);
+        return armv7m_svcall_2((uint32_t)&__svc_stm32wb_usbd_enable, (uint32_t)callback, (uint32_t)context);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-	return __svc_stm32wb_usbd_enable(callback, context);
+        return __svc_stm32wb_usbd_enable(callback, context);
     }
 
     return false;
@@ -1190,12 +1190,12 @@ bool stm32wb_usbd_disable(void)
 {
     if (armv7m_core_is_in_thread())
     {
-	return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_disable);
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_disable);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-	return __svc_stm32wb_usbd_disable();
+        return __svc_stm32wb_usbd_disable();
     }
 
     return false;
@@ -1205,12 +1205,12 @@ bool stm32wb_usbd_attach(void)
 {
     if (armv7m_core_is_in_thread())
     {
-	return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_attach);
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_attach);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-	return __svc_stm32wb_usbd_attach();
+        return __svc_stm32wb_usbd_attach();
     }
 
     return false;
@@ -1220,12 +1220,12 @@ bool stm32wb_usbd_detach(void)
 {
     if (armv7m_core_is_in_thread())
     {
-	return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_detach);
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_detach);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-	return __svc_stm32wb_usbd_detach();
+        return __svc_stm32wb_usbd_detach();
     }
 
     return false;
@@ -1235,12 +1235,12 @@ bool stm32wb_usbd_wakeup(void)
 {
     if (armv7m_core_is_in_thread())
     {
-	return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_wakeup);
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_wakeup);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-	return __svc_stm32wb_usbd_wakeup();
+        return __svc_stm32wb_usbd_wakeup();
     }
 
     return false;

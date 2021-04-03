@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -64,84 +64,84 @@ static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_tx_default;
 #define STM32WB_SPI_OPTION_TX_DMA 0x80
 
 
-#define STM32WB_SPI_RX_DMA_OPTION_RECEIVE_8	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_RECEIVE_8       \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_8	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_8      \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_RX_DMA_OPTION_TRANSFER_8	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_TRANSFER_8      \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_RX_DMA_OPTION_RECEIVE_16	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_RECEIVE_16      \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_16	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_16     \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_RX_DMA_OPTION_TRANSFER_16	  \
-    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |	  \
+#define STM32WB_SPI_RX_DMA_OPTION_TRANSFER_16     \
+    (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_RECEIVE_8	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_RECEIVE_8       \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_8	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_8      \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_TRANSFER_8	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_TRANSFER_8      \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_8 |      \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_RECEIVE_16	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_RECEIVE_16      \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_16	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_16     \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
-#define STM32WB_SPI_TX_DMA_OPTION_TRANSFER_16	  \
-    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |	  \
+#define STM32WB_SPI_TX_DMA_OPTION_TRANSFER_16     \
+    (STM32WB_DMA_OPTION_MEMORY_TO_PERIPHERAL |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_16 | \
-     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |	  \
-     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |	  \
+     STM32WB_DMA_OPTION_MEMORY_DATA_SIZE_16 |     \
+     STM32WB_DMA_OPTION_MEMORY_DATA_INCREMENT |   \
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
 static SPI_TypeDef * const stm32wb_i2c_xlate_SPI[STM32WB_SPI_INSTANCE_COUNT] = {
@@ -153,12 +153,12 @@ static void stm32wb_spi_notify_callback(void *context, uint32_t notify)
 {
     if (stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI1])
     {
-	stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI1]->clock = 0;
+        stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI1]->clock = 0;
     }
 
     if (stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI2])
     {
-	stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI2]->clock = 0;
+        stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI2]->clock = 0;
     }
 }
 
@@ -173,7 +173,7 @@ static void stm32wb_spi_dma_callback(stm32wb_spi_t *spi, uint32_t events)
 
     if (!p_status_return)
     {
-	return;
+        return;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)p_status_return, (uint32_t)NULL) != (uint32_t)p_status_return)
@@ -225,7 +225,7 @@ bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params)
 
     if (!stm32wb_spi_device.notify.callback)
     {
-	stm32wb_system_register(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_CLOCKS));
+        stm32wb_system_register(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_CLOCKS));
     }
     
     return true;
@@ -247,12 +247,12 @@ bool stm32wb_spi_enable(stm32wb_spi_t *spi)
 {
     if (spi->state != STM32WB_SPI_STATE_INIT)
     {
-	return false;
+        return false;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&stm32wb_spi_device.instances[spi->instance], (uint32_t)NULL, (uint32_t)spi) != (uint32_t)NULL)
     {
-	return false;
+        return false;
     }
     
     spi->clock = ~0;
@@ -336,37 +336,37 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_acquire(stm32wb_spi_t *spi, uin
 
     if ((spi->clock != clock) || (spi->control != control))
     {
-	if (spi->instance == STM32WB_SPI_INSTANCE_SPI1)
-	{
-	    spiclk = stm32wb_system_pclk2() / 2;
-	}
-	else
-	{
-	    spiclk = stm32wb_system_pclk1() / 2;
-	}
+        if (spi->instance == STM32WB_SPI_INSTANCE_SPI1)
+        {
+            spiclk = stm32wb_system_pclk2() / 2;
+        }
+        else
+        {
+            spiclk = stm32wb_system_pclk1() / 2;
+        }
 
-	spi->cr1 = SPI_CR1_SSM | SPI_CR1_SSI | (control & (STM32WB_SPI_CONTROL_CPHA | STM32WB_SPI_CONTROL_CPOL | STM32WB_SPI_CONTROL_LSB_FIRST));
-	spi->cr2 = SPI_CR2_DS_8BIT | SPI_CR2_FRXTH;
-	
-	if (clock)
-	{
-	    spidiv = 0;
+        spi->cr1 = SPI_CR1_SSM | SPI_CR1_SSI | (control & (STM32WB_SPI_CONTROL_CPHA | STM32WB_SPI_CONTROL_CPOL | STM32WB_SPI_CONTROL_LSB_FIRST));
+        spi->cr2 = SPI_CR2_DS_8BIT | SPI_CR2_FRXTH;
+        
+        if (clock)
+        {
+            spidiv = 0;
 
-	    while ((spiclk > clock) && (spidiv < 7))
-	    {
-		spiclk >>= 1;
-		spidiv++;
-	    }
-	    
-	    spi->cr1 |= (SPI_CR1_MSTR | (spidiv << SPI_CR1_BR_Pos));
-	}
-	
+            while ((spiclk > clock) && (spidiv < 7))
+            {
+                spiclk >>= 1;
+                spidiv++;
+            }
+            
+            spi->cr1 |= (SPI_CR1_MSTR | (spidiv << SPI_CR1_BR_Pos));
+        }
+        
         SPI->SR = 0;
         SPI->CR1 = spi->cr1;
         SPI->CR2 = spi->cr2;
 
         spi->clock = clock;
-	spi->control = control;
+        spi->control = control;
     }
 
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
@@ -393,17 +393,17 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_release(stm32wb_spi_t *spi)
 
     if (spi->option & (STM32WB_SPI_OPTION_RX_DMA | STM32WB_SPI_OPTION_TX_DMA))
     {
-	if (spi->option & STM32WB_SPI_OPTION_RX_DMA)
-	{
-	    stm32wb_dma_disable(spi->rx_dma);
-	}
+        if (spi->option & STM32WB_SPI_OPTION_RX_DMA)
+        {
+            stm32wb_dma_disable(spi->rx_dma);
+        }
 
-	if (spi->option & STM32WB_SPI_OPTION_TX_DMA)
-	{
-	    stm32wb_dma_disable(spi->tx_dma);
-	}
-	
-	spi->option &= ~(STM32WB_SPI_OPTION_RX_DMA | STM32WB_SPI_OPTION_TX_DMA);
+        if (spi->option & STM32WB_SPI_OPTION_TX_DMA)
+        {
+            stm32wb_dma_disable(spi->tx_dma);
+        }
+        
+        spi->option &= ~(STM32WB_SPI_OPTION_RX_DMA | STM32WB_SPI_OPTION_TX_DMA);
     }
 
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_SPI1 + spi->instance);
@@ -415,7 +415,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_release(stm32wb_spi_t *spi)
 
     if (spi->mask)
     {
-	stm32wb_exti_unblock(spi->mask, false);
+        stm32wb_exti_unblock(spi->mask, false);
     }
 
     return true;
@@ -486,101 +486,101 @@ __attribute__((optimize("O3"))) void stm32wb_spi_data_receive(stm32wb_spi_t *spi
     
     if (rx_count < 4)
     {
-	if (rx_count == 3)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-	    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[1] = STM32WB_SPI_READ_8(SPI);
+        if (rx_count == 3)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+            
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[1] = STM32WB_SPI_READ_8(SPI);
 
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[2] = STM32WB_SPI_READ_8(SPI);
-	}
-	else if (rx_count == 2)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-	    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[1] = STM32WB_SPI_READ_8(SPI);
-	}
-	else
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-	}
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[2] = STM32WB_SPI_READ_8(SPI);
+        }
+        else if (rx_count == 2)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+            
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[1] = STM32WB_SPI_READ_8(SPI);
+        }
+        else
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+            
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+        }
     }
     else
     {
-	rx_data_e = rx_data + rx_count - 4;
-	
-	STM32WB_SPI_WRITE_8(SPI, tx_default);
-	STM32WB_SPI_WRITE_8(SPI, tx_default);
-	STM32WB_SPI_WRITE_8(SPI, tx_default);
-	STM32WB_SPI_WRITE_8(SPI, tx_default);
-	
-	while (rx_data != rx_data_e)
-	{
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
-	    
-	    *rx_data++ = STM32WB_SPI_READ_8(SPI);
-	    
-	    STM32WB_SPI_WRITE_8(SPI, tx_default);
-	}
-	
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
-	
-	rx_data[0] = STM32WB_SPI_READ_8(SPI);
-	
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
-	
-	rx_data[1] = STM32WB_SPI_READ_8(SPI);
-	
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
-	
-	rx_data[2] = STM32WB_SPI_READ_8(SPI);
+        rx_data_e = rx_data + rx_count - 4;
+        
+        STM32WB_SPI_WRITE_8(SPI, tx_default);
+        STM32WB_SPI_WRITE_8(SPI, tx_default);
+        STM32WB_SPI_WRITE_8(SPI, tx_default);
+        STM32WB_SPI_WRITE_8(SPI, tx_default);
+        
+        while (rx_data != rx_data_e)
+        {
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
+            
+            *rx_data++ = STM32WB_SPI_READ_8(SPI);
+            
+            STM32WB_SPI_WRITE_8(SPI, tx_default);
+        }
+        
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
+        
+        rx_data[0] = STM32WB_SPI_READ_8(SPI);
+        
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
+        
+        rx_data[1] = STM32WB_SPI_READ_8(SPI);
+        
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
+        
+        rx_data[2] = STM32WB_SPI_READ_8(SPI);
 
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
-	
-	rx_data[3] = STM32WB_SPI_READ_8(SPI);
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
+        
+        rx_data[3] = STM32WB_SPI_READ_8(SPI);
     }
 }
 
@@ -591,99 +591,99 @@ __attribute__((optimize("O3"))) void stm32wb_spi_data_transmit(stm32wb_spi_t *sp
 
     if (tx_count < 4)
     {
-	if (tx_count == 3)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+        if (tx_count == 3)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            STM32WB_SPI_READ_8(SPI);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            STM32WB_SPI_READ_8(SPI);
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-	}
-	else if (tx_count == 2)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            STM32WB_SPI_READ_8(SPI);
+        }
+        else if (tx_count == 2)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            STM32WB_SPI_READ_8(SPI);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-	}
-	else
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            STM32WB_SPI_READ_8(SPI);
+        }
+        else
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-	}
+            STM32WB_SPI_READ_8(SPI);
+        }
     }
     else
     {
-	tx_data_e = tx_data + tx_count;
-	
-	STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[3]);
-	tx_data += 4;
-		
-	while (tx_data != tx_data_e)
-	{
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+        tx_data_e = tx_data + tx_count;
+        
+        STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[3]);
+        tx_data += 4;
+                
+        while (tx_data != tx_data_e)
+        {
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    STM32WB_SPI_READ_8(SPI);
-	    STM32WB_SPI_WRITE_8(SPI, *tx_data++);
-	}
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+            STM32WB_SPI_READ_8(SPI);
+            STM32WB_SPI_WRITE_8(SPI, *tx_data++);
+        }
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	STM32WB_SPI_READ_8(SPI);
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        STM32WB_SPI_READ_8(SPI);
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	STM32WB_SPI_READ_8(SPI);
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        STM32WB_SPI_READ_8(SPI);
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	STM32WB_SPI_READ_8(SPI);
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        STM32WB_SPI_READ_8(SPI);
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	STM32WB_SPI_READ_8(SPI);
+        STM32WB_SPI_READ_8(SPI);
     }
 }
 
@@ -694,101 +694,101 @@ __attribute__((optimize("O3"))) void stm32wb_spi_data_transfer(stm32wb_spi_t *sp
 
     if (xf_count < 4)
     {
-	if (xf_count == 3)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+        if (xf_count == 3)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[1] = STM32WB_SPI_READ_8(SPI);
+            rx_data[1] = STM32WB_SPI_READ_8(SPI);
 
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[2] = STM32WB_SPI_READ_8(SPI);
-	}
-	else if (xf_count == 2)
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            rx_data[2] = STM32WB_SPI_READ_8(SPI);
+        }
+        else if (xf_count == 2)
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+            STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[1] = STM32WB_SPI_READ_8(SPI);
-	}
-	else
-	{
-	    STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-		    
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+            rx_data[1] = STM32WB_SPI_READ_8(SPI);
+        }
+        else
+        {
+            STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+                    
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    rx_data[0] = STM32WB_SPI_READ_8(SPI);
-	}
+            rx_data[0] = STM32WB_SPI_READ_8(SPI);
+        }
     }
     else
     {
-	tx_data_e = tx_data + xf_count;
-	
-	STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
-	STM32WB_SPI_WRITE_8(SPI, tx_data[3]);
-	tx_data += 4;
+        tx_data_e = tx_data + xf_count;
+        
+        STM32WB_SPI_WRITE_8(SPI, tx_data[0]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[1]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[2]);
+        STM32WB_SPI_WRITE_8(SPI, tx_data[3]);
+        tx_data += 4;
 
-	while (tx_data != tx_data_e)
-	{
-	    while (!(SPI->SR & SPI_SR_RXNE))
-	    {
-	    }
+        while (tx_data != tx_data_e)
+        {
+            while (!(SPI->SR & SPI_SR_RXNE))
+            {
+            }
 
-	    *rx_data++ = STM32WB_SPI_READ_8(SPI);
-	    STM32WB_SPI_WRITE_8(SPI, *tx_data++);
-	}
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+            *rx_data++ = STM32WB_SPI_READ_8(SPI);
+            STM32WB_SPI_WRITE_8(SPI, *tx_data++);
+        }
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	rx_data[0] = STM32WB_SPI_READ_8(SPI);
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        rx_data[0] = STM32WB_SPI_READ_8(SPI);
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	rx_data[1] = STM32WB_SPI_READ_8(SPI);
-		
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        rx_data[1] = STM32WB_SPI_READ_8(SPI);
+                
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	rx_data[2] = STM32WB_SPI_READ_8(SPI);
+        rx_data[2] = STM32WB_SPI_READ_8(SPI);
 
-	while (!(SPI->SR & SPI_SR_RXNE))
-	{
-	}
+        while (!(SPI->SR & SPI_SR_RXNE))
+        {
+        }
 
-	rx_data[3] = STM32WB_SPI_READ_8(SPI);
+        rx_data[3] = STM32WB_SPI_READ_8(SPI);
     }
 }
 
@@ -800,7 +800,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
 
     if (spi->state != STM32WB_SPI_STATE_DATA)
     {
-	return false;
+        return false;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
@@ -810,26 +810,26 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
 
     if (!(spi->option & STM32WB_SPI_OPTION_RX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_RX_DMA;
+        if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_RX_DMA;
     }
     
     if (!(spi->option & STM32WB_SPI_OPTION_TX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_TX_DMA;
+        if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_TX_DMA;
     }
 
     spi->state = STM32WB_SPI_STATE_DATA_DMA;
@@ -843,19 +843,19 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
 
     if (!spi->clock || ((uint32_t)rx_data & 1) || (rx_count & 1))
     {
-	spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
-		
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_RECEIVE_8;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_RECEIVE_8;
+        spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+                
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_RECEIVE_8;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_RECEIVE_8;
     }
     else
     {
-	spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+        spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
 
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_RECEIVE_16;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_RECEIVE_16;
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_RECEIVE_16;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_RECEIVE_16;
 
-	rx_count = rx_count / 2;
+        rx_count = rx_count / 2;
     }
 
     while (SPI->SR & (SPI_SR_FTLVL | SPI_SR_FRLVL | SPI_SR_BSY))
@@ -868,7 +868,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
 
     stm32wb_dma_start(spi->rx_dma, (uint32_t)rx_data, (uint32_t)&SPI->DR, rx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)&stm32wb_spi_dma_tx_default, rx_count, tx_option);
-	
+        
     return true;
 }
 
@@ -879,7 +879,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     
     if (spi->state != STM32WB_SPI_STATE_DATA)
     {
-	return false;
+        return false;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
@@ -889,26 +889,26 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
 
     if (!(spi->option & STM32WB_SPI_OPTION_RX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_RX_DMA;
+        if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_RX_DMA;
     }
     
     if (!(spi->option & STM32WB_SPI_OPTION_TX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_TX_DMA;
+        if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_TX_DMA;
     }
 
     spi->state = STM32WB_SPI_STATE_DATA_DMA;
@@ -922,19 +922,19 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
 
     if (!spi->clock || ((uint32_t)tx_data & 1) || (tx_count & 1))
     {
-	spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
-		
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_8;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_8;
+        spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+                
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_8;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_8;
     }
     else
     {
-	spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+        spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
 
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_16;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_16;
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSMIT_16;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSMIT_16;
 
-	tx_count = tx_count / 2;
+        tx_count = tx_count / 2;
     }
     
     while (SPI->SR & (SPI_SR_FTLVL | SPI_SR_FRLVL | SPI_SR_BSY))
@@ -944,7 +944,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     SPI->CR1 = spi->cr1;
     SPI->CR2 = spi_cr2;
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
-		
+                
     stm32wb_dma_start(spi->rx_dma, (uint32_t)&stm32wb_spi_dma_rx_none, (uint32_t)&SPI->DR, tx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)tx_data, tx_count, tx_option);
 
@@ -958,7 +958,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
     
     if (spi->state != STM32WB_SPI_STATE_DATA)
     {
-	return false;
+        return false;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
@@ -968,26 +968,26 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
 
     if (!(spi->option & STM32WB_SPI_OPTION_RX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_RX_DMA;
+        if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_RX_DMA;
     }
     
     if (!(spi->option & STM32WB_SPI_OPTION_TX_DMA))
     {
-	if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
-	{
-	    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-	    
-	    return false;
-	}
-	
-	spi->option |= STM32WB_SPI_OPTION_TX_DMA;
+        if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
+        {
+            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            
+            return false;
+        }
+        
+        spi->option |= STM32WB_SPI_OPTION_TX_DMA;
     }
 
     spi->state = STM32WB_SPI_STATE_DATA_DMA;
@@ -1001,19 +1001,19 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
 
     if (!spi->clock || ((uint32_t)tx_data & 1) || ((uint32_t)rx_data & 1) || (xf_count & 1))
     {
-	spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
-		
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSFER_8;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSFER_8;
+        spi_cr2 = spi->cr2 | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+                
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSFER_8;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSFER_8;
     }
     else
     {
-	spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+        spi_cr2 = (spi->cr2 & ~SPI_CR2_FRXTH) | (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
 
-	rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSFER_16;
-	tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSFER_16;
+        rx_option = STM32WB_SPI_RX_DMA_OPTION_TRANSFER_16;
+        tx_option = STM32WB_SPI_TX_DMA_OPTION_TRANSFER_16;
 
-	xf_count = xf_count / 2;
+        xf_count = xf_count / 2;
     }
 
     while (SPI->SR & (SPI_SR_FTLVL | SPI_SR_FRLVL | SPI_SR_BSY))
@@ -1041,7 +1041,7 @@ uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi)
 
     if (!p_status_return)
     {
-	return 0;
+        return 0;
     }
 
     if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)p_status_return, (uint32_t)NULL) != (uint32_t)p_status_return)
@@ -1052,7 +1052,7 @@ uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi)
     xf_16bit = (SPI->CR2 & SPI_CR2_FRXTH) ? 0 : 1;
 
     stm32wb_dma_stop(spi->tx_dma);
-	
+        
     while (SPI->SR & (SPI_SR_FTLVL | SPI_SR_BSY))
     {
     }
@@ -1064,16 +1064,16 @@ uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi)
     
     while (SPI->SR & SPI_SR_FRLVL)
     {
-	rx_data = STM32WB_SPI_READ_8(SPI);
-	
-	if (spi->rx_data)
-	{
-	    spi->rx_data[xf_count] = rx_data;
-	}
-	
-	xf_count++;
+        rx_data = STM32WB_SPI_READ_8(SPI);
+        
+        if (spi->rx_data)
+        {
+            spi->rx_data[xf_count] = rx_data;
+        }
+        
+        xf_count++;
     }
-	
+        
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
 
     spi->state = STM32WB_SPI_STATE_DATA;

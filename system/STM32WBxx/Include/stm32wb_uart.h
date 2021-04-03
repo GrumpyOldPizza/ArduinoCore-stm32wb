@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -114,6 +114,9 @@ typedef struct _stm32wb_uart_pins_t {
     uint16_t                      tx;
     uint16_t                      rts;
     uint16_t                      cts;
+#if (STM32WB_UART_SPI_SUPPORTED == 1)
+    uint16_t                      ck;
+#endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
 } stm32wb_uart_pins_t;
 
 typedef struct _stm32wb_uart_params_t {
@@ -178,14 +181,16 @@ extern uint32_t stm32wb_uart_read(stm32wb_uart_t *uart, uint8_t *rx_data, uint32
 extern int32_t stm32wb_uart_peek(stm32wb_uart_t *uart);
 extern bool stm32wb_uart_break(stm32wb_uart_t *uart, bool onoff);
 extern bool stm32wb_uart_transmit(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
-  extern bool stm32wb_uart_busy(stm32wb_uart_t *uart);
+extern bool stm32wb_uart_busy(stm32wb_uart_t *uart);
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
 
-#define STM32WB_UART_SPI_CONTROL_CPHA        0x00000001
-#define STM32WB_UART_SPI_CONTROL_CPOL        0x00000002
-#define STM32WB_UART_SPI_CONTROL_LSB_FIRST   0x00000080
+#define STM32WB_UART_SPI_CONTROL_CPHA        STM32WB_SPI_CONTROL_CPHA
+#define STM32WB_UART_SPI_CONTROL_CPOL        STM32WB_SPI_CONTROL_CPOL
+#define STM32WB_UART_SPI_CONTROL_LSB_FIRST   STM32WB_SPI_CONTROL_LSB_FIRST
 
+extern bool stm32wb_uart_spi_enable(stm32wb_uart_t *uart);
+extern bool stm32wb_uart_spi_disable(stm32wb_uart_t *uart);
 extern bool stm32wb_uart_spi_block(stm32wb_uart_t *uart, uint16_t pin);
 extern bool stm32wb_uart_spi_unblock(stm32wb_uart_t *uart, uint16_t pin);
 extern bool stm32wb_uart_spi_acquire(stm32wb_uart_t *uart, uint32_t clock, uint32_t control);
@@ -202,35 +207,8 @@ extern bool stm32wb_uart_spi_data_dma_transfer(stm32wb_uart_t *uart, const uint8
 extern uint32_t stm32wb_uart_spi_data_dma_cancel(stm32wb_uart_t *uart);
 extern bool stm32wb_uart_spi_data_dma_busy(stm32wb_uart_t *uart);
 
-static inline __attribute__((optimize("O3"),always_inline)) uint8_t STM32WB_UART_SPI_READ_8(USART_TypeDef *USART)
-{
-    return *((volatile uint8_t*)(&USART->RDR));
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void STM32WB_UART_SPI_WRITE_8(USART_TypeDef *USART, uint8_t data)
-{
-    *((volatile uint8_t*)(&USART->TDR)) = data;
-}
-  
-static inline __attribute__((optimize("O3"),always_inline)) uint8_t STM32WB_UART_SPI_DATA_8(USART_TypeDef *USART, uint8_t data)
-{
-    STM32WB_UART_SPI_WRITE_8(USART, data);
-
-#if (STM32WB_UART_FIFO_SUPPORTED == 1)
-    while (!(USART->ISR & USART_ISR_RXFNE))
-    {
-    }
-#else /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-    while (!(USART->ISR & USART_ISR_RXNE))
-    {
-    }
-#endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-
-    return STM32WB_UART_SPI_READ_8(USART);
-}
-
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
-  
+
 #ifdef __cplusplus
 }
 #endif

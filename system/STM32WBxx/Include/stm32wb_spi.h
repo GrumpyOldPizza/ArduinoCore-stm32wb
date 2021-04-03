@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2017 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -65,7 +65,6 @@ typedef struct _stm32wb_spi_pins_t {
     uint16_t                    mosi;
     uint16_t                    miso;
     uint16_t                    sck;
-    uint16_t                    nss;
 } stm32wb_spi_pins_t;
 
 typedef struct _stm32wb_spi_params_t {
@@ -159,7 +158,26 @@ static inline __attribute__((optimize("O3"),always_inline)) uint16_t STM32WB_SPI
 
     return STM32WB_SPI_READ_16(SPI);
 }
-  
+
+typedef struct _stm32wb_spi_interface_t {
+    bool     (*enable)(void *device);
+    bool     (*disable)(void *device);
+    bool     (*block)(void *device, uint16_t pin);
+    bool     (*unblock)(void *device, uint16_t pin);
+    bool     (*acquire)(void *device, uint32_t clock, uint32_t control);
+    bool     (*release)(void *device);
+    uint8_t  (*data)(void *device, uint8_t data);
+    uint16_t (*data16le)(void *device, uint16_t data);
+    uint16_t (*data16be)(void *device, uint16_t data);
+    void     (*data_receive)(void *device, uint8_t *rx_data, uint32_t rx_count);
+    void     (*data_transmit)(void *device, const uint8_t *tx_data, uint32_t tx_count);
+    void     (*data_transfer)(void *device, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count);
+    bool     (*data_dma_receive)(void *device, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transmit)(void *device, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transfer)(void *device, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+    uint32_t (*data_dma_cancel)(void *device);
+} stm32wb_spi_interface_t;
+
 #ifdef __cplusplus
 }
 #endif

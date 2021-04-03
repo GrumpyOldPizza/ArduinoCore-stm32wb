@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -67,7 +67,7 @@ enum {
 #define STM32WB_SYSTEM_OPTION_LSE_BYPASS            0x00000001
 #define STM32WB_SYSTEM_OPTION_HSE_BYPASS            0x00000002
 #define STM32WB_SYSTEM_OPTION_VBAT_CHARGING         0x00000004
-#define STM32WB_SYSTEM_OPTION_SMPS_VOS_MARGIN       0x00000008
+#define STM32WB_SYSTEM_OPTION_USART1_SYSCLK         0x00000008
 #define STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_MASK    0x00000030
 #define STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_SHIFT   4
 #define STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_10uH    0x00000010
@@ -219,8 +219,7 @@ extern void     stm32wb_system_hsi16_enable(void);
 extern void     stm32wb_system_hsi16_disable(void);
 extern uint32_t stm32wb_system_reset_cause(void);
 extern uint32_t stm32wb_system_wakeup_reason(void);
-extern bool     stm32wb_system_cpu2(void);
-extern bool     stm32wb_system_wireless(void);
+extern uint32_t stm32wb_system_options(void);
 extern uint32_t stm32wb_system_lseclk(void);
 extern uint32_t stm32wb_system_hseclk(void);
 extern uint32_t stm32wb_system_sysclk(void);
@@ -228,6 +227,8 @@ extern uint32_t stm32wb_system_hclk(void);
 extern uint32_t stm32wb_system_pclk1(void);
 extern uint32_t stm32wb_system_pclk2(void);
 extern uint32_t stm32wb_system_saiclk(void);
+extern bool     stm32wb_system_cpu2(void);
+extern bool     stm32wb_system_wireless(void);
 extern uint64_t stm32wb_system_serial(void);
 extern void     stm32wb_system_uid(uint32_t *uid);
 extern void     stm32wb_system_periph_reset(uint32_t periph);

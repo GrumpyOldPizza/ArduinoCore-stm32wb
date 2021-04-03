@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -180,6 +180,7 @@ typedef struct _stm32wb_system_device_t {
     uint16_t                        wakeup;
     uint32_t                        lseclk;
     uint32_t                        hseclk;
+    uint32_t                        sysclk;
     uint32_t                        hclk;
     uint32_t                        pclk1;
     uint32_t                        pclk2;
@@ -730,16 +731,20 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
      * LUPART which is LSE. CLK48 is driven by HSI48 with CRS.
      */
     RCC->CCIPR = ((0 |                                               /* RNG is CLK48           */
-                   RCC_CCIPR_ADCSEL_1 | RCC_CCIPR_ADCSEL_0 |         /* ADC is SYSCLK (HCLK)   */
+                   RCC_CCIPR_ADCSEL_1 | RCC_CCIPR_ADCSEL_0 |         /* ADC is SYSCLK          */
                    0 |                                               /* CLK48 is HSI48         */
                    0 |                                               /* SAI1SEL is PLLSAI1 "P" */
                    RCC_CCIPR_LPTIM2SEL_1 |                           /* LPTIM2 is HSI16        */
                    RCC_CCIPR_I2C3SEL_1 |                             /* I2C3 is HSI16          */
                    RCC_CCIPR_I2C1SEL_1 |                             /* I2C1 is HSI16          */
-                   RCC_CCIPR_LPUART1SEL_1 |                          /* LPUART1 is HSI16       */
-                   RCC_CCIPR_USART1SEL_1) |                          /* USART1 is HSI16        */
-                  (lseclk ? (RCC_CCIPR_LPTIM1SEL_1 | RCC_CCIPR_LPTIM1SEL_0) : (RCC_CCIPR_LPTIM1SEL_0)));
-
+                   RCC_CCIPR_LPUART1SEL_1) |                         /* LPUART1 is HSI16       */
+                  ((options & STM32WB_SYSTEM_OPTION_USART1_SYSCLK)
+                   ? (RCC_CCIPR_USART1SEL_0)                         /* USART1 is SYSCLK       */
+                   : (RCC_CCIPR_USART1SEL_1)) |                      /* USART1 is HSI16        */
+                  (lseclk
+                   ? (RCC_CCIPR_LPTIM1SEL_1 | RCC_CCIPR_LPTIM1SEL_0) /* LPTIM1 is LSE          */
+                   : (RCC_CCIPR_LPTIM1SEL_0)));                      /* LPTIM1 is LSI          */
+    
     if (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk)
     {
         DBGMCU->CR       = DBGMCU_CR_DBG_SLEEP | DBGMCU_CR_DBG_STOP | DBGMCU_CR_DBG_STANDBY;
@@ -849,11 +854,6 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         else
         {
             smpsvos -= 1; /* 1450mV */
-        }
-
-        if (stm32wb_system_device.options & STM32WB_SYSTEM_OPTION_SMPS_VOS_MARGIN)
-        {
-            if (smpsvos < 15) { smpsvos += 1; }
         }
     }
     else
@@ -1198,6 +1198,7 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
 
     SystemCoreClock = hclk;
     
+    stm32wb_system_device.sysclk    = hclk;
     stm32wb_system_device.hclk      = hclk;
     stm32wb_system_device.pclk1     = pclk1;
     stm32wb_system_device.pclk2     = pclk2;
@@ -1596,11 +1597,6 @@ static bool __svc_stm32wb_system_smps_configure(uint32_t palevel)
             else if (palevel == 0x1e) { smpsvos += 2; } /* 1600mV */
             else                      { smpsvos -= 1; } /* 1450mV */
 
-            if (stm32wb_system_device.options & STM32WB_SYSTEM_OPTION_SMPS_VOS_MARGIN)
-            {
-                if (smpsvos < 15) { smpsvos += 1; }
-            }
-            
             PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
         }
     }
@@ -1672,11 +1668,6 @@ static bool __svc_stm32wb_system_wireless_enable(void)
         else if (stm32wb_system_device.palevel == 0x1e) { smpsvos += 2; } /* 1600mV */
         else                                            { smpsvos -= 1; } /* 1450mV */
 
-        if (stm32wb_system_device.options & STM32WB_SYSTEM_OPTION_SMPS_VOS_MARGIN)
-        {
-            if (smpsvos < 15) { smpsvos += 1; }
-        }
-
         PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
     }
 
@@ -1707,11 +1698,6 @@ static bool __svc_stm32wb_system_wireless_disable(void)
 
         smpsvos -= 1; /* 1450mV */
 
-        if (stm32wb_system_device.options & STM32WB_SYSTEM_OPTION_SMPS_VOS_MARGIN)
-        {
-            if (smpsvos < 15) { smpsvos += 1; }
-        }
-        
         PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
     }
     
@@ -2060,14 +2046,9 @@ uint32_t stm32wb_system_wakeup_reason(void)
     return stm32wb_system_device.wakeup;
 }
 
-bool stm32wb_system_cpu2(void)
+uint32_t stm32wb_system_options(void)
 {
-    return !!(PWR->CR4 & PWR_CR4_C2BOOT);
-}
-
-bool stm32wb_system_wireless(void)
-{
-    return (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS);
+    return stm32wb_system_device.options;
 }
 
 uint32_t stm32wb_system_lseclk(void)
@@ -2082,8 +2063,7 @@ uint32_t stm32wb_system_hseclk(void)
 
 uint32_t stm32wb_system_sysclk(void)
 {
-    // ####
-    return stm32wb_system_device.hclk;
+    return stm32wb_system_device.sysclk;
 }
 
 uint32_t stm32wb_system_hclk(void)
@@ -2104,6 +2084,16 @@ uint32_t stm32wb_system_pclk2(void)
 uint32_t stm32wb_system_saiclk(void)
 {
     return stm32wb_system_device.saiclk;
+}
+
+bool stm32wb_system_cpu2(void)
+{
+    return !!(PWR->CR4 & PWR_CR4_C2BOOT);
+}
+
+bool stm32wb_system_wireless(void)
+{
+    return (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS);
 }
 
 uint64_t stm32wb_system_serial(void)
