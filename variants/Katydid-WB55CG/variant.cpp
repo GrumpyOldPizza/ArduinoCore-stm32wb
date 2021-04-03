@@ -118,11 +118,6 @@ extern const stm32wb_i2c_params_t g_WireParams = {
     },
 };
 
-extern const stm32wb_sdspi_params_t g_SDSPIParams =
-{
-    STM32WB_GPIO_PIN_PA4
-};
-
 static const stm32wb_sfsqi_params_t g_SFSQIParams =
 {
     STM32WB_QUADSPI_IRQ_PRIORITY,
