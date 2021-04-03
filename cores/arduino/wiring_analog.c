@@ -102,7 +102,7 @@ uint32_t analogRead(uint32_t pin)
 
     stm32wb_gpio_pin_configure(g_APinDescription[pin].pin, (STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_MODE_ANALOG));
     
-    input = __analogReadInternal(g_APinDescription[pin].adc_channel, _readPeriod);
+    input = __analogReadInternal((STM32WB_ADC_CHANNEL_1 + g_APinDescription[pin].adc_channel), _readPeriod);
 
     if (_readResolution != 12) {
         input = (input * ((1 << _readResolution) -1)) / 4095;

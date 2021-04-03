@@ -56,22 +56,22 @@ extern "C" {
 #define PWM_CHANNEL_4          3
 #define PWM_CHANNEL_NONE       255
 
-#define ADC_CHANNEL_0          0
-#define ADC_CHANNEL_1          1
-#define ADC_CHANNEL_2          2
-#define ADC_CHANNEL_3          3
-#define ADC_CHANNEL_4          4
-#define ADC_CHANNEL_5          5
-#define ADC_CHANNEL_6          6
-#define ADC_CHANNEL_7          7
-#define ADC_CHANNEL_8          8
-#define ADC_CHANNEL_9          9
-#define ADC_CHANNEL_10         10
-#define ADC_CHANNEL_11         11
-#define ADC_CHANNEL_12         12
-#define ADC_CHANNEL_13         13
-#define ADC_CHANNEL_14         14
-#define ADC_CHANNEL_15         15
+#define ADC_CHANNEL_1          0
+#define ADC_CHANNEL_2          1
+#define ADC_CHANNEL_3          2
+#define ADC_CHANNEL_4          3
+#define ADC_CHANNEL_5          4
+#define ADC_CHANNEL_6          5
+#define ADC_CHANNEL_7          6
+#define ADC_CHANNEL_8          7
+#define ADC_CHANNEL_9          8
+#define ADC_CHANNEL_10         9
+#define ADC_CHANNEL_11         10
+#define ADC_CHANNEL_12         11
+#define ADC_CHANNEL_13         12
+#define ADC_CHANNEL_14         13
+#define ADC_CHANNEL_15         14
+#define ADC_CHANNEL_16         15
 #define ADC_CHANNEL_NONE       255
 
 /* Types used for the table below */
