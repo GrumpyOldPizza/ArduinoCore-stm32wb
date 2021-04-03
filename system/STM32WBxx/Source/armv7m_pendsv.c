@@ -35,7 +35,7 @@ typedef struct _armv7m_pendsv_control_t {
     armv7m_pendsv_callback_t         hook_callback;
 } armv7m_pendsv_control_t;
 
-static armv7m_pendsv_control_t armv7m_pendsv_control;
+static __attribute__((section(".noinit"))) armv7m_pendsv_control_t armv7m_pendsv_control;
 
 static const armv7m_pendsv_callback_t armv7m_pendsv_swi_callback[] = {
     SWI0_SWIHandler,
@@ -75,6 +75,7 @@ static const armv7m_pendsv_callback_t armv7m_pendsv_swi_callback[] = {
 void __armv7m_pendsv_initialize(void)
 {
     armv7m_pendsv_control.swi_pending = 0;
+    armv7m_pendsv_control.hook_callback = NULL;
 
     NVIC_SetPriority(PendSV_IRQn, ARMV7M_IRQ_PRIORITY_PENDSV);
 }
@@ -85,9 +86,9 @@ __attribute__((optimize("O3"))) bool armv7m_pendsv_raise(uint32_t index)
     
     if (!(__armv7m_atomic_or(&armv7m_pendsv_control.swi_pending, mask) & mask))
     {
-	SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+        SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
 
-	return true;
+        return true;
     }
 
     return false;
@@ -111,14 +112,14 @@ static __attribute__((optimize("O3"), used)) void armv7m_pendsv_process(uint32_t
 
     do
     {
-	index = __builtin_ctz(mask);
-	mask = (1u << index);
+        index = __builtin_ctz(mask);
+        mask = (1u << index);
 
-	armv7m_atomic_and(&armv7m_pendsv_control.swi_pending, ~mask);
-	
+        armv7m_atomic_and(&armv7m_pendsv_control.swi_pending, ~mask);
+        
         (*armv7m_pendsv_swi_callback[index])();
 
-	mask = armv7m_pendsv_control.swi_pending;
+        mask = armv7m_pendsv_control.swi_pending;
     }
     while (mask);
 }
@@ -130,16 +131,16 @@ void __attribute__((naked)) PendSV_Handler(void)
         "   .cfi_def_cfa_offset 8                        \n"
         "   .cfi_offset 2, -8                            \n"
         "   .cfi_offset 14, -4                           \n"
-	"   movw    r3, #:lower16:armv7m_pendsv_control  \n"
-	"   movt    r3, #:upper16:armv7m_pendsv_control  \n"
+        "   movw    r3, #:lower16:armv7m_pendsv_control  \n"
+        "   movt    r3, #:upper16:armv7m_pendsv_control  \n"
         "   ldr     r0, [r3, %[offset_SWI_PENDING]]      \n"
         "   cbz.n   r0, 1f                               \n"
         "   bl      armv7m_pendsv_process                \n" // R0 is swi_pending
-	"   movw    r3, #:lower16:armv7m_pendsv_control  \n"
-	"   movt    r3, #:upper16:armv7m_pendsv_control  \n"
+        "   movw    r3, #:lower16:armv7m_pendsv_control  \n"
+        "   movt    r3, #:upper16:armv7m_pendsv_control  \n"
         "1: ldr     r0, [r3, %[offset_HOOK_CALLBACK]]    \n"
-	"   cbnz.n  r0, 2f                               \n"
-	"   dsb                                          \n"
+        "   cbnz.n  r0, 2f                               \n"
+        "   dsb                                          \n"
         "   pop     { r2, pc }                           \n"
         "2: mov     r1, #0                               \n"
         "   str     r1, [r3, %[offset_HOOK_CALLBACK]]    \n"

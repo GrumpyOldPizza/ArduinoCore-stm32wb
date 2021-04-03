@@ -72,6 +72,16 @@ struct _stm32wb_lptim_timeout_t {
 
 #define STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND 32768
 
+#define STM32WB_LPTIM_TIMEOUT_INIT(_timeout)         \
+{                                                    \
+    (_timeout).next = NULL;                          \
+    (_timeout).previous = NULL;                      \
+    (_timeout).modify = NULL;                        \
+    (_timeout).clock = 0;                            \
+    (_timeout).ticks = 0;                            \
+    (_timeout).callback = NULL;                      \
+}
+
 extern void __stm32wb_lptim_initialize(void);
 
 extern bool stm32wb_lptim_event_lock(void);

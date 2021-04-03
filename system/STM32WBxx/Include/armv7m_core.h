@@ -157,15 +157,16 @@ typedef struct _armv7m_core_state_t {
     uint32_t            r10;
     uint32_t            r11;
     uint32_t            r12;
+    uint32_t            sp;
     uint32_t            lr;
     uint32_t            pc;
     uint32_t            xpsr;
     uint32_t            msp;
     uint32_t            psp;
-    uint32_t            primask;
-    uint32_t            basepri;
-    uint32_t            faultmask;
-    uint32_t            control;
+    uint8_t             primask;
+    uint8_t             basepri;
+    uint8_t             faultmask;
+    uint8_t             control;
 #if defined (__VFP_FP__) && !defined(__SOFTFP__)
     uint64_t            d0;
     uint64_t            d1;
@@ -187,6 +188,8 @@ typedef struct _armv7m_core_state_t {
 #endif /* __VFP_FP__ && !__SOFTFP__ */
 } armv7m_core_state_t;
 
+typedef void (*armv7m_core_fault_callback_t)(armv7m_core_state_t *state);  
+  
 typedef struct _armv7m_core_info_t {
     uint32_t                  code;
     const char                *file;
@@ -228,9 +231,13 @@ static inline bool armv7m_core_is_in_pendsv_or_svcall(void)
 }
 
 extern void __armv7m_core_initialize(void);
-extern void armv7m_core_system_clock(uint32_t clock);
+extern void armv7m_core_configure(void);
 extern void armv7m_core_udelay(uint32_t udelay);
 
+extern void armv7m_core_fault_callback(armv7m_core_fault_callback_t callback);
+extern void armv7m_core_hardfault_try(const void *epilogue);
+extern uint32_t armv7m_core_hardfault_catch(void);
+  
 typedef void (*armv7m_core_callback_t)(void *context);  
 
 extern void armv7m_core_cxx_method(const void *method, const void *object, armv7m_core_callback_t *p_callback_return, void **p_context_return);

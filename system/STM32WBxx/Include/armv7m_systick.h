@@ -35,7 +35,7 @@ extern "C" {
 
 extern void __armv7m_systick_initialize(void);
 
-extern void armv7m_systick_configure(uint32_t clock);
+extern void armv7m_systick_configure(void);
 extern void armv7m_systick_enable(void);
 extern void armv7m_systick_disable(void);
 extern uint64_t armv7m_systick_micros(void);

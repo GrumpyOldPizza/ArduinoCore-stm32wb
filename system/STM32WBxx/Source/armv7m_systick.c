@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,35 +35,39 @@ typedef struct _armv7m_systick_control_t {
     uint32_t                  scale;
 } armv7m_systick_control_t;
 
-static armv7m_systick_control_t armv7m_systick_control;
+static  __attribute__((section(".noinit"))) armv7m_systick_control_t armv7m_systick_control;
 
 void __armv7m_systick_initialize(void)
 {
+    armv7m_systick_control.micros = 0;
+    armv7m_systick_control.cycle = 0;
+    armv7m_systick_control.scale = 0;
+  
     NVIC_SetPriority(SysTick_IRQn, ARMV7M_IRQ_PRIORITY_SYSTICK);
 }
 
-void armv7m_systick_configure(uint32_t clock)
+void armv7m_systick_configure(void)
 {
     uint32_t count;
     
     if (armv7m_systick_control.cycle)
     {
-	count = (armv7m_systick_control.cycle - SysTick->VAL);
+        count = (armv7m_systick_control.cycle - SysTick->VAL);
 
-	armv7m_systick_control.micros += (uint32_t)(((uint64_t)count * (uint64_t)armv7m_systick_control.scale) >> 32);
+        armv7m_systick_control.micros += (uint32_t)(((uint64_t)count * (uint64_t)armv7m_systick_control.scale) >> 32);
     }
 
-    if (clock <= 2000000)
+    if (SystemCoreClock <= 2000000)
     {
-	armv7m_systick_control.cycle = clock / 8 -1;
-	
-	SysTick->CTRL |= SysTick_CTRL_CLKSOURCE_Msk;
+        armv7m_systick_control.cycle = SystemCoreClock / 8 -1;
+        
+        SysTick->CTRL |= SysTick_CTRL_CLKSOURCE_Msk;
     }
     else
     {
-	armv7m_systick_control.cycle = clock / 64 -1;
-	
-	SysTick->CTRL &= ~SysTick_CTRL_CLKSOURCE_Msk;
+        armv7m_systick_control.cycle = SystemCoreClock / 64 -1;
+        
+        SysTick->CTRL &= ~SysTick_CTRL_CLKSOURCE_Msk;
     }
 
     /* micros = 125000 * (count / (cycle +1))
