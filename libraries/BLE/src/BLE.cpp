@@ -845,19 +845,14 @@ private:
   
     struct {
         uint8_t data_length;
-        uint8_t scan_response_data_length;
-        uint8_t tx_power_level_length;
-        uint8_t connection_interval_length;
         uint8_t local_name_length;
-        uint8_t local_name_offset;
         uint8_t service_uuids_length;
-        uint8_t service_uuids_offset;
+        uint8_t connection_interval_length;
+        uint8_t tx_power_level_length;
         uint8_t manufacturer_data_length;
-        uint8_t manufacturer_data_offset;
-        uint8_t beacon_length;
-        uint8_t beacon_offset;
         uint8_t custom_length;
         uint8_t data[MAX_ADV_DATA_LEN];
+        uint8_t scan_response_data_length;
         uint8_t scan_response_data[MAX_ADV_DATA_LEN];
     } m_advertising;
 
@@ -1283,7 +1278,7 @@ bool BLEServerCharacteristic::setValue(const void *value, int length) {
     }
 
     if (armv7m_atomic_casb((volatile uint8_t*)&m_busy, 0, 1) != 0) {
-	return false;
+        return false;
     }
     
     if (m_written & 0x8000) {
@@ -1319,7 +1314,7 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
     }
 
     if (armv7m_atomic_casb((volatile uint8_t*)&m_busy, 0, 1) != 0) {
-	return false;
+        return false;
     }
     
     if (m_written & 0x8000) {
@@ -1338,7 +1333,7 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
     m_update_value = false;
 
     if (p_status_return) {
-	*p_status_return = BLE_STATUS_BUSY;
+        *p_status_return = BLE_STATUS_BUSY;
     }
     
     m_status = p_status_return;
@@ -1763,17 +1758,13 @@ BLELocalDevice::BLELocalDevice() {
     m_peripheral.advertising_interval_max = 0x00a0; /* 100ms */
 
     m_advertising.data_length = 3;
-    m_advertising.scan_response_data_length = 0;
-    m_advertising.tx_power_level_length = 0;
-    m_advertising.connection_interval_length = 0;
     m_advertising.local_name_length = 0;
     m_advertising.service_uuids_length = 0;
+    m_advertising.connection_interval_length = 0;
+    m_advertising.tx_power_level_length = 0;
     m_advertising.manufacturer_data_length = 0;
-    m_advertising.beacon_length = 0;
     m_advertising.custom_length = 0;
-    m_advertising.data[0] = 0x02;
-    m_advertising.data[1] = AD_TYPE_FLAGS;
-    m_advertising.data[2] = FLAG_BIT_BR_EDR_NOT_SUPPORTED | FLAG_BIT_LE_GENERAL_DISCOVERABLE_MODE;
+    m_advertising.scan_response_data_length = 0;
 
     Callback done_callback = Callback(&BLELocalDevice::done, this);
     
@@ -2003,6 +1994,7 @@ String BLELocalDevice::address() const {
 }
 
 bool BLELocalDevice::setTxPowerLevel(int txPower) {
+    uint32_t advertising_data_offset;
     uint8_t pa_level, tx_power_level; 
     tBleStatus status;
 
@@ -2054,19 +2046,18 @@ bool BLELocalDevice::setTxPowerLevel(int txPower) {
             m_pa_level = pa_level;
             m_tx_power_level = tx_power_level;
 
-            if (m_peripheral.advertising && m_advertising.tx_power_level_length) {
-                uint8_t tx_power_level_data[3];
+            if (m_advertising.tx_power_level_length) {
+                advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length + m_advertising.connection_interval_length;
+
+                m_advertising.data[advertising_data_offset+2] = m_tx_power_level;
                 
-                tx_power_level_data[0] = 0x02;
-                tx_power_level_data[1] = AD_TYPE_TX_POWER_LEVEL;
-                tx_power_level_data[2] = m_tx_power_level;
-                
-                status = aci_gap_update_adv_data(3, &tx_power_level_data[0]);
+                if (m_peripheral.advertising) {
+                    status = hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data);
+                }
             }
         }
-        
+
         if (status != BLE_STATUS_SUCCESS) {
-            stm32wb_system_smps_configure(m_pa_level);
             return false;
         }
     } else {
@@ -2144,8 +2135,8 @@ void BLELocalDevice::setAppearance(enum BLEAppearance appearance) {
 }
 
 bool BLELocalDevice::setConnectionParameters(uint16_t minimumConnectionInterval, uint16_t maximumConnectionInterval, uint16_t slaveLatency, uint16_t supervisionTimeout) {
+    uint32_t advertising_data_offset;
     tBleStatus status;
-    uint8_t connection_interval_data[6];
     
     if (minimumConnectionInterval > maximumConnectionInterval) {
         return false;
@@ -2180,15 +2171,17 @@ bool BLELocalDevice::setConnectionParameters(uint16_t minimumConnectionInterval,
                                             reinterpret_cast<const uint8_t*>(&m_ppcp));
 
         if (status == BLE_STATUS_SUCCESS) {
-            if (m_peripheral.advertising && m_advertising.connection_interval_length) {
-                connection_interval_data[0] = 0x05;
-                connection_interval_data[1] = AD_TYPE_SLAVE_CONN_INTERVAL;
-                connection_interval_data[2] = (uint8_t)(m_ppcp.connection_interval_min >> 0);
-                connection_interval_data[3] = (uint8_t)(m_ppcp.connection_interval_min >> 8);
-                connection_interval_data[4] = (uint8_t)(m_ppcp.connection_interval_max >> 0);
-                connection_interval_data[5] = (uint8_t)(m_ppcp.connection_interval_max >> 8);
+            if (m_advertising.connection_interval_length) {
+                advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length;
+
+                m_advertising.data[advertising_data_offset+2] = (uint8_t)(m_ppcp.connection_interval_min >> 0);
+                m_advertising.data[advertising_data_offset+3] = (uint8_t)(m_ppcp.connection_interval_min >> 8);
+                m_advertising.data[advertising_data_offset+4] = (uint8_t)(m_ppcp.connection_interval_max >> 0);
+                m_advertising.data[advertising_data_offset+5] = (uint8_t)(m_ppcp.connection_interval_max >> 8);
                 
-                status = aci_gap_update_adv_data(6, &connection_interval_data[0]);
+                if (m_peripheral.advertising) {
+                    status = hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data);
+                }
             }
         }
         
@@ -2337,8 +2330,8 @@ bool BLELocalDevice::removeService(BLEService &service) {
         }
     }
     
-    for (security = BLE_SECURITY_UNENCRYPTED, serverService = m_server.children; serverService; serverService = serverService->m_server.sibling) {
-        for (characteristic = serverService->m_server.children; characteristic; characteristic = characteristic->m_server.sibling) {
+    for (security = BLE_SECURITY_UNENCRYPTED, currentService = m_server.children; currentService; currentService = currentService->m_server.sibling) {
+        for (characteristic = currentService->m_server.children; characteristic; characteristic = characteristic->m_server.sibling) {
             security_read = (BLESecurity)((characteristic->m_permissions >> 0) & 3);
             security_write = (BLESecurity)((characteristic->m_permissions >> 2) & 3);
             security_subscribe = (BLESecurity)((characteristic->m_permissions >> 4) & 3);
@@ -2369,7 +2362,6 @@ bool BLELocalDevice::removeService(BLEService &service) {
                 }
             }
         }
-        
     }
 
     m_server.security = security;
@@ -2424,90 +2416,159 @@ void BLELocalDevice::clearBondStorage(void) {
 }
 
 bool BLELocalDevice::setIncludeTxPowerLevel(bool enable) {
+    uint32_t advertising_data_offset, length;
+
     if (m_advertising.custom_length) {
         return false;
     }
     
     if (enable) {
-        if ((int)(MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.tx_power_level_length)) < 3) {
+        length = 3;
+        
+        if (((m_advertising.data_length - m_advertising.tx_power_level_length) + length) > (int)(MAX_ADV_DATA_LEN)) {
             return false;
         }
     }
-    
-    m_advertising.tx_power_level_length = 0;
+
+    advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length + m_advertising.connection_interval_length;
+
+    if (m_advertising.tx_power_level_length) {
+        memmove(&m_advertising.data[advertising_data_offset],
+                &m_advertising.data[advertising_data_offset + m_advertising.tx_power_level_length],
+                ((m_advertising.data_length - advertising_data_offset) - m_advertising.tx_power_level_length));
+
+        m_advertising.data_length -= m_advertising.tx_power_level_length;
+        m_advertising.tx_power_level_length = 0;
+    }
 
     if (enable) {
-        m_advertising.tx_power_level_length = 3;
+        memmove(&m_advertising.data[advertising_data_offset + length],
+                &m_advertising.data[advertising_data_offset],
+                (m_advertising.data_length - advertising_data_offset));
+        
+        m_advertising.data[advertising_data_offset++] = length -1;
+        m_advertising.data[advertising_data_offset++] = BLE_AD_TYPE_TX_POWER_LEVEL;
+        m_advertising.data[advertising_data_offset++] = m_tx_power_level;
+
+        m_advertising.data_length += length;
+        m_advertising.tx_power_level_length = length;
+    }
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
     }
     
     return true;
 }
 
 bool BLELocalDevice::setIncludeConnectionInterval(bool enable) {
+    uint32_t advertising_data_offset, length;
+
     if (m_advertising.custom_length) {
         return false;
     }
 
     if (enable) {
-        if ((int)(MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.connection_interval_length)) < 6) {
+        length = 6;
+        
+        if (((m_advertising.data_length - m_advertising.connection_interval_length) + length) > (int)(MAX_ADV_DATA_LEN)) {
             return false;
         }
+    } else {
+        length = 0;
     }
-    
-    m_advertising.connection_interval_length = 0;
+            
 
-    if (enable) {
-        m_advertising.connection_interval_length = 6;
+    advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length;
+
+    if (m_advertising.connection_interval_length) {
+        memmove(&m_advertising.data[advertising_data_offset],
+                &m_advertising.data[advertising_data_offset + m_advertising.connection_interval_length],
+                ((m_advertising.data_length - advertising_data_offset) - m_advertising.connection_interval_length));
+
+        m_advertising.data_length -= m_advertising.connection_interval_length;
+        m_advertising.connection_interval_length = 0;
+    }
+
+    if (length) {
+        memmove(&m_advertising.data[advertising_data_offset + length],
+                &m_advertising.data[advertising_data_offset],
+                (m_advertising.data_length - advertising_data_offset));
+        
+        m_advertising.data[advertising_data_offset++] = length -1;
+        m_advertising.data[advertising_data_offset++] = BLE_AD_TYPE_SLAVE_CONN_INTERVAL;
+        m_advertising.data[advertising_data_offset++] = (uint8_t)(m_ppcp.connection_interval_min >> 0);
+        m_advertising.data[advertising_data_offset++] = (uint8_t)(m_ppcp.connection_interval_min >> 8);
+        m_advertising.data[advertising_data_offset++] = (uint8_t)(m_ppcp.connection_interval_max >> 0);
+        m_advertising.data[advertising_data_offset++] = (uint8_t)(m_ppcp.connection_interval_max >> 8);
+
+        m_advertising.data_length += length;
+        m_advertising.connection_interval_length = length;
+    }
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
     }
     
     return true;
 }
 
 bool BLELocalDevice::setLocalName(const char *localName) {
-    uint8_t advertising_data_offset, length;
+    uint32_t advertising_data_offset, length;
 
     if (m_advertising.custom_length) {
         return false;
     }
-
+    
     if (localName) {
-        length = strlen(localName);
+        length = 2 + strlen(localName);
 
-        if ((int)(MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.local_name_length)) < (2 + length)) {
+        if (((m_advertising.data_length - m_advertising.local_name_length) + length) > (int)(MAX_ADV_DATA_LEN)) {
             return false;
         }
+    } else {
+        length = 0;
     }
 
+    advertising_data_offset = 3;
+
     if (m_advertising.local_name_length) {
-        memcpy(&m_advertising.data[m_advertising.local_name_offset],
-               &m_advertising.data[m_advertising.local_name_offset + m_advertising.local_name_length],
-               (m_advertising.data_length - (m_advertising.local_name_offset + m_advertising.local_name_length)));
+        memmove(&m_advertising.data[advertising_data_offset],
+                &m_advertising.data[advertising_data_offset + m_advertising.local_name_length],
+                ((m_advertising.data_length - advertising_data_offset) - m_advertising.local_name_length));
 
         m_advertising.data_length -= m_advertising.local_name_length;
-
         m_advertising.local_name_length = 0;
     }
 
-    if (localName) {
-        m_advertising.local_name_length = 2 + length;
-        m_advertising.local_name_offset = m_advertising.data_length;
+    if (length) {
+        memmove(&m_advertising.data[advertising_data_offset + length],
+                &m_advertising.data[advertising_data_offset],
+                (m_advertising.data_length - advertising_data_offset));
         
-        advertising_data_offset = m_advertising.data_length;
-        
-        m_advertising.data[advertising_data_offset++] = 1 + length;
-        m_advertising.data[advertising_data_offset++] = AD_TYPE_COMPLETE_LOCAL_NAME;
-        
-        memcpy(&m_advertising.data[advertising_data_offset], localName, length);
-        advertising_data_offset += length;
-        
-        m_advertising.data_length = advertising_data_offset;
+        m_advertising.data[advertising_data_offset++] = length -1;
+        m_advertising.data[advertising_data_offset++] = BLE_AD_TYPE_COMPLETE_LOCAL_NAME;
+        memcpy(&m_advertising.data[advertising_data_offset], localName, length -2);
+
+        m_advertising.data_length += length;
+        m_advertising.local_name_length = length;
+    }
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
     }
 
     return false;
 }
 
 bool BLELocalDevice::setAdvertisedServiceUuids(const char *uuids[], int count, bool complete) {
-    uint8_t uuid16_data_offset, uuid128_data_offset, advertising_data_offset, length;
+    uint32_t uuid16_data_offset, uuid128_data_offset, advertising_data_offset, length;
     uint8_t uuid16_data[MAX_ADV_DATA_LEN], uuid128_data[MAX_ADV_DATA_LEN];
     BLEUuid service_uuid;
     int index;
@@ -2518,182 +2579,174 @@ bool BLELocalDevice::setAdvertisedServiceUuids(const char *uuids[], int count, b
 
     uuid16_data_offset = 0;
     uuid128_data_offset = 0;
-
+    
     for (index = 0; index < count; index++) {
         service_uuid = BLEUuid(uuids[index]);
-
+            
         if (service_uuid.type() == BLEUuidType::UNDEFINED) {
             return false;
         }
-
+            
         if (service_uuid.type() == BLEUuidType::UUID16) {
             if (uuid16_data_offset > (MAX_ADV_DATA_LEN - 2)) {
                 return false;
             }
-
+                
             memcpy(&uuid16_data[uuid16_data_offset], service_uuid.data(), 2);
             uuid16_data_offset += 2;
         } else {
             if (uuid128_data_offset > (MAX_ADV_DATA_LEN - 16)) {
                 return false;
             }
-
+                
             memcpy(&uuid128_data[uuid128_data_offset], service_uuid.data(), 16);
             uuid128_data_offset += 16;
         }
     }
-
+        
     length = 0;
-
+    
     if (uuid16_data_offset) {
         length += (2 + uuid16_data_offset);
     }
-
+    
     if (uuid128_data_offset) {
         length += (2 + uuid128_data_offset);
     }
-    
-    if ((int)(MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.service_uuids_length)) < length) {
-        return false;
+
+    if (length) {
+        if (((m_advertising.data_length - m_advertising.service_uuids_length) + length) > (int)(MAX_ADV_DATA_LEN)) {
+            return false;
+        }
     }
     
+    advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length + m_advertising.connection_interval_length + m_advertising.tx_power_level_length;
+    
     if (m_advertising.service_uuids_length) {
-        memcpy(&m_advertising.data[m_advertising.service_uuids_offset],
-               &m_advertising.data[m_advertising.service_uuids_offset + m_advertising.service_uuids_length],
-               (m_advertising.data_length - (m_advertising.service_uuids_offset + m_advertising.service_uuids_length)));
+        memmove(&m_advertising.data[advertising_data_offset],
+                &m_advertising.data[advertising_data_offset + m_advertising.service_uuids_length],
+                ((m_advertising.data_length - advertising_data_offset) - m_advertising.service_uuids_length));
 
         m_advertising.data_length -= m_advertising.service_uuids_length;
-
         m_advertising.service_uuids_length = 0;
     }
 
     if (length) {
-        m_advertising.service_uuids_length = length;
-        m_advertising.service_uuids_offset = m_advertising.data_length;
-
-        advertising_data_offset = m_advertising.data_length;
+        memmove(&m_advertising.data[advertising_data_offset + length],
+                &m_advertising.data[advertising_data_offset],
+                (m_advertising.data_length - advertising_data_offset));
 
         if (uuid16_data_offset) {
             m_advertising.data[advertising_data_offset++] = 1 + uuid16_data_offset;
-            m_advertising.data[advertising_data_offset++] = complete ? AD_TYPE_16_BIT_SERV_UUID_CMPLT_LIST : AD_TYPE_16_BIT_SERV_UUID;
-
+            m_advertising.data[advertising_data_offset++] = complete ? BLE_AD_TYPE_16_BIT_SERV_UUID_CMPLT_LIST : BLE_AD_TYPE_16_BIT_SERV_UUID;
+            
             memcpy(&m_advertising.data[advertising_data_offset], &uuid16_data[0], uuid16_data_offset);
             advertising_data_offset += uuid16_data_offset;
         }
 
         if (uuid128_data_offset) {
             m_advertising.data[advertising_data_offset++] = 1 + uuid128_data_offset;
-            m_advertising.data[advertising_data_offset++] = complete ? AD_TYPE_128_BIT_SERV_UUID_CMPLT_LIST : AD_TYPE_128_BIT_SERV_UUID;
+            m_advertising.data[advertising_data_offset++] = complete ? BLE_AD_TYPE_128_BIT_SERV_UUID_CMPLT_LIST : BLE_AD_TYPE_128_BIT_SERV_UUID;
 
             memcpy(&m_advertising.data[advertising_data_offset], &uuid128_data[0], uuid128_data_offset);
             advertising_data_offset += uuid128_data_offset;
         }
         
-        m_advertising.data_length = advertising_data_offset;
+        m_advertising.data_length += length;
+        m_advertising.service_uuids_length = length;
+    }
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
     }
     
     return false;
 }
 
 bool BLELocalDevice::setManufacturerData(const uint8_t data[], int length) {
-    uint8_t advertising_data_offset;
+    uint32_t advertising_data_offset;
 
     if (m_advertising.custom_length) {
         return false;
     }
 
     if (length) {
-      if ((int)(MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.manufacturer_data_length)) < (2 + length)) {
+        length += 2;
+
+        if (((m_advertising.data_length - m_advertising.manufacturer_data_length) + length) > (int)(MAX_ADV_DATA_LEN)) {
             return false;
         }
+    } else {
+        length = 0;
     }
+
+    advertising_data_offset = 3 + m_advertising.local_name_length + m_advertising.service_uuids_length + m_advertising.connection_interval_length + m_advertising.tx_power_level_length;
     
     if (m_advertising.manufacturer_data_length) {
-        memcpy(&m_advertising.data[m_advertising.manufacturer_data_offset],
-               &m_advertising.data[m_advertising.manufacturer_data_offset + m_advertising.manufacturer_data_length],
-               (m_advertising.data_length - (m_advertising.manufacturer_data_offset + m_advertising.manufacturer_data_length)));
+        memmove(&m_advertising.data[advertising_data_offset],
+                &m_advertising.data[advertising_data_offset + m_advertising.manufacturer_data_length],
+                ((m_advertising.data_length - advertising_data_offset) - m_advertising.manufacturer_data_length));
 
         m_advertising.data_length -= m_advertising.manufacturer_data_length;
-
         m_advertising.manufacturer_data_length = 0;
     }
 
     if (length) {
-        m_advertising.manufacturer_data_length = 2 + length;
-        m_advertising.manufacturer_data_offset = m_advertising.data_length;
+        memmove(&m_advertising.data[advertising_data_offset + length],
+                &m_advertising.data[advertising_data_offset],
+                (m_advertising.data_length - advertising_data_offset));
+        
+        m_advertising.data[advertising_data_offset++] = length -1;
+        m_advertising.data[advertising_data_offset++] = BLE_AD_TYPE_MANUFACTURER_SPECIFIC_DATA;
+        memcpy(&m_advertising.data[advertising_data_offset], data, length -2);
 
-        advertising_data_offset = m_advertising.data_length;
-        
-        m_advertising.data[advertising_data_offset++] = 1 + length;
-        m_advertising.data[advertising_data_offset++] = AD_TYPE_MANUFACTURER_SPECIFIC_DATA;
-        
-        memcpy(&m_advertising.data[advertising_data_offset], data, length);
-        advertising_data_offset += length;
-        
-        m_advertising.data_length = advertising_data_offset;
+        m_advertising.data_length += length;
+        m_advertising.manufacturer_data_length = length;
+    }
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
     }
     
     return true;
 }
 
 bool BLELocalDevice::setBeacon(const char *uuid, uint16_t major, uint16_t minor, int8_t rssi) {
-    uint32_t index;
-    uint8_t advertising_data_offset;
-    BLEUuid beacon_uuid;
-
-    if (m_advertising.custom_length) {
-        return false;
-    }
+    uint32_t length, index;
+    uint8_t data[25];
 
     if (uuid) {
-        beacon_uuid = BLEUuid(uuid);
+        length = 25;
+        
+        BLEUuid beacon_uuid = BLEUuid(uuid);
 
         if (beacon_uuid.type() != BLEUuidType::UUID128) {
             return false;
         }
-        
-        if ((MAX_ADV_DATA_LEN - ((m_advertising.data_length + m_advertising.tx_power_level_length + m_advertising.connection_interval_length) - m_advertising.beacon_length)) < 27) {
-            return false;
+
+        data[0] = 0x4c;
+        data[1] = 0x00;
+        data[2] = 0x02;
+        data[3] = 0x15;
+
+        for (index = 0; index < 16; index++) {
+            data[4+index] = *(beacon_uuid.data() + (15 - index));
         }
+
+        data[20] = (uint8_t)(major >> 8);
+        data[21] = (uint8_t)(major >> 0);
+        data[22] = (uint8_t)(minor >> 8);
+        data[23] = (uint8_t)(minor >> 0);
+        data[24] = (uint8_t)rssi;
+    } else {
+        length = 0;
     }
 
-    if (m_advertising.beacon_length) {
-        memcpy(&m_advertising.data[m_advertising.beacon_offset],
-               &m_advertising.data[m_advertising.beacon_offset + m_advertising.beacon_length],
-               (m_advertising.data_length - (m_advertising.beacon_offset + m_advertising.beacon_length)));
-
-        m_advertising.data_length -= m_advertising.beacon_length;
-
-        m_advertising.beacon_length = 0;
-    }
-
-    if (uuid) {
-        m_advertising.beacon_length = 27;
-        m_advertising.beacon_offset = m_advertising.data_length;
-
-        advertising_data_offset = m_advertising.data_length;
-    
-        m_advertising.data[advertising_data_offset++] = 0x1a;
-        m_advertising.data[advertising_data_offset++] = AD_TYPE_MANUFACTURER_SPECIFIC_DATA;
-        m_advertising.data[advertising_data_offset++] = 0x4c;
-        m_advertising.data[advertising_data_offset++] = 0x00;
-        m_advertising.data[advertising_data_offset++] = 0x02;
-        m_advertising.data[advertising_data_offset++] = 0x15;
-
-        for (index = 0; index < 16; index++, advertising_data_offset++) {
-            m_advertising.data[advertising_data_offset] = *(beacon_uuid.data() + (15 - index));
-        }
-        
-        m_advertising.data[advertising_data_offset++] = (uint8_t)(major >> 8);
-        m_advertising.data[advertising_data_offset++] = (uint8_t)(major >> 0);
-        m_advertising.data[advertising_data_offset++] = (uint8_t)(minor >> 8);
-        m_advertising.data[advertising_data_offset++] = (uint8_t)(minor >> 0);
-        m_advertising.data[advertising_data_offset++] = (uint8_t)rssi;
-        
-        m_advertising.data_length = advertising_data_offset;
-    }
-    
-    return true;
+    return setManufacturerData(data, length);
 }
 
 bool BLELocalDevice::setAdvertisingData(const uint8_t data[], int length) {
@@ -2702,18 +2755,23 @@ bool BLELocalDevice::setAdvertisingData(const uint8_t data[], int length) {
     }
 
     m_advertising.data_length = (3 + length);
-    m_advertising.tx_power_level_length = 0;
-    m_advertising.connection_interval_length = 0;
     m_advertising.local_name_length = 0;
     m_advertising.service_uuids_length = 0;
+    m_advertising.connection_interval_length = 0;
+    m_advertising.tx_power_level_length = 0;
     m_advertising.manufacturer_data_length = 0;
-    m_advertising.beacon_length = 0;
     m_advertising.custom_length = length;
 
     if (length) {
         memcpy(&m_advertising.data[3], data, length);
     }
-    
+
+    if (m_peripheral.advertising) {
+        if (hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -2722,13 +2780,18 @@ bool BLELocalDevice::setScanResponseData(const uint8_t data[], int length) {
         return false;
     }
 
-    m_advertising.scan_response_data_length = 0;
+    m_advertising.scan_response_data_length = length;
 
     if (length) {
-        m_advertising.scan_response_data_length += length;
         memcpy(&m_advertising.scan_response_data[0], data, length);
     }
 
+    if (m_peripheral.advertising) {
+        if (hci_le_set_scan_response_data(m_advertising.scan_response_data_length, m_advertising.scan_response_data) != BLE_STATUS_SUCCESS) {
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -2761,8 +2824,8 @@ void BLELocalDevice::setDiscoverable(BLEDiscoverable discoverable) {
 }
 
 bool BLELocalDevice::advertise() {
-    uint32_t index, advertising_data_offset, advertising_data_length, fixed_pin;
-    uint8_t bonded_device_count, resolving_device_count, tx_power_level_data[3], connection_interval_data[6];
+    uint32_t index, fixed_pin;
+    uint8_t bonded_device_count, resolving_device_count;
     uint8_t mitm, sc, min_key_size, max_key_size, use_fixed_pin;
     BLESecurity security;
     Bonded_Device_Entry_t bonded_devices[((BLE_EVT_MAX_PARAM_LEN - 3) - 2) / sizeof(Bonded_Device_Entry_t)];
@@ -2874,10 +2937,6 @@ bool BLELocalDevice::advertise() {
     }
     
     if (status == BLE_STATUS_SUCCESS) {
-        status = hci_le_set_scan_response_data(m_advertising.scan_response_data_length, m_advertising.scan_response_data);
-    }
-
-    if (status == BLE_STATUS_SUCCESS) {
         if (m_peripheral.discoverable == BLE_DISCOVERABLE_GENERAL) {
             status = aci_gap_set_discoverable(((m_peripheral.connectable) ? GAP_ADV_IND : (m_advertising.scan_response_data_length ? GAP_ADV_SCAN_IND : GAP_ADV_NONCONN_IND)),
                                               m_peripheral.advertising_interval_min,
@@ -2898,40 +2957,25 @@ bool BLELocalDevice::advertise() {
                                                       0, 0);
         }
     }
+
+    if (status == BLE_STATUS_SUCCESS) {
+        status = aci_gap_delete_ad_type(BLE_AD_TYPE_FLAGS);
+    }
     
     if (status == BLE_STATUS_SUCCESS) {
-        if (m_advertising.tx_power_level_length) {
-            tx_power_level_data[0] = 0x02;
-            tx_power_level_data[1] = AD_TYPE_TX_POWER_LEVEL;
-            tx_power_level_data[2] = m_tx_power_level;
-            
-            status = aci_gap_update_adv_data(3, &tx_power_level_data[0]);
-        } else {
-            status = aci_gap_delete_ad_type(AD_TYPE_TX_POWER_LEVEL);
-        }
+        status = aci_gap_delete_ad_type(BLE_AD_TYPE_TX_POWER_LEVEL);
     }
 
-    advertising_data_offset = 3;
+    m_advertising.data[0] = 0x02;
+    m_advertising.data[1] = BLE_AD_TYPE_FLAGS;
+    m_advertising.data[2] = FLAG_BIT_BR_EDR_NOT_SUPPORTED | ((m_peripheral.discoverable == BLE_DISCOVERABLE_GENERAL) ? FLAG_BIT_LE_GENERAL_DISCOVERABLE_MODE : FLAG_BIT_LE_LIMITED_DISCOVERABLE_MODE);
     
-    for (advertising_data_offset = 3; advertising_data_offset < m_advertising.data_length; advertising_data_offset += advertising_data_length) {
-        advertising_data_length = 1 + m_advertising.data[advertising_data_offset];
-        
-        if (status == BLE_STATUS_SUCCESS) {
-            status = aci_gap_update_adv_data(advertising_data_length, &m_advertising.data[advertising_data_offset]);
-        }
+    if (status == BLE_STATUS_SUCCESS) {
+        status = hci_le_set_advertising_data(m_advertising.data_length, m_advertising.data);
     }
     
-    if (m_advertising.connection_interval_length) {
-        connection_interval_data[0] = 0x05;
-        connection_interval_data[1] = AD_TYPE_SLAVE_CONN_INTERVAL;
-        connection_interval_data[2] = (uint8_t)(m_ppcp.connection_interval_min >> 0);
-        connection_interval_data[3] = (uint8_t)(m_ppcp.connection_interval_min >> 8);
-        connection_interval_data[4] = (uint8_t)(m_ppcp.connection_interval_max >> 0);
-        connection_interval_data[5] = (uint8_t)(m_ppcp.connection_interval_max >> 8);
-        
-        if (status == BLE_STATUS_SUCCESS) {
-            status = aci_gap_update_adv_data(6, &connection_interval_data[0]);
-        }
+    if (status == BLE_STATUS_SUCCESS) {
+        status = hci_le_set_scan_response_data(m_advertising.scan_response_data_length, m_advertising.scan_response_data);
     }
     
     if (status == BLE_STATUS_SUCCESS) {
@@ -3032,9 +3076,9 @@ void BLELocalDevice::reset() {
         armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
         armv7m_atomic_storeb(&request->m_busy, 0);
 
-	if (request->m_status) {
-	    *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-	}
+        if (request->m_status) {
+            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+        }
 
         request->m_done_callback();
     }
@@ -3045,9 +3089,9 @@ void BLELocalDevice::reset() {
         armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
         armv7m_atomic_storeb(&request->m_busy, 0);
 
-	if (request->m_status) {
-	    *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-	}
+        if (request->m_status) {
+            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+        }
 
         request->m_done_callback();
     }
@@ -3058,9 +3102,9 @@ void BLELocalDevice::reset() {
         armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
         armv7m_atomic_storeb(&request->m_busy, 0);
 
-	if (request->m_status) {
-	    *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-	}
+        if (request->m_status) {
+            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+        }
 
         request->m_done_callback();
     }
@@ -3148,6 +3192,10 @@ bool BLELocalDevice::insert(BLEServerService *service) {
                                   &service->m_server.handle);
 
     if (status == BLE_STATUS_SUCCESS) {
+#if (BLE_TRACE_SUPPORTED == 1)
+        printf("ADD-SERVICE \"%s\", %04x\r\n", service->m_uuid, service->m_server.handle);
+#endif
+      
         service->reference();
 
         service->m_server.attrib[0] = service->m_server.handle +1;
@@ -3233,6 +3281,9 @@ bool BLELocalDevice::insert(BLEServerService *service) {
             }
             
             if (status == BLE_STATUS_SUCCESS) {
+#if (BLE_TRACE_SUPPORTED == 1)
+                printf("ADD-CHARACTERISTIC \"%s\", %04x\r\n", characteristic->m_uuid, characteristic->m_server.handle);
+#endif
                 characteristic->reference();
 
                 if (characteristic->m_properties & (BLE_PROPERTY_NOTIFY | BLE_PROPERTY_INDICATE)) {
@@ -3323,7 +3374,7 @@ bool BLELocalDevice::insert(BLEServerService *service) {
         }
         
         if (m_process.sync_value || m_process.sync_subscribed) {
-	    k_work_submit(&m_process.work);
+            k_work_submit(&m_process.work);
         }
     }
     
@@ -3508,12 +3559,12 @@ void BLELocalDevice::terminate() {
             printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE, characteristic->m_uuid, characteristic->m_update_type);
 #endif
             
-	    armv7m_atomic_storeb(&characteristic->m_busy, 0);
+            armv7m_atomic_storeb(&characteristic->m_busy, 0);
 
-	    if (characteristic->m_status) {
-		*characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-	    }
-	    
+            if (characteristic->m_status) {
+                *characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+            }
+            
             characteristic->m_done_callback();
         }
         
@@ -3624,11 +3675,11 @@ void BLELocalDevice::process() {
                                     printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE, characteristic->m_uuid, characteristic->m_update_type);
 #endif
                                     
-				    armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                                    armv7m_atomic_storeb(&characteristic->m_busy, 0);
 
-				    if (characteristic->m_status) {
-					*characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-				    }
+                                    if (characteristic->m_status) {
+                                        *characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+                                    }
 
                                     characteristic->m_done_callback();
                                 }
@@ -3638,12 +3689,12 @@ void BLELocalDevice::process() {
 #if (BLE_TRACE_SUPPORTED == 1)
                                 printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", rparam->Status, characteristic->m_uuid, characteristic->m_update_type);
 #endif
-				
-				armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                                
+                                armv7m_atomic_storeb(&characteristic->m_busy, 0);
 
-				if (characteristic->m_status) {
-				    *characteristic->m_status = rparam->Status;
-				}
+                                if (characteristic->m_status) {
+                                    *characteristic->m_status = rparam->Status;
+                                }
 
                                 characteristic->m_done_callback();
                             }
@@ -3655,11 +3706,11 @@ void BLELocalDevice::process() {
                         printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", rparam->Status, characteristic->m_uuid, characteristic->m_update_type);
 #endif
                         
-			armv7m_atomic_storeb(&characteristic->m_busy, 0);
-				
-			if (characteristic->m_status) {
-			    *characteristic->m_status = rparam->Status;
-			}
+                        armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                                
+                        if (characteristic->m_status) {
+                            *characteristic->m_status = rparam->Status;
+                        }
 
                         characteristic->m_done_callback();
                     }
@@ -4073,12 +4124,12 @@ void BLELocalDevice::process() {
 #if (BLE_TRACE_SUPPORTED == 1)
                             printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", BLE_STATUS_SUCCESS, characteristic->m_uuid, characteristic->m_update_type);
 #endif
-			    
-			    armv7m_atomic_storeb(&characteristic->m_busy, 0);
-			    
-			    if (characteristic->m_status) {
-				*characteristic->m_status = BLE_STATUS_SUCCESS;
-			    }
+                            
+                            armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                            
+                            if (characteristic->m_status) {
+                                *characteristic->m_status = BLE_STATUS_SUCCESS;
+                            }
 
                             characteristic->m_done_callback();
                         }
@@ -4159,10 +4210,10 @@ void BLELocalDevice::process() {
             m_process.request_head = characteristic->m_process.request;
         }
 
-	m_process.request_current = characteristic;
-	m_process.request_offset = 0;
-	m_process.request_count = 0;
-	m_process.request_length = characteristic->m_value_length;
+        m_process.request_current = characteristic;
+        m_process.request_offset = 0;
+        m_process.request_count = 0;
+        m_process.request_length = characteristic->m_value_length;
     }
 
     if (!m_process.value_current && m_process.sync_value) {
@@ -5401,8 +5452,8 @@ size_t BLEUart::write(const uint8_t *buffer, size_t size) {
 void BLEUart::flush() {
     if (armv7m_core_is_in_thread() && !k_work_is_in_progress()) {
         while (m_tx_busy) {
-	    __WFE();
-	}
+            __WFE();
+        }
     }
 }
 

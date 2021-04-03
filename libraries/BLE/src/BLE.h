@@ -91,7 +91,30 @@ enum BLEAppearance : uint16_t {
     BLE_APPEARANCE_OUTDOOR_SPORTS_ACT_LOC_POD                = 5187,
     BLE_APPEARANCE_OUTDOOR_SPORTS_ACT_LOC_AND_NAV_POD        = 5188,
 };
-    
+
+enum BLEAdType : uint8_t {
+    BLE_AD_TYPE_FLAGS                                        = 0x01,
+    BLE_AD_TYPE_16_BIT_SERV_UUID                             = 0x02,
+    BLE_AD_TYPE_16_BIT_SERV_UUID_CMPLT_LIST                  = 0x03,
+    BLE_AD_TYPE_32_BIT_SERV_UUID                             = 0x04,
+    BLE_AD_TYPE_32_BIT_SERV_UUID_CMPLT_LIST                  = 0x05,
+    BLE_AD_TYPE_128_BIT_SERV_UUID                            = 0x06,
+    BLE_AD_TYPE_128_BIT_SERV_UUID_CMPLT_LIST                 = 0x07,
+    BLE_AD_TYPE_SHORTENED_LOCAL_NAME                         = 0x08,
+    BLE_AD_TYPE_COMPLETE_LOCAL_NAME                          = 0x09,
+    BLE_AD_TYPE_TX_POWER_LEVEL                               = 0x0a,
+    BLE_AD_TYPE_CLASS_OF_DEVICE                              = 0x0d,
+    BLE_AD_TYPE_SLAVE_CONN_INTERVAL                          = 0x12,
+    BLE_AD_TYPE_SERV_SOLICIT_16_BIT_UUID_LIST                = 0x14,
+    BLE_AD_TYPE_SERV_SOLICIT_128_BIT_UUID_LIST               = 0x15,
+    BLE_AD_TYPE_SERVICE_DATA                                 = 0x16,
+    BLE_AD_TYPE_APPEARANCE                                   = 0x19,
+    BLE_AD_TYPE_ADVERTISING_INTERVAL                         = 0x1a,
+    BLE_AD_TYPE_LE_ROLE                                      = 0x1c,
+    BLE_AD_TYPE_SERV_SOLICIT_32_BIT_UUID_LIST                = 0x1f,
+    BLE_AD_TYPE_MANUFACTURER_SPECIFIC_DATA                   = 0xff
+};
+
 enum BLEProperty : uint8_t {
     BLE_PROPERTY_READ                                        = 0x02,
     BLE_PROPERTY_WRITE_WITHOUT_RESPONSE                      = 0x04,
