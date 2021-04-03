@@ -479,6 +479,13 @@ static inline __attribute__((optimize("O3"))) void stm32wb_sdspi_transmit_crc16(
 
 static bool stm32wb_sdspi_detect(stm32wb_sdspi_t *sdspi)
 {
+    /* Remove this code for now. At the end of the day there are 3 usable
+     * cases. One is with a external weak pulldown on CS, and the other
+     * two are a external CD pin (either 0 or 1 as detect). So leave this
+     * off for now till the rest of the bits and pieces are in place.
+     */
+
+#if 0
     bool detect;
 
     /* This below is kind of fragile. The idea is to first set CS to 0, wait a tad
@@ -497,6 +504,9 @@ static bool stm32wb_sdspi_detect(stm32wb_sdspi_t *sdspi)
     stm32wb_gpio_pin_write(sdspi->pins.cs, 1);
 
     return detect;
+#endif
+
+    return true;
 }
 
 static void stm32wb_sdspi_select(stm32wb_sdspi_t *sdspi)
