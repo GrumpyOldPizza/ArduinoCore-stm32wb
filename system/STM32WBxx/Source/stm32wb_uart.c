@@ -1215,12 +1215,17 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
         usart_cr2 = 0;
         usart_cr3 = USART_CR3_EIE;
 #endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-        
-        if (option & STM32WB_UART_OPTION_STOP_2)
+
+        if (option & (STM32WB_UART_OPTION_STOP_1_5 | STM32WB_UART_OPTION_STOP_2))
         {
             usart_cr2 |= USART_CR2_STOP_1;
+
+            if (option & STM32WB_UART_OPTION_STOP_1_5)
+            {
+                usart_cr2 |= USART_CR2_STOP_0;
+            }
         }
-        
+            
         if (option & (STM32WB_UART_OPTION_PARITY_EVEN | STM32WB_UART_OPTION_PARITY_ODD))
         {
             usart_cr1 |= (USART_CR1_PCE | USART_CR1_PEIE);
