@@ -112,19 +112,15 @@ public:
     void attachInterrupt(Callback callback);
     void detachInterrupt();
 
-    int32_t getZone();
-    void setZone(int32_t seconds);
-    int32_t getDst();
-    void setDst(int32_t seconds);
-
     int32_t getUtcOffset();
     void setUtcOffset(int32_t seconds);
 
+    int32_t getLocalOffset();
+    void setLocalOffset(int32_t seconds);
+  
     uint32_t status();
 
 private:
-    int32_t m_zone;
-    int32_t m_dst;
     uint8_t m_alarm_match;
     uint8_t m_alarm_seconds;
     uint8_t m_alarm_minutes;

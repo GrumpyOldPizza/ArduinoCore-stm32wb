@@ -550,7 +550,7 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
             lseclk = 0;
         }
 
-        if (!(RTC->BKP18R & STM32WB_RTC_BKP18R_HSECLK))
+        if (!(RTC->BKP17R & STM32WB_RTC_BKP17R_HSECLK))
         {
             hseclk = 0;
         }

@@ -35,12 +35,7 @@
 #define Y2K_UNIX_TIME        946684800
 #define UNIX_TO_GPS_OFFSET   -315964800
 
-extern uint8_t __RTC_ZONE__;
-extern uint8_t __RTC_DST__;
-
 RTCClass::RTCClass() {
-    m_zone = (int32_t)&__RTC_ZONE__;
-    m_dst = (int32_t)&__RTC_DST__;
     m_alarm_match = RTC_MATCH_OFF;
     m_alarm_seconds = 0;
     m_alarm_minutes = 0;
@@ -460,7 +455,7 @@ void RTCClass::setAlarmEpoch(uint32_t seconds) {
     seconds += UNIX_TO_GPS_OFFSET;
     seconds -= Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_to_tod(seconds + (m_zone + m_dst), 0, &tod);
+    stm32wb_rtc_time_to_tod(seconds + stm32wb_rtc_get_local_offset(), 0, &tod);
 
     m_alarm_day = tod.day;
     m_alarm_month = tod.month;
@@ -502,22 +497,6 @@ void RTCClass::detachInterrupt() {
     syncAlarm();
 }
 
-int32_t RTCClass::getZone() {
-    return m_zone;
-}
-
-void RTCClass::setZone(int32_t seconds) {
-    m_zone = seconds;
-}
-
-int32_t RTCClass::getDst() {
-    return m_dst;
-}
-
-void RTCClass::setDst(int32_t seconds) {
-    m_dst = seconds;
-}
-
 int32_t RTCClass::getUtcOffset() {
     uint32_t seconds, ticks;
     
@@ -528,6 +507,14 @@ int32_t RTCClass::getUtcOffset() {
 
 void RTCClass::setUtcOffset(int32_t seconds) {
     stm32wb_rtc_set_utc_offset(seconds, false);
+}
+
+int32_t RTCClass::getLocalOffset() {
+    return stm32wb_rtc_get_local_offset();
+}
+
+void RTCClass::setLocalOffset(int32_t seconds) {
+    stm32wb_rtc_set_local_offset(seconds, false);
 }
 
 uint32_t RTCClass::status() {
@@ -544,7 +531,7 @@ void RTCClass::getTod(stm32wb_rtc_tod_t *tod) {
 
     seconds -= Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_to_tod(seconds - utc_offset + (m_zone + m_dst), ticks, tod);
+    stm32wb_rtc_time_to_tod(seconds - utc_offset + stm32wb_rtc_get_local_offset(), ticks, tod);
 }
 
 void RTCClass::setTod(const stm32wb_rtc_tod_t *tod) {
@@ -557,7 +544,7 @@ void RTCClass::setTod(const stm32wb_rtc_tod_t *tod) {
 
     utc_offset = stm32wb_rtc_time_to_utc_offset(seconds);
 
-    stm32wb_rtc_time_write(0, seconds + utc_offset - (m_zone + m_dst), 0, false);
+    stm32wb_rtc_time_write(0, seconds + utc_offset - stm32wb_rtc_get_local_offset(), 0, false);
 }
 
 void RTCClass::syncAlarm() {
@@ -752,7 +739,7 @@ void RTCClass::syncAlarm() {
                 }
             }
         }
-        seconds = m_alarm_timeout + Y2K_TO_GPS_OFFSET - (m_zone + m_dst);
+        seconds = m_alarm_timeout + Y2K_TO_GPS_OFFSET - stm32wb_rtc_get_local_offset();
 
         Callback alarm_callback = Callback(&RTCClass::alarmCallback, this);
         

@@ -41,6 +41,7 @@ typedef void (*stm32wb_rtc_timer_routine_t)(void);
 
 typedef struct _stm32wb_rtc_time_t {
     volatile uint32_t                      seconds_offset; 
+    volatile int32_t                       local_offset;
     volatile uint16_t                      ticks_offset;
     volatile int8_t                        utc_offset;
     volatile uint8_t                       status;
@@ -94,6 +95,8 @@ static void stm32wb_rtc_alarm_routine();
 static void stm32wb_rtc_timer_routine();
 
 extern uint8_t __RTC_EPOCH__;
+extern uint8_t __RTC_ZONE__;
+extern uint8_t __RTC_DST__;
 
 /*******************************************************************************************************************/
 
@@ -209,9 +212,11 @@ void __stm32wb_rtc_initialize(void)
 
         RTC->ISR = ~RTC_ISR_INIT;
 
-	RTC->BKP16R = (STM32WB_RTC_BKP16R_NOT_DATA_MASK & ~(STM32WB_RTC_BKP16R_REVISION_CURRENT << STM32WB_RTC_BKP16R_REVISION_SHIFT)) | STM32WB_RTC_BKP16R_REVISION_CURRENT;
-	RTC->BKP17R = (((uint32_t)&__RTC_EPOCH__ - 315964800 + STM32WB_RTC_UTC_OFFSET_DEFAULT) << STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT);
-	RTC->BKP18R = (STM32WB_RTC_UTC_OFFSET_DEFAULT << STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT) | (stm32wb_system_hseclk() ? STM32WB_RTC_BKP18R_HSECLK : 0);
+	RTC->BKP16R = (STM32WB_RTC_BKP16R_NOT_DATA_MASK & ~(STM32WB_RTC_BKP16R_REVISION_CURRENT << STM32WB_RTC_BKP16R_NOT_DATA_SHIFT)) | STM32WB_RTC_BKP16R_REVISION_CURRENT;
+	RTC->BKP17R = stm32wb_system_hseclk() ? STM32WB_RTC_BKP17R_HSECLK : 0;
+	RTC->BKP18R = (uint32_t)&__RTC_EPOCH__ - 315964800 + STM32WB_RTC_UTC_OFFSET_DEFAULT;
+	RTC->BKP19R = (((STM32WB_RTC_UTC_OFFSET_DEFAULT << STM32WB_RTC_BKP19R_UTC_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_UTC_OFFSET_MASK) |
+                       (((((int32_t)&__RTC_ZONE__ + (int32_t)&__RTC_DST__) / 60) << STM32WB_RTC_BKP19R_LOCAL_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_LOCAL_OFFSET_MASK));
     }
     
     EXTI->IMR1 &= ~(EXTI_IMR1_IM17 | EXTI_IMR1_IM18 | EXTI_IMR1_IM19);
@@ -228,11 +233,13 @@ void __stm32wb_rtc_initialize(void)
 
     stm32wb_rtc_clock_capture(&capture);
     stm32wb_rtc_device.clock_offset = stm32wb_rtc_clock_convert(&capture);
-    stm32wb_rtc_device.time_current.seconds_offset = (RTC->BKP17R & STM32WB_RTC_BKP17R_SECONDS_OFFSET_MASK) >> STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.ticks_offset = (RTC->BKP18R & STM32WB_RTC_BKP18R_TICKS_OFFSET_MASK) >> STM32WB_RTC_BKP18R_TICKS_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.utc_offset = (RTC->BKP18R & STM32WB_RTC_BKP18R_UTC_OFFSET_MASK) >> STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.status = (((RTC->BKP18R & STM32WB_RTC_BKP18R_TIME_WRITTEN) ? STM32WB_RTC_STATUS_TIME_INTERNAL : 0) |
-					      ((RTC->BKP18R & STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN) ? STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL : 0));
+    stm32wb_rtc_device.time_current.seconds_offset = RTC->BKP18R;
+    stm32wb_rtc_device.time_current.local_offset = ((int32_t)(RTC->BKP19R << (32 - STM32WB_RTC_BKP19R_LOCAL_OFFSET_SHIFT - STM32WB_RTC_BKP19R_LOCAL_OFFSET_SIZE)) >> (32 - STM32WB_RTC_BKP19R_LOCAL_OFFSET_SIZE)) * 60;
+    stm32wb_rtc_device.time_current.ticks_offset = (RTC->BKP19R & STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK) >> STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT;
+    stm32wb_rtc_device.time_current.utc_offset = (int32_t)(RTC->BKP19R << (32 - STM32WB_RTC_BKP19R_UTC_OFFSET_SHIFT - STM32WB_RTC_BKP19R_UTC_OFFSET_SIZE)) >> (32 - STM32WB_RTC_BKP19R_UTC_OFFSET_SIZE);
+    stm32wb_rtc_device.time_current.status = (((RTC->BKP19R & STM32WB_RTC_BKP19R_TIME_WRITTEN) ? STM32WB_RTC_STATUS_TIME_INTERNAL : 0) |
+					      ((RTC->BKP19R & STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN) ? STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL : 0) |
+					      ((RTC->BKP19R & STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN) ? STM32WB_RTC_STATUS_LOCAL_OFFSET_INTERNAL : 0));
 
     stm32wb_rtc_device.time_next = stm32wb_rtc_device.time_current;
     
@@ -292,15 +299,12 @@ void stm32wb_rtc_set_calibration(int32_t calibration)
     }
 }
 
-int32_t stm32wb_rtc_get_utc_offset(void)
-{
-    return stm32wb_rtc_device.time_current.utc_offset;
-}
-
 static void stm32wb_rtc_modify_routine(void)
 {
     stm32wb_rtc_alarm_routine_t routine;
-    uint32_t sequence, n_seconds, n_ticks;
+    uint32_t sequence, n_seconds;
+    int32_t n_local_offset;
+    uint16_t n_ticks;
     int8_t n_utc_offset;
     uint8_t n_status;
 
@@ -309,6 +313,7 @@ static void stm32wb_rtc_modify_routine(void)
 	sequence = stm32wb_rtc_device.time_sequence;
 
 	n_seconds = stm32wb_rtc_device.time_next.seconds_offset;
+	n_local_offset = stm32wb_rtc_device.time_next.local_offset;
 	n_ticks = stm32wb_rtc_device.time_next.ticks_offset;
 	n_utc_offset = stm32wb_rtc_device.time_next.utc_offset;
 	n_status = stm32wb_rtc_device.time_next.status;
@@ -316,16 +321,18 @@ static void stm32wb_rtc_modify_routine(void)
     while (stm32wb_rtc_device.time_sequence != sequence);
     
     stm32wb_rtc_device.time_current.seconds_offset = n_seconds;
+    stm32wb_rtc_device.time_current.local_offset = n_local_offset;
     stm32wb_rtc_device.time_current.ticks_offset = n_ticks;
     stm32wb_rtc_device.time_current.utc_offset = n_utc_offset;
     stm32wb_rtc_device.time_current.status = n_status; 
 
-    armv7m_atomic_modify(&RTC->BKP17R, STM32WB_RTC_BKP17R_SECONDS_OFFSET_MASK, (n_seconds << STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT));
-    armv7m_atomic_modify(&RTC->BKP18R, (STM32WB_RTC_BKP18R_UTC_OFFSET_MASK | STM32WB_RTC_BKP18R_TICKS_OFFSET_MASK | STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN_MASK | STM32WB_RTC_BKP18R_TIME_WRITTEN_MASK),
-                         ((n_status & (STM32WB_RTC_STATUS_TIME_INTERNAL | STM32WB_RTC_STATUS_TIME_EXTERNAL)) ? STM32WB_RTC_BKP18R_TIME_WRITTEN : 0) |
-                         ((n_status & (STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL | STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL)) ? STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN : 0) |
-                         (n_ticks << STM32WB_RTC_BKP18R_TICKS_OFFSET_SHIFT) |
-                         (n_utc_offset << STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT));
+    RTC->BKP18R = n_seconds;
+    RTC->BKP19R = (((n_ticks << STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK) |
+                   ((n_utc_offset << STM32WB_RTC_BKP19R_UTC_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_UTC_OFFSET_MASK) |
+                   (((n_local_offset / 60) << STM32WB_RTC_BKP19R_LOCAL_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_LOCAL_OFFSET_MASK) |
+                   ((n_status & (STM32WB_RTC_STATUS_TIME_INTERNAL | STM32WB_RTC_STATUS_TIME_EXTERNAL)) ? STM32WB_RTC_BKP19R_TIME_WRITTEN : 0) |
+                   ((n_status & (STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL | STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL)) ? STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN : 0) |
+                   ((n_status & (STM32WB_RTC_STATUS_LOCAL_OFFSET_INTERNAL | STM32WB_RTC_STATUS_LOCAL_OFFSET_EXTERNAL)) ? STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN : 0));
 
     routine = stm32wb_rtc_device.alarm_routine;
     
@@ -333,6 +340,11 @@ static void stm32wb_rtc_modify_routine(void)
     {
         (*routine)();
     }
+}
+
+int32_t stm32wb_rtc_get_utc_offset(void)
+{
+    return stm32wb_rtc_device.time_current.utc_offset;
 }
 
 static void __svc_stm32wb_rtc_set_utc_offset(int32_t utc_offset, bool external)
@@ -383,6 +395,62 @@ void stm32wb_rtc_set_utc_offset(int32_t utc_offset, bool external)
     else
     {
         __svc_stm32wb_rtc_set_utc_offset(utc_offset, external);
+    }
+}
+
+int32_t stm32wb_rtc_get_local_offset(void)
+{
+    return stm32wb_rtc_device.time_current.local_offset;
+}
+
+static void __svc_stm32wb_rtc_set_local_offset(int32_t local_offset, bool external)
+{
+    uint32_t sequence;
+    int32_t o_local_offset, n_local_offset;
+    uint8_t o_status, n_status;
+
+    do
+    {
+	o_local_offset = stm32wb_rtc_device.time_next.local_offset;
+	o_status = stm32wb_rtc_device.time_next.status;
+    }
+    while ((stm32wb_rtc_device.time_next.local_offset != o_local_offset) || (stm32wb_rtc_device.time_next.status != o_status));
+
+    if ((o_status & STM32WB_RTC_STATUS_LOCAL_OFFSET_EXTERNAL) && !external)
+    {
+        return;
+    }
+    
+    n_local_offset = local_offset;
+    n_status = ((o_status & ~(STM32WB_RTC_STATUS_LOCAL_OFFSET_INTERNAL | STM32WB_RTC_STATUS_LOCAL_OFFSET_EXTERNAL)) |
+		(external ? STM32WB_RTC_STATUS_LOCAL_OFFSET_EXTERNAL : STM32WB_RTC_STATUS_LOCAL_OFFSET_INTERNAL));
+
+    if ((n_local_offset != o_local_offset) || (n_status != o_status))
+    {
+	stm32wb_rtc_device.modify_routine = stm32wb_rtc_modify_routine;
+
+	do
+	{
+	    sequence = stm32wb_rtc_device.time_sequence;
+
+	    stm32wb_rtc_device.time_next.local_offset = n_local_offset;
+	    stm32wb_rtc_device.time_next.status = n_status;
+	}
+	while (armv7m_atomic_cas(&stm32wb_rtc_device.time_sequence, sequence, (sequence + 1)) != sequence);
+
+	armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_MODIFY);
+    }
+}
+
+void stm32wb_rtc_set_local_offset(int32_t local_offset, bool external)
+{
+    if (armv7m_core_is_in_thread())
+    {
+	armv7m_svcall_2((uint32_t)&__svc_stm32wb_rtc_set_local_offset, (uint32_t)local_offset, (uint32_t)external);
+    }
+    else
+    {
+        __svc_stm32wb_rtc_set_local_offset(local_offset, external);
     }
 }
 
@@ -676,7 +744,7 @@ void stm32wb_rtc_time_write(uint64_t clock, uint32_t seconds, uint32_t ticks, bo
 {
     stm32wb_rtc_capture_t capture;
     uint32_t clock_l, clock_h;
-    
+
     if (clock == 0)
     {
         __stm32wb_rtc_clock_capture(&capture);
@@ -907,11 +975,11 @@ retry:
                     
 		    RTC->ALRMAR = alrmr;
 		    RTC->ALRMASSR = alrmssr;
-                    
+
 		    stm32wb_rtc_device.alarm_busy = 1;
                     
 		    armv7m_atomic_or(&RTC->CR, (RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                    
+
 		    if (stm32wb_rtc_device.alarm_busy)
 		    {
 			__stm32wb_rtc_clock_capture(&capture);
@@ -1255,7 +1323,7 @@ retry:
                     
 		    RTC->ALRMBR = alrmr;
 		    RTC->ALRMBSSR = alrmssr;
-                    
+
 		    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_2);
                     
 		    stm32wb_rtc_device.timer_busy = true;
