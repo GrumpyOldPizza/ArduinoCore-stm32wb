@@ -468,22 +468,22 @@ typedef struct _MB_RefTable_t {
 
 #define STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES 5
 
-static __attribute__((section(".ipcc.ref_table"), used)) MB_RefTable_t MB_RefTable;
-static __attribute__((section(".ipcc.sys_state"), used)) volatile uint32_t MB_SysState;
-static __attribute__((section(".ipcc.info_table"))) MB_DeviceInfoTable_t MB_DeviceInfoTable;
-static __attribute__((section(".ipcc.sys_table"))) MB_SysTable_t MB_SysTable;
-static __attribute__((section(".ipcc.ble_table"))) MB_BleTable_t MB_BleTable;
-static __attribute__((section(".ipcc.mm_table"))) MB_MemManagerTable_t MB_MemManagerTable;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_SysEvtQueue;
-static __attribute__((section(".ipcc"))) MB_SysEvent_t MB_SpareSysBuffer;
-static __attribute__((section(".ipcc"))) MB_SysCommand_t MB_SysCmdBuffer;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_BleEvtQueue;
-static __attribute__((section(".ipcc"))) MB_BleEvent_t MB_SpareBleBuffer;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_EvtFreeBufferQueue;
-static __attribute__((section(".ipcc"))) MB_BleCommand_t MB_BleCmdBuffer;
-static __attribute__((section(".ipcc"))) MB_BleCsEvent_t MB_BleCsBuffer;
-static __attribute__((section(".ipcc"))) MB_BleAclData_t MB_BleAclDataBuffer;
-static __attribute__((section(".ipcc"))) uint8_t MB_BlePool[((sizeof(MB_BleEvent_t) + 3) & ~3) * STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES];
+static __attribute__((section(".ipcram.ref_table"), used)) MB_RefTable_t MB_RefTable;
+static __attribute__((section(".ipcram.sys_state"), used)) volatile uint32_t MB_SysState;
+static __attribute__((section(".ipcram.info_table"))) MB_DeviceInfoTable_t MB_DeviceInfoTable;
+static __attribute__((section(".ipcram.sys_table"))) MB_SysTable_t MB_SysTable;
+static __attribute__((section(".ipcram.ble_table"))) MB_BleTable_t MB_BleTable;
+static __attribute__((section(".ipcram.mm_table"))) MB_MemManagerTable_t MB_MemManagerTable;
+static __attribute__((section(".ipcram"))) MB_Queue_t MB_SysEvtQueue;
+static __attribute__((section(".ipcram"))) MB_SysEvent_t MB_SpareSysBuffer;
+static __attribute__((section(".ipcram"))) MB_SysCommand_t MB_SysCmdBuffer;
+static __attribute__((section(".ipcram"))) MB_Queue_t MB_BleEvtQueue;
+static __attribute__((section(".ipcram"))) MB_BleEvent_t MB_SpareBleBuffer;
+static __attribute__((section(".ipcram"))) MB_Queue_t MB_EvtFreeBufferQueue;
+static __attribute__((section(".ipcram"))) MB_BleCommand_t MB_BleCmdBuffer;
+static __attribute__((section(".ipcram"))) MB_BleCsEvent_t MB_BleCsBuffer;
+static __attribute__((section(".ipcram"))) MB_BleAclData_t MB_BleAclDataBuffer;
+static __attribute__((section(".ipcram"))) uint8_t MB_BlePool[((sizeof(MB_BleEvent_t) + 3) & ~3) * STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES];
 
 static void MB_QueueInit(MB_Queue_t *queue)
 {

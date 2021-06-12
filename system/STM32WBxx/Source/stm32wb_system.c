@@ -161,18 +161,16 @@
      STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_1 |  \
      STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_1)
 
-extern uint8_t __Vectors[];
-extern uint8_t __StackTop[];
+extern uint32_t __Vectors[];
+extern uint32_t __StackTop[];
 
-extern uint8_t __ipcc_start__[];
-extern uint8_t __ipcc_end__[];
-extern uint8_t __text2b_start__[];
-extern uint8_t __rodata2b_end__[];
-extern uint8_t __data2a_start__[];
-extern uint8_t __data2a_end__[];
-extern uint8_t __data2a_flash__[];
-extern uint8_t __bss2a_start__[];
-extern uint8_t __bss2a_end__[];
+extern uint32_t __ipcram_start__[];
+extern uint32_t __ipcram_end__[];
+extern uint32_t __retram_start__[];
+extern uint32_t __retram_end__[];
+extern uint32_t __retram_flash__[];
+extern uint32_t __ccmram_start__[];
+extern uint32_t __ccmram_end__[];
 
 typedef struct _stm32wb_system_device_t {
     uint32_t                        options;
@@ -465,8 +463,8 @@ void SystemInit(void)
 void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, uint32_t lseclk, uint32_t hseclk, uint32_t options)
 {
     uint32_t count;
-    uint32_t *ipcc, *ipcc_e, *data2a, *data2a_e, *bss2a, *bss2a_e;
-    const uint32_t *data2a_f;
+    uint32_t *ipcram, *ipcram_e, *retram, *retram_e;
+    const uint32_t *retram_f;
 
     __disable_irq();
 
@@ -642,46 +640,31 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
          */
         PWR->C2CR1 = (PWR->C2CR1 & ~PWR_C2CR1_LPMS) | PWR_C2CR1_LPMS_SHUTDOWN;
 
-        if (&__ipcc_start__[0] != &__ipcc_end__[0])
-        {
-            ipcc = (uint32_t*)&__ipcc_start__[0];
-            ipcc_e = (uint32_t*)&__ipcc_end__[0];
+        /* Zero .ipcram in SRAM2a */
+        ipcram = (uint32_t*)__ipcram_start__;
+        ipcram_e = (uint32_t*)__ipcram_end__;
 
-            do
-            {
-                *ipcc++ = 0x00000000;
-            }
-            while (ipcc != ipcc_e);
+        while (ipcram != ipcram_e)
+        {
+            *ipcram++ = 0x00000000;
         }
 
-        if (&__data2a_start__[0] != &__data2a_end__[0])
+        /* Copy .retram in SRAM2a */
+        retram = (uint32_t*)__retram_start__;
+        retram_e = (uint32_t*)__retram_end__;
+        retram_f = (const uint32_t*)__retram_flash__;
+
+        while (retram != retram_e)
         {
-            data2a = (uint32_t*)&__data2a_start__[0];
-            data2a_e = (uint32_t*)&__data2a_end__[0];
-            data2a_f = (const uint32_t*)&__data2a_flash__[0];
-
-            do
-            {
-                *data2a++ = *data2a_f++;
-            }
-            while (data2a != data2a_e);
-        }
-
-        if (&__bss2a_start__[0] != &__bss2a_end__[0])
-        {
-            bss2a = (uint32_t*)&__bss2a_start__[0];
-            bss2a_e = (uint32_t*)&__bss2a_end__[0];
-
-            do
-            {
-                *bss2a++ = 0x00000000;
-            }
-            while (bss2a != bss2a_e);
+            *retram++ = *retram_f++;
         }
     }
     
-    /* Write protect .text2b/.rodata2b in SRAM2b */
-    SYSCFG->SWPR2 = (0xffffffff >> (32 - (((uint32_t)__rodata2b_end__ - (uint32_t)__text2b_start__ + 1023) / 1024))) << (((uint32_t)__text2b_start__ - SRAM2B_BASE + 1023) / 1024);
+    /* Write protect .ccmram in SRAM2b */
+    if (__ccmram_start__ != __ccmram_end__)
+    {
+        SYSCFG->SWPR2 = 0xffffffff >> (32 - (((uint32_t)__ccmram_end__ - (uint32_t)__ccmram_start__ + 1023) / 1024));
+    }
     
     /* Disable SMPS for now ... */
     PWR->CR5 &= ~(PWR_CR5_SMPSEN | PWR_CR5_BORHC);

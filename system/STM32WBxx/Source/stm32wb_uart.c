@@ -71,9 +71,6 @@ static stm32wb_uart_device_t stm32wb_uart_device;
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
 
-static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_rx_none;
-static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_tx_default;
-
 #define STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE    \
     (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
      STM32WB_DMA_OPTION_PERIPHERAL_DATA_SIZE_8 |  \
@@ -2168,7 +2165,7 @@ __attribute__((optimize("O3"))) bool stm32wb_uart_spi_data_dma_receive(stm32wb_u
     USART->CR3 = uart->cr3 | (USART_CR3_DMAR | USART_CR3_DMAT);
 
     stm32wb_dma_start(uart->rx_dma, (uint32_t)rx_data, (uint32_t)&USART->RDR, rx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
-    stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)&stm32wb_uart_spi_dma_tx_default, rx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
+    stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)&uart->tx_default, rx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
         
     return true;
 }
@@ -2222,7 +2219,7 @@ __attribute__((optimize("O3"))) bool stm32wb_uart_spi_data_dma_transmit(stm32wb_
 
     USART->CR3 = uart->cr3 | (USART_CR3_DMAR | USART_CR3_DMAT);
                 
-    stm32wb_dma_start(uart->rx_dma, (uint32_t)&stm32wb_uart_spi_dma_rx_none, (uint32_t)&USART->RDR, tx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
+    stm32wb_dma_start(uart->rx_dma, (uint32_t)&uart->rx_none, (uint32_t)&USART->RDR, tx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)tx_data, tx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
 
     return true;

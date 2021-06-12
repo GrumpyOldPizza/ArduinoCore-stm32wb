@@ -85,6 +85,8 @@ typedef void (*stm32wb_spi_done_callback_t)(void *context);
     uint8_t                              option;
     uint16_t                             rx_dma;
     uint16_t                             tx_dma; 
+    uint16_t                             rx_none;
+    uint16_t                             tx_default;
     stm32wb_spi_pins_t                   pins;
     uint32_t                             clock;
     uint16_t                             control;

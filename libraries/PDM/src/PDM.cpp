@@ -390,7 +390,7 @@ void PDMClass::eventCallback(class PDMClass *self, uint32_t events)
 extern const stm32wb_sai_params_t g_PDMParams;
 
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_PDM_Data[PDM_BUFFER_COUNT * PDM_BUFFER_SIZE];
-static __attribute__((aligned(4), section(".dma"))) uint8_t g_CIC_Data[CIC_BUFFER_COUNT * CIC_BUFFER_SIZE];
+static __attribute__((aligned(4), section(".noinit"))) uint8_t g_CIC_Data[CIC_BUFFER_COUNT * CIC_BUFFER_SIZE];
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_HBF_Data[HBF_BUFFER_SIZE];
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_FIR_Data[FIR_BUFFER_SIZE * 2];
 

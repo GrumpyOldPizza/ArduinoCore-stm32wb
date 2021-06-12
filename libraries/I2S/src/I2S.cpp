@@ -383,7 +383,7 @@ void I2SClass::eventCallback(class I2SClass *self, uint32_t events) {
 
 extern const stm32wb_sai_params_t g_I2SParams;
 
-static __attribute__((aligned(4), section(".dma"))) uint8_t g_I2S_Data[I2S_BUFFER_COUNT * I2S_BUFFER_SIZE];
+static __attribute__((aligned(4), section(".noinit"))) uint8_t g_I2S_Data[I2S_BUFFER_COUNT * I2S_BUFFER_SIZE];
 
 static stm32wb_sai_t g_I2S;
 

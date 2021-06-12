@@ -140,8 +140,10 @@ typedef struct _stm32wb_uart_t {
     uint32_t                      clock;
     uint32_t                      option;
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
-    uint16_t                      control;
+    uint32_t                      control;
     uint16_t                      mask;
+    uint8_t                       rx_none;
+    uint8_t                       tx_default;
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
     uint32_t                      cr1;
     uint32_t                      cr2;

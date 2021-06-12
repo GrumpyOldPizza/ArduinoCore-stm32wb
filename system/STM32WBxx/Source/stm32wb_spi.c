@@ -45,9 +45,6 @@ typedef struct _stm32wb_spi_device_t {
 
 static stm32wb_spi_device_t stm32wb_spi_device;
 
-static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_rx_none;
-static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_tx_default;
-
 #define SPI_CR1_BR_DIV2   (0)
 #define SPI_CR1_BR_DIV4   (SPI_CR1_BR_0)
 #define SPI_CR1_BR_DIV8   (SPI_CR1_BR_1)
@@ -219,7 +216,7 @@ bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params)
     spi->tx_dma = params->tx_dma;
     spi->pins = params->pins;
 
-    stm32wb_spi_dma_tx_default = 0xffff;
+    spi->tx_default = 0xffff;
 
     spi->state = STM32WB_SPI_STATE_INIT;
 
@@ -867,7 +864,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
 
     stm32wb_dma_start(spi->rx_dma, (uint32_t)rx_data, (uint32_t)&SPI->DR, rx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
-    stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)&stm32wb_spi_dma_tx_default, rx_count, tx_option);
+    stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)&spi->tx_default, rx_count, tx_option);
         
     return true;
 }
@@ -945,7 +942,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     SPI->CR2 = spi_cr2;
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
                 
-    stm32wb_dma_start(spi->rx_dma, (uint32_t)&stm32wb_spi_dma_rx_none, (uint32_t)&SPI->DR, tx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
+    stm32wb_dma_start(spi->rx_dma, (uint32_t)&spi->rx_none, (uint32_t)&SPI->DR, tx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)tx_data, tx_count, tx_option);
 
     return true;

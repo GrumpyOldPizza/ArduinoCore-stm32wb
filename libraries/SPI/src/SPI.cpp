@@ -296,12 +296,12 @@ SPIClass SPI(&g_SPI, &g_SPIParams);
 
 #if (STM32WB_CONFIG_SYSOPT & STM32WB_SYSTEM_OPTION_USART1_SYSCLK)
 
-static __attribute__((section(".bss2"))) stm32wb_uart_t g_SPI1;
+static stm32wb_uart_t g_SPI1;
 extern const stm32wb_uart_params_t g_SPI1Params;
 
 #else /* STM32WB_CONFIG_SYSOPT & STM32WB_SYSTEM_OPTION_USART1_SYSCLK */
 
-static __attribute__((section(".bss2"))) stm32wb_spi_t g_SPI1;
+static stm32wb_spi_t g_SPI1;
 extern const stm32wb_spi_params_t g_SPI1Params;
 
 #endif /* STM32WB_CONFIG_SYSOPT & STM32WB_SYSTEM_OPTION_USART1_SYSCLK */
