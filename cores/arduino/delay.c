@@ -29,16 +29,12 @@
 #include "Arduino.h"
 #include "wiring_private.h"
 
-unsigned long millis(void) {
-    uint64_t clock;
-
-    clock = stm32wb_rtc_clock_read();
-
-    return stm32wb_rtc_clock_to_millis(clock);
-}
-
 unsigned long micros(void) {
     return armv7m_systick_micros();
+}
+
+unsigned long millis(void) {
+    return armv7m_systick_millis();
 }
 
 void delay(uint32_t timeout) {
@@ -49,11 +45,11 @@ void delay(uint32_t timeout) {
     }
     
     if (armv7m_core_is_in_thread() && !k_work_is_in_progress()) {
-	k_task_delay(k_clock_millis_to_ticks(timeout));
+        k_task_delay(k_clock_millis_to_ticks(timeout));
     } else {
-	clock = armv7m_systick_micros() + timeout * 1000;
+        clock = armv7m_systick_millis() + timeout;
 
-	while (clock > armv7m_systick_micros())	{
-	}
+        while (clock > armv7m_systick_millis()) {
+        }
     }
 }

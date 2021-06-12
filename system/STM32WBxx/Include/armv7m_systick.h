@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -39,6 +39,7 @@ extern void armv7m_systick_configure(void);
 extern void armv7m_systick_enable(void);
 extern void armv7m_systick_disable(void);
 extern uint64_t armv7m_systick_micros(void);
+extern uint64_t armv7m_systick_millis(void);
 
 #ifdef __cplusplus
 }
