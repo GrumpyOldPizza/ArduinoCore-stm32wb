@@ -264,36 +264,45 @@ static void stm32wb_usbd_cdc_int_callback(void *context, uint8_t ep_addr)
     uint16_t serial_state;
 
     stm32wb_usbd_cdc_class.serial_state &= ~(USB_CDC_SERIAL_STATE_DCD | USB_CDC_SERIAL_STATE_DSR | USB_CDC_SERIAL_STATE_BREAK | USB_CDC_SERIAL_STATE_RI);
-    
-    if ((stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR) && stm32wb_usbd_cdc_class.int_request)
-    {
-	stm32wb_usbd_cdc_class.int_request = false;
 
-	serial_state = stm32wb_usbd_cdc_class.serial_state;
-	
-	stm32wb_usbd_cdc_class.notification.data[0] = serial_state & 255;
-	stm32wb_usbd_cdc_class.notification.data[1] = serial_state >> 8;
+    if (stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR)
+    {
+        if (stm32wb_usbd_cdc_class.int_request)
+        {
+            stm32wb_usbd_cdc_class.int_request = false;
             
-	stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_CONTROL_EP_ADDR, (uint8_t*)&stm32wb_usbd_cdc_class.notification, 10, stm32wb_usbd_cdc_int_callback, NULL);
+            serial_state = stm32wb_usbd_cdc_class.serial_state;
+            
+            stm32wb_usbd_cdc_class.notification.data[0] = serial_state & 255;
+            stm32wb_usbd_cdc_class.notification.data[1] = serial_state >> 8;
+            
+            stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_CONTROL_EP_ADDR, (uint8_t*)&stm32wb_usbd_cdc_class.notification, 10, stm32wb_usbd_cdc_int_callback, NULL);
+        }
+        else
+        {
+            armv7m_atomic_storeb(&stm32wb_usbd_cdc_class.int_busy, STM32WB_USBD_CDC_INT_IDLE);
+        }
+
+        if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_READY)
+        {
+            stm32wb_usbd_cdc_class.state = STM32WB_USBD_CDC_STATE_CONNECTED;
+            
+            if (stm32wb_usbd_cdc_class.tx_status)
+            {
+                if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
+                {
+                    stm32wb_usbd_cdc_class.tx_zlp = stm32wb_usbd_cdc_class.tx_count && !(stm32wb_usbd_cdc_class.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
+                    
+                    stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, (uint8_t*)stm32wb_usbd_cdc_class.tx_data, stm32wb_usbd_cdc_class.tx_count, stm32wb_usbd_cdc_tx_callback, NULL);
+                }
+            }
+        }
     }
     else
     {
 	armv7m_atomic_storeb(&stm32wb_usbd_cdc_class.int_busy, STM32WB_USBD_CDC_INT_IDLE);
     }
-
-    if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_READY)
-    {
-	stm32wb_usbd_cdc_class.state = STM32WB_USBD_CDC_STATE_CONNECTED;
-
-	if (stm32wb_usbd_cdc_class.tx_status)
-	{
-	    armv7m_atomic_storeb(&stm32wb_usbd_cdc_class.tx_busy, STM32WB_USBD_CDC_TX_BUSY);
-
-	    stm32wb_usbd_cdc_class.tx_zlp = stm32wb_usbd_cdc_class.tx_count && !(stm32wb_usbd_cdc_class.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
-		
-	    stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, (uint8_t*)stm32wb_usbd_cdc_class.tx_data, stm32wb_usbd_cdc_class.tx_count, stm32wb_usbd_cdc_tx_callback, NULL);
-	}
-    }
+    
 }
 
 static void stm32wb_usbd_cdc_int_request(void)
@@ -302,19 +311,26 @@ static void stm32wb_usbd_cdc_int_request(void)
 
     stm32wb_usbd_cdc_class.int_request = true;
 
-    if (!stm32wb_usbd_cdc_class.suspended && (stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR))
+    if (stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR)
     {
-	if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.int_busy, STM32WB_USBD_CDC_INT_IDLE, STM32WB_USBD_CDC_INT_BUSY) == STM32WB_USBD_CDC_INT_IDLE)
-	{
-	    stm32wb_usbd_cdc_class.int_request = false;
-
-	    serial_state = stm32wb_usbd_cdc_class.serial_state;
-	
-	    stm32wb_usbd_cdc_class.notification.data[0] = serial_state & 255;
-	    stm32wb_usbd_cdc_class.notification.data[1] = serial_state >> 8;
-            
-	    stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_CONTROL_EP_ADDR, (uint8_t*)&stm32wb_usbd_cdc_class.notification, 10, stm32wb_usbd_cdc_int_callback, NULL);
-	}
+        if (stm32wb_usbd_cdc_class.suspended)
+        {
+            stm32wb_usbd_wakeup();
+        }
+        else
+        {
+            if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.int_busy, STM32WB_USBD_CDC_INT_IDLE, STM32WB_USBD_CDC_INT_BUSY) == STM32WB_USBD_CDC_INT_IDLE)
+            {
+                stm32wb_usbd_cdc_class.int_request = false;
+                
+                serial_state = stm32wb_usbd_cdc_class.serial_state;
+                
+                stm32wb_usbd_cdc_class.notification.data[0] = serial_state & 255;
+                stm32wb_usbd_cdc_class.notification.data[1] = serial_state >> 8;
+                
+                stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_CONTROL_EP_ADDR, (uint8_t*)&stm32wb_usbd_cdc_class.notification, 10, stm32wb_usbd_cdc_int_callback, NULL);
+            }
+        }
     }
 }
 
@@ -368,7 +384,7 @@ static void stm32wb_usbd_cdc_start(void *context)
 static void stm32wb_usbd_cdc_stop(void *context)
 {
     stm32wb_usbd_cdc_class.suspended = true;
-
+    
     if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_CONNECTED)
     {
 	stm32wb_usbd_cdc_class.state = STM32WB_USBD_CDC_STATE_READY;
@@ -509,21 +525,41 @@ static bool stm32wb_usbd_cdc_request(void *context, int state, const stm32wb_usb
 static void stm32wb_usbd_cdc_suspend(void *context)
 {
     stm32wb_usbd_cdc_class.suspended = true;
-
-    if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_CONNECTED)
-    {
-	stm32wb_usbd_cdc_class.state = STM32WB_USBD_CDC_STATE_READY;
-    }
-    
-    stm32wb_usbd_cdc_int_flush();
-    stm32wb_usbd_cdc_tx_flush();
 }
 
 static void stm32wb_usbd_cdc_resume(void *context)
 {
+    uint16_t serial_state;
+    
     stm32wb_usbd_cdc_class.suspended = false;
 
-    stm32wb_usbd_cdc_int_request();
+    if (stm32wb_usbd_cdc_class.int_request && (stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR))
+    {
+	if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.int_busy, STM32WB_USBD_CDC_INT_IDLE, STM32WB_USBD_CDC_INT_BUSY) == STM32WB_USBD_CDC_INT_IDLE)
+	{
+            stm32wb_usbd_cdc_class.int_request = false;
+
+            serial_state = stm32wb_usbd_cdc_class.serial_state;
+            
+            stm32wb_usbd_cdc_class.notification.data[0] = serial_state & 255;
+            stm32wb_usbd_cdc_class.notification.data[1] = serial_state >> 8;
+            
+            stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_CONTROL_EP_ADDR, (uint8_t*)&stm32wb_usbd_cdc_class.notification, 10, stm32wb_usbd_cdc_int_callback, NULL);
+        }
+    }
+    
+    if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_CONNECTED)
+    {
+        if (stm32wb_usbd_cdc_class.tx_status)
+        {
+            if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
+            {
+                stm32wb_usbd_cdc_class.tx_zlp = stm32wb_usbd_cdc_class.tx_count && !(stm32wb_usbd_cdc_class.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
+		
+                stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, (uint8_t*)stm32wb_usbd_cdc_class.tx_data, stm32wb_usbd_cdc_class.tx_count, stm32wb_usbd_cdc_tx_callback, NULL);
+            }
+        }
+    }
 }
 
 static void stm32wb_usbd_cdc_sof(void *context)
@@ -605,7 +641,7 @@ static bool __svc_stm32wb_usbd_cdc_transmit(void)
 {
     volatile uint8_t *p_status_return;
 
-    if (stm32wb_usbd_cdc_class.suspended || !(stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR))
+    if (!(stm32wb_usbd_cdc_class.line_state & USB_CDC_LINE_STATE_DTR))
     {
 	p_status_return = stm32wb_usbd_cdc_class.tx_status;
 
@@ -618,12 +654,19 @@ static bool __svc_stm32wb_usbd_cdc_transmit(void)
 
     if (stm32wb_usbd_cdc_class.state == STM32WB_USBD_CDC_STATE_CONNECTED)
     {
-	if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
-	{
-	    stm32wb_usbd_cdc_class.tx_zlp = stm32wb_usbd_cdc_class.tx_count && !(stm32wb_usbd_cdc_class.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
-	    
-	    stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, (uint8_t*)stm32wb_usbd_cdc_class.tx_data, stm32wb_usbd_cdc_class.tx_count, stm32wb_usbd_cdc_tx_callback, NULL);
-	}
+        if (stm32wb_usbd_cdc_class.suspended)
+        {
+            stm32wb_usbd_wakeup();
+        }
+        else
+        {
+            if (armv7m_atomic_casb(&stm32wb_usbd_cdc_class.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
+            {
+                stm32wb_usbd_cdc_class.tx_zlp = stm32wb_usbd_cdc_class.tx_count && !(stm32wb_usbd_cdc_class.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
+                
+                stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, (uint8_t*)stm32wb_usbd_cdc_class.tx_data, stm32wb_usbd_cdc_class.tx_count, stm32wb_usbd_cdc_tx_callback, NULL);
+            }
+        }
     }
 
     return true;

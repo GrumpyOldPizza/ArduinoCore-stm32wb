@@ -398,8 +398,10 @@ bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t *data, 
                     {
                         *p_data_return = data;
                         *p_length_return = 2;
-                        
-                        data[0] = stm32wb_usbd_control.remote_wakeup ? 0x02 : 0x00;
+
+                        /* Return "SelfPowered" to avoid frequent auto-suspend operations.
+                         */
+                        data[0] = stm32wb_usbd_control.remote_wakeup ? 0x03 : 0x01;
                         data[1] = 0x00;
                         
                         success = true;
