@@ -33,11 +33,13 @@
 extern "C" {
 #endif
 
+#define STM32WB_USBD_CDC_INTERFACE_COUNT         2
+  
 #define STM32WB_USBD_CDC_CONTROL_EP_ADDR         0x81
 #define STM32WB_USBD_CDC_DATA_IN_EP_ADDR         0x82
 #define STM32WB_USBD_CDC_DATA_OUT_EP_ADDR        0x02
 
-#define STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE 16
+#define STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE 10
 #define STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE    64
 #define STM32WB_USBD_CDC_CONTROL_INTERVAL        50
    
@@ -105,7 +107,7 @@ extern int32_t stm32wb_usbd_cdc_peek(void);
 extern uint32_t stm32wb_usbd_cdc_read(uint8_t *rx_data, uint32_t rx_count);
 extern bool stm32wb_usbd_cdc_transmit(const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_usbd_cdc_done_callback_t callback, void *context);
 
-extern const stm32wb_usbd_class_interface_t stm32wb_usbd_cdc_interface;
+extern const stm32wb_usbd_class_t stm32wb_usbd_cdc_class;
   
 #ifdef __cplusplus
 }

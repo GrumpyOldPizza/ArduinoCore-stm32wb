@@ -47,23 +47,24 @@ enum {
 #define STM32WB_UART_FIFO_SUPPORTED     1
 #define STM32WB_UART_RTS_SUPPORTED      1
 #define STM32WB_UART_CTS_SUPPORTED      1
+#define STM32WB_UART_XONOFF_SUPPORTED   1
 #define STM32WB_UART_BREAK_SUPPORTED    1
 #define STM32WB_UART_SPI_SUPPORTED      1
   
-#define STM32WB_UART_OPTION_STOP_MASK        0x00000003
+#define STM32WB_UART_OPTION_STOP_MASK        0x00000001
 #define STM32WB_UART_OPTION_STOP_SHIFT       0
 #define STM32WB_UART_OPTION_STOP_1           0x00000000
-#define STM32WB_UART_OPTION_STOP_1_5         0x00000001
-#define STM32WB_UART_OPTION_STOP_2           0x00000002
-#define STM32WB_UART_OPTION_PARITY_MASK      0x0000000c
-#define STM32WB_UART_OPTION_PARITY_SHIFT     2
+#define STM32WB_UART_OPTION_STOP_2           0x00000001
+#define STM32WB_UART_OPTION_PARITY_MASK      0x00000006
+#define STM32WB_UART_OPTION_PARITY_SHIFT     1
 #define STM32WB_UART_OPTION_PARITY_NONE      0x00000000
+#define STM32WB_UART_OPTION_PARITY_EVEN      0x00000002
 #define STM32WB_UART_OPTION_PARITY_ODD       0x00000004
-#define STM32WB_UART_OPTION_PARITY_EVEN      0x00000008
-#define STM32WB_UART_OPTION_DATA_SIZE_MASK   0x00000010
-#define STM32WB_UART_OPTION_DATA_SIZE_SHIFT  4
+#define STM32WB_UART_OPTION_DATA_SIZE_MASK   0x00000008
+#define STM32WB_UART_OPTION_DATA_SIZE_SHIFT  3
 #define STM32WB_UART_OPTION_DATA_SIZE_7      0x00000000
-#define STM32WB_UART_OPTION_DATA_SIZE_8      0x00000010
+#define STM32WB_UART_OPTION_DATA_SIZE_8      0x00000008
+#define STM32WB_UART_OPTION_XONOFF           0x00000010
 #define STM32WB_UART_OPTION_RTS              0x00000020
 #define STM32WB_UART_OPTION_CTS              0x00000040
 #define STM32WB_UART_OPTION_WAKEUP           0x00000080
@@ -88,16 +89,16 @@ typedef void (*stm32wb_uart_done_callback_t)(void *context);
 #define STM32WB_UART_STATE_INIT              1
 #define STM32WB_UART_STATE_NOT_READY         2
 #define STM32WB_UART_STATE_READY             3
-#define STM32WB_UART_STATE_BREAK             4
+#define STM32WB_UART_STATE_TRANSMIT_START    4
+#define STM32WB_UART_STATE_TRANSMIT_RESTART  5
+#define STM32WB_UART_STATE_TRANSMIT_DATA     6
+#define STM32WB_UART_STATE_TRANSMIT_STOP     7
+#define STM32WB_UART_STATE_TRANSMIT_SUSPEND  8
+#define STM32WB_UART_STATE_TRANSMIT_RESUME   9
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
-#define STM32WB_UART_STATE_DATA              5
-#define STM32WB_UART_STATE_DATA_DMA          6
+#define STM32WB_UART_STATE_DATA              10
+#define STM32WB_UART_STATE_DATA_DMA          11
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
-#define STM32WB_UART_STATE_TRANSMIT_START    7
-#define STM32WB_UART_STATE_TRANSMIT_DATA     8
-#define STM32WB_UART_STATE_TRANSMIT_STOP     9
-#define STM32WB_UART_STATE_BREAK_ON          10
-#define STM32WB_UART_STATE_BREAK_OFF         11
   
 #define STM32WB_UART_STATUS_SUCCESS          0
 #define STM32WB_UART_STATUS_FAILURE          1
@@ -140,14 +141,13 @@ typedef struct _stm32wb_uart_t {
     uint32_t                      clock;
     uint32_t                      option;
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
-    uint32_t                      control;
+    uint16_t                      control;
     uint16_t                      mask;
-    uint8_t                       rx_none;
-    uint8_t                       tx_default;
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
     uint32_t                      cr1;
     uint32_t                      cr2;
     uint32_t                      cr3;
+    uint32_t                      brr;
     volatile uint32_t             mode;
     stm32wb_uart_event_callback_t ev_callback;
     void                          *ev_context;
@@ -175,11 +175,12 @@ extern bool stm32wb_uart_enable(stm32wb_uart_t *uart, uint32_t baudrate, uint32_
 extern bool stm32wb_uart_disable(stm32wb_uart_t *uart);
 extern bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t option, uint32_t rx_threshold[3]);
 extern bool stm32wb_uart_break_state(stm32wb_uart_t *uart);
+extern bool stm32wb_uart_cts_state(stm32wb_uart_t *uart);
 extern uint32_t stm32wb_uart_count(stm32wb_uart_t *uart);
 extern uint32_t stm32wb_uart_read(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_count);
 extern int32_t stm32wb_uart_peek(stm32wb_uart_t *uart);
+extern bool stm32wb_uart_break(stm32wb_uart_t *uart, bool onoff);
 extern bool stm32wb_uart_transmit(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
-extern bool stm32wb_uart_break(stm32wb_uart_t *uart, bool onoff, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
 extern bool stm32wb_uart_busy(stm32wb_uart_t *uart);
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)

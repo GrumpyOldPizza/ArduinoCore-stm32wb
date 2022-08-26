@@ -139,7 +139,7 @@ bool stm32wb_lptim_event_start(uint32_t compare, uint32_t period, uint32_t contr
     LPTIM2->ARR = (period - 1) & 0xffff;
     LPTIM2->CR = LPTIM_CR_CNTSTRT | LPTIM_CR_ENABLE;
     
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     NVIC_EnableIRQ(LPTIM2_IRQn);
 
@@ -155,7 +155,7 @@ bool stm32wb_lptim_event_stop(void)
 
     NVIC_DisableIRQ(LPTIM2_IRQn);
 
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     armv7m_atomic_and(&EXTI->IMR1, ~EXTI_IMR1_IM30);
     
@@ -252,7 +252,7 @@ static void stm32wb_lptim_timeout_clock_start(uint32_t compare)
     LPTIM1->ARR = 0xffff;
     LPTIM1->CR = LPTIM_CR_CNTSTRT | LPTIM_CR_ENABLE;
 
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
     stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_2);
 
     NVIC_EnableIRQ(LPTIM1_IRQn);
@@ -266,7 +266,7 @@ static void stm32wb_lptim_timeout_clock_stop()
 
     if (stm32wb_lptim_device.timeout_sync)
     {
-	stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+	stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
     }
 
     armv7m_atomic_and(&EXTI->IMR1, ~EXTI_IMR1_IM29);
@@ -470,7 +470,7 @@ static __attribute__((optimize("O3"))) void stm32wb_lptim_timeout_routine(void)
 			    stm32wb_lptim_device.timeout_sync = 1;
 			    stm32wb_lptim_device.timeout_compare[0] = compare;
 			
-			    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+			    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
 			    LPTIM1->CMP = compare & 0xffff;
 			}
@@ -641,7 +641,7 @@ __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
 	{
 	    stm32wb_lptim_device.timeout_sync = 0;
 	    
-	    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+	    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 	}
     }
     

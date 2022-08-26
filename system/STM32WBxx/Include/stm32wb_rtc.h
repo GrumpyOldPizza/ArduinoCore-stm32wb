@@ -73,20 +73,18 @@ struct _stm32wb_rtc_timer_t {
     volatile uint32_t                 clock[2];
 };
 
-#define STM32WB_RTC_IRQ_PRIORITY                 ARMV7M_IRQ_PRIORITY_MEDIUM
+#define STM32WB_RTC_IRQ_PRIORITY                ARMV7M_IRQ_PRIORITY_MEDIUM
 
-#define STM32WB_RTC_STATUS_TIME_INTERNAL         0x00000001
-#define STM32WB_RTC_STATUS_TIME_EXTERNAL         0x00000002
-#define STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL   0x00000004
-#define STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL   0x00000008
-#define STM32WB_RTC_STATUS_LOCAL_OFFSET_INTERNAL 0x00000010
-#define STM32WB_RTC_STATUS_LOCAL_OFFSET_EXTERNAL 0x00000020
+#define STM32WB_RTC_STATUS_TIME_INTERNAL        0x00000001
+#define STM32WB_RTC_STATUS_TIME_EXTERNAL        0x00000002
+#define STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL  0x00000004
+#define STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL  0x00000008
 
-#define STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING    0x00000001
-#define STM32WB_RTC_TAMP_CONTROL_EDGE_RISING     0x00000002
+#define STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING   0x00000001
+#define STM32WB_RTC_TAMP_CONTROL_EDGE_RISING    0x00000002
 
-#define STM32WB_RTC_STAMP_CONTROL_EDGE_FALLING   0x00000001
-#define STM32WB_RTC_STAMP_CONTROL_EDGE_RISING    0x00000002
+#define STM32WB_RTC_STAMP_CONTROL_EDGE_FALLING  0x00000001
+#define STM32WB_RTC_STAMP_CONTROL_EDGE_RISING   0x00000002
   
 #define STM32WB_RTC_PREDIV_S         2048
 #define STM32WB_RTC_PREDIV_A         16
@@ -95,49 +93,40 @@ struct _stm32wb_rtc_timer_t {
 
 #define STM32WB_RTC_CLOCK_TICKS_PER_SECOND STM32WB_RTC_PREDIV_S
 
-#define STM32WB_RTC_BKP16R_DATA_MASK                  0x0000ffff
-#define STM32WB_RTC_BKP16R_DATA_SHIFT                 0
-#define STM32WB_RTC_BKP16R_NOT_DATA_MASK              0xffff0000
-#define STM32WB_RTC_BKP16R_NOT_DATA_SHIFT             16
-#define STM32WB_RTC_BKP16R_REVISION_MASK              0x000000ff
-#define STM32WB_RTC_BKP16R_REVISION_SHIFT             0
-//#define STM32WB_RTC_BKP16R_REVISION_CURRENT           0x00000001
-#define STM32WB_RTC_BKP16R_REVISION_CURRENT           0x00000003
-#define STM32WB_RTC_BKP16R_DFU_MASK                   0x00000100
-#define STM32WB_RTC_BKP16R_DFU_SHIFT                  8
-#define STM32WB_RTC_BKP16R_DFU                        STM32WB_RTC_BKP16R_DFU_MASK                 
-#define STM32WB_RTC_BKP16R_OTA_MASK                   0x00000200
-#define STM32WB_RTC_BKP16R_OTA_SHIFT                  9
-#define STM32WB_RTC_BKP16R_OTA                        STM32WB_RTC_BKP16R_OTA_MASK
-#define STM32WB_RTC_BKP16R_CRASH_MASK                 0x00000400
-#define STM32WB_RTC_BKP16R_CRASH_SHIFT                10
-#define STM32WB_RTC_BKP16R_CRASH                      STM32WB_RTC_BKP16R_CRASH_MASK
-
-#define STM32WB_RTC_BKP17R_HSECLK_MASK                0x00000001
-#define STM32WB_RTC_BKP17R_HSECLK_SHIFT               0
-#define STM32WB_RTC_BKP17R_HSECLK                     STM32WB_RTC_BKP17R_HSECLK_MASK
+#define STM32WB_RTC_BKP16R_DATA_MASK                0x0000ffff
+#define STM32WB_RTC_BKP16R_DATA_SHIFT               0
+#define STM32WB_RTC_BKP16R_NOT_DATA_MASK            0xffff0000
+#define STM32WB_RTC_BKP16R_NOT_DATA_SHIFT           16
+#define STM32WB_RTC_BKP16R_REVISION_MASK            0x000000ff
+#define STM32WB_RTC_BKP16R_REVISION_SHIFT           0
+#define STM32WB_RTC_BKP16R_REVISION_CURRENT         0x00000000
+#define STM32WB_RTC_BKP16R_DFU_MASK                 0x00000100
+#define STM32WB_RTC_BKP16R_DFU_SHIFT                8
+#define STM32WB_RTC_BKP16R_DFU                      STM32WB_RTC_BKP16R_DFU_MASK                 
+#define STM32WB_RTC_BKP16R_OTA_MASK                 0x00000200
+#define STM32WB_RTC_BKP16R_OTA_SHIFT                9
+#define STM32WB_RTC_BKP16R_OTA                      STM32WB_RTC_BKP16R_OTA_MASK
+#define STM32WB_RTC_BKP16R_CRASH_MASK               0x00000400
+#define STM32WB_RTC_BKP16R_CRASH_SHIFT              10
+#define STM32WB_RTC_BKP16R_CRASH                    STM32WB_RTC_BKP16R_CRASH_MASK
   
-#define STM32WB_RTC_BKP18R_SECONDS_OFFSET_MASK        0xffffffff
-#define STM32WB_RTC_BKP18R_SECONDS_OFFSET_SHIFT       0
+#define STM32WB_RTC_BKP17R_SECONDS_OFFSET_MASK      0xffffffff
+#define STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT     0
 
-#define STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK          0x000007ff
-#define STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT         0
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_MASK            0x0003f800
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_SHIFT           11
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_SIZE            7
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_MASK          0x1ffc0000
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_SHIFT         18
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_SIZE          11
-#define STM32WB_RTC_BKP19R_TIME_WRITTEN_MASK          0x20000000
-#define STM32WB_RTC_BKP19R_TIME_WRITTEN_SHIFT         29
-#define STM32WB_RTC_BKP19R_TIME_WRITTEN               STM32WB_RTC_BKP19R_TIME_WRITTEN_MASK
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN_MASK    0x40000000
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN_SHIFT   30
-#define STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN         STM32WB_RTC_BKP19R_UTC_OFFSET_WRITTEN_MASK
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN_MASK  0x80000000
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN_SHIFT 31
-#define STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN       STM32WB_RTC_BKP19R_LOCAL_OFFSET_WRITTEN_MASK
-  
+#define STM32WB_RTC_BKP18R_HSECLK_MASK              0x00000400
+#define STM32WB_RTC_BKP18R_HSECLK_SHIFT             10
+#define STM32WB_RTC_BKP18R_HSECLK                   STM32WB_RTC_BKP18R_HSECLK_MASK
+#define STM32WB_RTC_BKP18R_TIME_WRITTEN_MASK        0x00000800
+#define STM32WB_RTC_BKP18R_TIME_WRITTEN_SHIFT       11
+#define STM32WB_RTC_BKP18R_TIME_WRITTEN             STM32WB_RTC_BKP18R_TIME_WRITTEN_MASK
+#define STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN_MASK  0x00001000
+#define STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN_SHIFT 12
+#define STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN       STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN_MASK
+#define STM32WB_RTC_BKP18R_TICKS_OFFSET_MASK        0x00ffe000
+#define STM32WB_RTC_BKP18R_TICKS_OFFSET_SHIFT       13
+#define STM32WB_RTC_BKP18R_UTC_OFFSET_MASK          0xff000000
+#define STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT         24
+
 extern void __stm32wb_rtc_initialize(void);
 extern uint32_t stm32wb_rtc_status(void);
 
@@ -145,8 +134,6 @@ extern int32_t stm32wb_rtc_get_calibration(void);
 extern void stm32wb_rtc_set_calibration(int32_t calibration);
 extern int32_t stm32wb_rtc_get_utc_offset(void);
 extern void stm32wb_rtc_set_utc_offset(int32_t utc_offset, bool external);
-extern int32_t stm32wb_rtc_get_local_offset(void);
-extern void stm32wb_rtc_set_local_offset(int32_t local_offset, bool external);
 
 extern void stm32wb_rtc_clock_capture(stm32wb_rtc_capture_t *data);
 extern uint64_t stm32wb_rtc_clock_convert(const stm32wb_rtc_capture_t *data);
@@ -169,7 +156,7 @@ extern bool stm32wb_rtc_timer_start(stm32wb_rtc_timer_t *timer, uint64_t clock);
 extern void stm32wb_rtc_timer_stop(stm32wb_rtc_timer_t *timer);
 extern bool stm32wb_rtc_timer_done(stm32wb_rtc_timer_t *timer);
 
-extern bool stm32wb_rtc_wakeup_start(uint32_t seconds, stm32wb_rtc_wakeup_callback_t callback, void *context);
+extern bool stm32wb_rtc_wakeup_start(uint32_t ticks, stm32wb_rtc_wakeup_callback_t callback, void *context);
 extern void stm32wb_rtc_wakeup_stop();
 extern bool stm32wb_rtc_wakeup_done();
 

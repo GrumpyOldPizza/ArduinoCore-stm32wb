@@ -168,6 +168,16 @@ uint32_t armv7m_atomic_andzb(volatile uint32_t *p_data, uint32_t data, volatile 
     return __armv7m_atomic_andzb(p_data, data, p_zero);
 }
 
+uint32_t armv7m_atomic_andhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits)
+{
+    return __armv7m_atomic_andhz(p_data, data, p_zero, bits);
+}
+
+uint32_t armv7m_atomic_andhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero)
+{
+    return __armv7m_atomic_andhzb(p_data, data, p_zero);
+}
+
 uint32_t armv7m_atomic_orz(volatile uint32_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits)
 {
     return __armv7m_atomic_orz(p_data, data, p_zero, bits);
@@ -176,5 +186,15 @@ uint32_t armv7m_atomic_orz(volatile uint32_t *p_data, uint32_t data, volatile ui
 uint32_t armv7m_atomic_orzb(volatile uint32_t *p_data, uint32_t data, volatile uint8_t *p_zero)
 {
     return __armv7m_atomic_orzb(p_data, data, p_zero);
+}
+
+uint32_t armv7m_atomic_orhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits)
+{
+    return __armv7m_atomic_orhz(p_data, data, p_zero, bits);
+}
+
+uint32_t armv7m_atomic_orhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero)
+{
+    return __armv7m_atomic_orhzb(p_data, data, p_zero);
 }
 

@@ -476,7 +476,7 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
             {
                 if (i2c->state == STM32WB_I2C_STATE_READY)
                 {
-                    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
                     
                     stm32wb_i2c_start(i2c);
                 }
@@ -531,7 +531,7 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
             
             stm32wb_i2c_stop(i2c);
 
-            stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+            stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
             i2c->state = STM32WB_I2C_STATE_READY;
         }
@@ -670,7 +670,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
         {
             if (i2c_isr & I2C_ISR_ADDR)
             {
-                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
                 stm32wb_i2c_slave_address(i2c);
             }
@@ -972,7 +972,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
             }
             else
             {
-                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
                 stm32wb_i2c_slave_check(i2c);
             }
@@ -1022,7 +1022,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
             }
             else
             {
-                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
                 stm32wb_i2c_slave_check(i2c);
             }

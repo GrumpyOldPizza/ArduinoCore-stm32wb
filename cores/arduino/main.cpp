@@ -22,10 +22,10 @@
 
 #if defined(ARDUINO_MAKEFILE)
 
-void setup(void) {
+void setup() {
 }
 
-void loop(void) {
+void loop() {
 }
 
 #endif
@@ -41,7 +41,7 @@ void initVariant() {
 void initUSB() __attribute__((weak));
 void initUSB() {
   USBDevice.begin();
-  USBDevice.attach();
+  USBDevice.start();
 }
 
 #endif

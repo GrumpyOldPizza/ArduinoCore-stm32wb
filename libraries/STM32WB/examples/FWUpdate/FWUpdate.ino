@@ -1,9 +1,11 @@
 #include "STM32WB.h"
 #include "stm32wb_ipcc.h"
 
-#include "../Firmware/stm32wb5x_FUS_fw_1_0_2.h"
-#include "../Firmware/stm32wb5x_FUS_fw_1_1_0.h"
-#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_10_0.h"
+#include "../Firmware/stm32wb5x_FUS_fw.h"
+#include "../Firmware/stm32wb5x_FUS_fw_for_fus_0_5_3.h"
+//#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_13_3.h"
+#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_14_0.h"
+//#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_14_1.h"
 
 bool connected = false;
 bool success = true;
@@ -25,14 +27,14 @@ void setup(void) {
     if (success) {
         while (stm32wb_ipcc_sys_state() == STM32WB_IPCC_SYS_STATE_NONE) { }
         
-        success = stm32wb_ipcc_sys_firmware(WirelessStackVersion, WirelessStackType, WirelessStackAddress, WirelessStackImage, sizeof(WirelessStackImage), FusImage_1_0_2, FusImage_1_1_0, &code);
+        success = stm32wb_ipcc_sys_firmware(WirelessStackVersion, WirelessStackType, WirelessStackAddress, WirelessStackImage, sizeof(WirelessStackImage), FusImage, FusImage_for_0_5_3, &code);
     }
 
     digitalWrite(LED_BUILTIN, 0);
 
 #if defined(USBCONN)
     USBDevice.begin();
-    USBDevice.attach();
+    USBDevice.start();
 #endif
 
     Serial.begin(9600);

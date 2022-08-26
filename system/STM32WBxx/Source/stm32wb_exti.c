@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -124,17 +124,6 @@ __attribute__((optimize("O3"))) void stm32wb_exti_detach(uint16_t pin)
     armv7m_atomic_and(&EXTI->IMR1, ~mask);
     
     armv7m_atomic_andh(&stm32wb_exti_device.events, ~mask);
-}
-
-__attribute__((optimize("O3"))) void stm32wb_exti_raise(uint16_t pin)
-{
-    unsigned int mask, index;
-
-    index = (pin & STM32WB_GPIO_PIN_INDEX_MASK) >> STM32WB_GPIO_PIN_INDEX_SHIFT;
-
-    mask = 1ul << index;
-
-    EXTI->SWIER1 = mask;
 }
 
 __attribute__((optimize("O3"))) void stm32wb_exti_block(uint32_t mask)

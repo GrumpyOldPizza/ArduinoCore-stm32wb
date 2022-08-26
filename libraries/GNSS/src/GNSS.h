@@ -185,7 +185,7 @@ public:
     void onLocation(void(*callback)(void)) { onLocation(Callback(callback)); }
     void onSatellites(Callback callback);
     void onSatellites(void(*callback)(void)) { onSatellites(Callback(callback)); }
-
+    
 private:
     struct _stm32wb_uart_t *_uart;
     struct {

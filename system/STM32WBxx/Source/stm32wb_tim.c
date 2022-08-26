@@ -340,7 +340,7 @@ bool stm32wb_tim_start(stm32wb_tim_t *tim, uint32_t prescale, uint32_t reload)
 
     if (tim->state == STM32WB_TIM_STATE_READY)
     {
-        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
 	if (tim->callback)
 	{
@@ -389,7 +389,7 @@ bool stm32wb_tim_stop(stm32wb_tim_t *tim)
     armv7m_atomic_and(&TIM->CR1, ~TIM_CR1_CEN);
     armv7m_atomic_and(&TIM->DIER, ~TIM_DIER_UIE);
 
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     tim->state = STM32WB_TIM_STATE_READY;
 

@@ -54,7 +54,7 @@ TwoWire::TwoWire(struct _stm32wb_i2c_t *i2c, const struct _stm32wb_i2c_params_t 
     m_request_callback = NULL;
     m_transmit_callback = NULL;
 
-    m_done_callback = Callback(__wakeupCallback);
+    m_done_callback = Callback();
 
     k_work_create(&m_work, (k_work_routine_t)TwoWire::workRoutine, (void*)this);
 }
@@ -438,7 +438,7 @@ uint8_t TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSiz
 }
 
 bool TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSize, uint8_t *rxBuffer, size_t rxSize, bool stopBit, volatile uint8_t &status) {
-    return transfer(address, txBuffer, txSize, rxBuffer, rxSize, stopBit, status, Callback(__wakeupCallback));
+    return transfer(address, txBuffer, txSize, rxBuffer, rxSize, stopBit, status, Callback());
 }
 
 bool TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSize, uint8_t *rxBuffer, size_t rxSize, bool stopBit, volatile uint8_t &status, void(*callback)(void)) {
@@ -480,7 +480,7 @@ bool TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSize, 
 
     m_xf_status = &status;
 
-    m_done_callback = callback ? callback : Callback(__emptyCallback);
+    m_done_callback = callback;
 	
     m_transaction->control = stopBit ? 0 : STM32WB_I2C_CONTROL_RESTART;
     m_transaction->address = address;

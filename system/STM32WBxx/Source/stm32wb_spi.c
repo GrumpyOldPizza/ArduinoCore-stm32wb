@@ -45,6 +45,9 @@ typedef struct _stm32wb_spi_device_t {
 
 static stm32wb_spi_device_t stm32wb_spi_device;
 
+static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_rx_none;
+static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_tx_default;
+
 #define SPI_CR1_BR_DIV2   (0)
 #define SPI_CR1_BR_DIV4   (SPI_CR1_BR_0)
 #define SPI_CR1_BR_DIV8   (SPI_CR1_BR_1)
@@ -216,7 +219,7 @@ bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params)
     spi->tx_dma = params->tx_dma;
     spi->pins = params->pins;
 
-    spi->tx_default = 0xffff;
+    stm32wb_spi_dma_tx_default = 0xffff;
 
     spi->state = STM32WB_SPI_STATE_INIT;
 
@@ -259,11 +262,19 @@ bool stm32wb_spi_enable(stm32wb_spi_t *spi)
     spi->cr2 = 0;
 
     armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-    
+
+#if 1    
     stm32wb_gpio_pin_configure(spi->pins.mosi, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     stm32wb_gpio_pin_configure(spi->pins.miso, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     stm32wb_gpio_pin_configure(spi->pins.sck,  (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+#endif
 
+#if 0    
+    stm32wb_gpio_pin_configure(spi->pins.mosi, (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+    stm32wb_gpio_pin_configure(spi->pins.miso, (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+    stm32wb_gpio_pin_configure(spi->pins.sck,  (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+#endif
+    
     spi->state = STM32WB_SPI_STATE_READY;
 
     return true;
@@ -326,7 +337,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_acquire(stm32wb_spi_t *spi, uin
         stm32wb_exti_block(spi->mask);
     }
 
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
     stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_SPI1 << spi->instance);
 
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_SPI1 + spi->instance);
@@ -406,7 +417,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_release(stm32wb_spi_t *spi)
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_SPI1 + spi->instance);
 
     stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_SPI1 << spi->instance);
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     spi->state = STM32WB_SPI_STATE_READY;
 
@@ -864,7 +875,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
 
     stm32wb_dma_start(spi->rx_dma, (uint32_t)rx_data, (uint32_t)&SPI->DR, rx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
-    stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)&spi->tx_default, rx_count, tx_option);
+    stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)&stm32wb_spi_dma_tx_default, rx_count, tx_option);
         
     return true;
 }
@@ -942,7 +953,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     SPI->CR2 = spi_cr2;
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
                 
-    stm32wb_dma_start(spi->rx_dma, (uint32_t)&spi->rx_none, (uint32_t)&SPI->DR, tx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
+    stm32wb_dma_start(spi->rx_dma, (uint32_t)&stm32wb_spi_dma_rx_none, (uint32_t)&SPI->DR, tx_count, rx_option | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(spi->tx_dma, (uint32_t)&SPI->DR, (uint32_t)tx_data, tx_count, tx_option);
 
     return true;

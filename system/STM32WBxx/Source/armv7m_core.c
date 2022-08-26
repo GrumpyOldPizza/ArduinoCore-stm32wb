@@ -38,8 +38,8 @@ typedef struct _armv7m_core_control_t {
 
 static __attribute__((section(".noinit"))) armv7m_core_control_t armv7m_core_control;
 
-static __attribute__((section(".noinit"), used)) armv7m_core_info_t armv7m_core_info;
-static __attribute__((section(".noinit"), used)) armv7m_core_state_t armv7m_core_state;
+static __attribute__((section(".noinit2a"), used)) armv7m_core_info_t armv7m_core_info;
+static __attribute__((section(".noinit2a"), used)) armv7m_core_state_t armv7m_core_state;
 
 static void armv7m_core_fatal_callback(armv7m_core_state_t *state);
 
@@ -66,6 +66,7 @@ void __armv7m_core_initialize(void)
     __armv7m_pendsv_initialize();
     __armv7m_svcall_initialize();
     __armv7m_systick_initialize();
+    __armv7m_rtt_initialize(); 
     __armv7m_rtos_initialize();
 }
 

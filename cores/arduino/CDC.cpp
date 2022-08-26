@@ -60,8 +60,8 @@ CDC::CDC(void (*serialEventRun)(void)) {
         g_serialEventRun = serialEventRun;
     }
 
-    m_transmit_callback = Callback(__emptyCallback);
-    m_receive_callback = Callback(__wakeupCallback);
+    m_transmit_callback = Callback();
+    m_receive_callback = Callback();
 
     k_work_create(&m_work, (k_work_routine_t)&CDC::workRoutine, this);
 }
@@ -259,7 +259,7 @@ size_t CDC::write(const uint8_t *buffer, size_t size) {
 }
 
 bool CDC::write(const uint8_t *buffer, size_t size, volatile uint8_t &status) {
-    return write(buffer, size, status, Callback(__wakeupCallback));
+    return write(buffer, size, status, Callback());
 }
 
 bool CDC::write(const uint8_t *buffer, size_t size, volatile uint8_t &status, void(*callback)(void)) {
@@ -283,7 +283,7 @@ bool CDC::write(const uint8_t *buffer, size_t size, volatile uint8_t &status, Ca
     m_tx_size2 = size;
     m_tx_status2 = &status;
 
-    m_transmit_callback = callback ? callback : Callback(__emptyCallback);
+    m_transmit_callback = callback;
 
     if (!m_tx_busy) {
         m_tx_busy = true;
@@ -306,7 +306,7 @@ void CDC::setNonBlocking(bool enabled) {
 }
 
 void CDC::onReceive(Callback callback) {
-    m_receive_callback = callback ? callback : Callback(__wakeupCallback);
+    m_receive_callback = callback;
 }
 
 CDC::operator bool() {

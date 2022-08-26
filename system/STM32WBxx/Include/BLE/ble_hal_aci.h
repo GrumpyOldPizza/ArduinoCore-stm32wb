@@ -1,20 +1,19 @@
-/******************************************************************************
+/*****************************************************************************
  * @file    ble_hal_aci.h
- * @author  MCD
+ * @author  MDG
  * @brief   STM32WB BLE API (hal_aci)
  *          Auto-generated file: do not edit!
- ******************************************************************************
+ *****************************************************************************
  * @attention
  *
- * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
- * All rights reserved.</center></h2>
+ * Copyright (c) 2018-2022 STMicroelectronics.
+ * All rights reserved.
  *
- * This software component is licensed by ST under Ultimate Liberty license
- * SLA0044, the "License"; You may not use this file except in compliance with
- * the License. You may obtain a copy of the License at:
- *                             www.st.com/SLA0044
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
  *
- ******************************************************************************
+ *****************************************************************************
  */
 
 #ifndef BLE_HAL_ACI_H__
@@ -35,9 +34,10 @@ tBleStatus aci_hal_get_fw_build_number( uint16_t* Build_Number );
 
 /**
  * @brief ACI_HAL_WRITE_CONFIG_DATA
- * This command writes a value to a low level configure data structure. It is
- * useful to setup directly some low level parameters for the system in the
- * runtime.
+ * This command writes a value to a configure data structure. It is useful to
+ * setup directly some parameters for the system in the runtime.
+ * Note: the static random address set by this command is taken into account by
+ * the GAP only when it receives the ACI_GAP_INIT command.
  * 
  * @param Offset Offset of the element in the configuration data structure
  *        which has to be written.
@@ -48,8 +48,10 @@ tBleStatus aci_hal_get_fw_build_number( uint16_t* Build_Number );
  *          Encryption root key used to derive LTK and CSRK; 16 bytes
  *        - 0x18: CONFIG_DATA_IR_OFFSET;
  *          Identity root key used to derive LTK and CSRK; 16 bytes
- *        - 0x2E: CONFIG_DATA_RANDOM_ADDRESS_WR;
+ *        - 0x2E: CONFIG_DATA_RANDOM_ADDRESS_OFFSET;
  *          Static Random Address; 6 bytes
+ *        - 0xB0: CONFIG_DATA_SMP_MODE_OFFSET;
+ *          SMP mode (0: normal, 1:bypass); 1 byte
  * @param Length Length of data to be written
  * @param Value Data to be written
  * @return Value indicating success or error code.
@@ -60,8 +62,8 @@ tBleStatus aci_hal_write_config_data( uint8_t Offset,
 
 /**
  * @brief ACI_HAL_READ_CONFIG_DATA
- * This command requests the value in the low level configure data structure.
- * The number of read bytes changes for different Offset.
+ * This command requests the value in the configure data structure. The number
+ * of read bytes changes for different Offset.
  * 
  * @param Offset Offset of the element in the configuration data structure
  *        which has to be read.
@@ -72,8 +74,8 @@ tBleStatus aci_hal_write_config_data( uint8_t Offset,
  *          Encryption root key used to derive LTK and CSRK; 16 bytes
  *        - 0x18: CONFIG_DATA_IR_OFFSET
  *          Identity root key used to derive LTK and CSRK; 16 bytes
- *        - 0x80: CONFIG_DATA_RANDOM_ADDRESS
- *          Static random address; 6 bytes (read-only)
+ *        - 0x2E: CONFIG_DATA_RANDOM_ADDRESS_OFFSET;
+ *          Static Random Address; 6 bytes
  * @param[out] Data_Length Length of Data in octets
  * @param[out] Data Data field associated with Offset parameter
  * @return Value indicating success or error code.
@@ -102,8 +104,8 @@ tBleStatus aci_hal_read_config_data( uint8_t Offset,
  *        - 0x00: Standard Power
  *        - 0x01: High Power
  * @param PA_Level Power amplifier output level. Output power is indicative and
- *        it depends on the PCB layout and associated
- *        components.Here the values are given at the IC pin
+ *        depends on the PCB layout and associated components. Here the values
+ *        are given at the STM32WB output.
  *        Values:
  *        - 0x00: -40 dBm
  *        - 0x01: -20.85 dBm
@@ -200,6 +202,15 @@ tBleStatus aci_hal_tone_stop( void );
  * 
  * @param[out] Link_Status Array of link status (8 links). Each link status is
  *        1 byte.
+ *        Values:
+ *        - 0x00: Idle
+ *        - 0x01: Advertising
+ *        - 0x02: Connected in slave role
+ *        - 0x03: Scanning
+ *        - 0x04: Reserved
+ *        - 0x05: Connected in master role
+ *        - 0x06: TX test mode
+ *        - 0x07: RX test mode
  * @param[out] Link_Connection_Handle Array of connection handles (2 bytes) for
  *        8 links.
  * @return Value indicating success or error code.
@@ -256,29 +267,6 @@ tBleStatus aci_hal_get_anchor_period( uint32_t* Anchor_Period,
 tBleStatus aci_hal_set_event_mask( uint32_t Event_Mask );
 
 /**
- * @brief ACI_HAL_SET_SMP_ENG_CONFIG
- * This command is used to provide a specific engineering setup to the Security
- * Manager Protocol Layer. It may be used during development/debug only!
- * 
- * @param SMP_Config Mask to configure SMP engineering knobs
- *        Flags:
- *        - 0x00000000: Default config (all reset)
- *        - 0x00000001: Cheat Level 1 ON
- *        - 0x00000002: RFU
- *        - 0x00000003: Cheat Level 3 ON
- *        - 0x00000004: RFU
- *        - 0x00000005: Cheat Level 5 ON
- *        - 0x00000006: Cheat Level 6 ON
- *        - 0x00000007: Cheat Level 7 ON
- *        - 0x00000010: DBG messages ON
- *        - 0x00000100: Debug Public Key ON
- *        - 0x00000107: Debug KEY On + DBG msg Off + CL=7
- *        - 0x00000117: Debug KEY On + DBG msg On + CL=7
- * @return Value indicating success or error code.
- */
-tBleStatus aci_hal_set_smp_eng_config( uint32_t SMP_Config );
-
-/**
  * @brief ACI_HAL_GET_PM_DEBUG_INFO
  * This command is used to retrieve TX, RX and total buffer count allocated for
  * ACL packets.
@@ -291,6 +279,20 @@ tBleStatus aci_hal_set_smp_eng_config( uint32_t SMP_Config );
 tBleStatus aci_hal_get_pm_debug_info( uint8_t* Allocated_For_TX,
                                       uint8_t* Allocated_For_RX,
                                       uint8_t* Allocated_MBlocks );
+
+/**
+ * @brief ACI_HAL_SET_SLAVE_LATENCY
+ * This command is used to disable/enable the slave latency feature during a
+ * connection. Note that, by default, the slave latency is enabled at
+ * connection time.
+ * 
+ * @param Enable Enable/disable slave latency.
+ *        Values:
+ *        - 0x00: Slave latency is disabled
+ *        - 0x01: Slave latency is enabled
+ * @return Value indicating success or error code.
+ */
+tBleStatus aci_hal_set_slave_latency( uint8_t Enable );
 
 /**
  * @brief ACI_HAL_READ_RADIO_REG

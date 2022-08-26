@@ -28,6 +28,9 @@ void setup( void )
     GNSS.setAntenna(GNSS_ANTENNA_INTERNAL);
 
     while (GNSS.busy()) { }
+
+    GNSS.onLocation(STM32WB.wakeup);
+    GNSS.onSatellites(STM32WB.wakeup);
 }
 
 void loop( void )

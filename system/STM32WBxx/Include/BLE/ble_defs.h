@@ -1,19 +1,18 @@
 /*****************************************************************************
  * @file    ble_defs.h
- * @author  MCD
+ * @author  MDG
  * @brief   This file contains definitions used for BLE Stack interface.
  *****************************************************************************
  * @attention
  *
- * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
- * All rights reserved.</center></h2>
+ * Copyright (c) 2018-2022 STMicroelectronics.
+ * All rights reserved.
  *
- * This software component is licensed by ST under Ultimate Liberty license
- * SLA0044, the "License"; You may not use this file except in compliance with
- * the License. You may obtain a copy of the License at:
- *                             www.st.com/SLA0044
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
  *
- ******************************************************************************
+ *****************************************************************************
  */
 
 #ifndef BLE_DEFS_H__
@@ -21,321 +20,480 @@
 
 /* ------------------------------------------------------------------------- */
 
+#define ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_RESP		0xFD82
+
 /* HCI commands */
-#define HCI_DISCONNECT						0x0406
+#define HCI_DISCONNECT                                          0x0406
 #define HCI_READ_REMOTE_VERSION_INFORMATION			0x041D
-#define HCI_SET_EVENT_MASK					0x0C01
-#define HCI_RESET						0x0C03
-#define HCI_READ_TRANSMIT_POWER_LEVEL				0x0C2D
+#define HCI_SET_EVENT_MASK			                0x0C01
+#define HCI_RESET			                        0x0C03
+#define HCI_READ_TRANSMIT_POWER_LEVEL			        0x0C2D
 #define HCI_SET_CONTROLLER_TO_HOST_FLOW_CONTROL			0x0C31
-#define HCI_HOST_BUFFER_SIZE					0x0C33
+#define HCI_HOST_BUFFER_SIZE			                0x0C33
 #define HCI_HOST_NUMBER_OF_COMPLETED_PACKETS			0x0C35
 #define HCI_READ_LOCAL_VERSION_INFORMATION			0x1001
 #define HCI_READ_LOCAL_SUPPORTED_COMMANDS			0x1002
 #define HCI_READ_LOCAL_SUPPORTED_FEATURES			0x1003
-#define HCI_READ_BD_ADDR					0x1009
-#define HCI_READ_RSSI						0x1405
+#define HCI_READ_BD_ADDR			                0x1009
+#define HCI_READ_RSSI			                        0x1405
 
 /* HCI LE commands */
-#define HCI_LE_SET_EVENT_MASK					0x2001
-#define HCI_LE_READ_BUFFER_SIZE					0x2002
+#define HCI_LE_SET_EVENT_MASK                                   0x2001
+#define HCI_LE_READ_BUFFER_SIZE			                0x2002
 #define HCI_LE_READ_LOCAL_SUPPORTED_FEATURES			0x2003
-#define HCI_LE_SET_RANDOM_ADDRESS				0x2005
+#define HCI_LE_SET_RANDOM_ADDRESS			        0x2005
 #define HCI_LE_SET_ADVERTISING_PARAMETERS			0x2006
-#define HCI_LE_READ_ADVERTISING_CHANNEL_TX_POWER		0x2007
-#define HCI_LE_SET_ADVERTISING_DATA				0x2008
-#define HCI_LE_SET_SCAN_RESPONSE_DATA				0x2009
-#define HCI_LE_SET_ADVERTISE_ENABLE				0x200A
-#define HCI_LE_SET_SCAN_PARAMETERS				0x200B
-#define HCI_LE_SET_SCAN_ENABLE					0x200C
-#define HCI_LE_CREATE_CONNECTION				0x200D
-#define HCI_LE_CREATE_CONNECTION_CANCEL				0x200E
-#define HCI_LE_READ_WHITE_LIST_SIZE				0x200F
-#define HCI_LE_CLEAR_WHITE_LIST					0x2010
-#define HCI_LE_ADD_DEVICE_TO_WHITE_LIST				0x2011
-#define HCI_LE_REMOVE_DEVICE_FROM_WHITE_LIST			0x2012
-#define HCI_LE_CONNECTION_UPDATE				0x2013
+#define HCI_LE_READ_ADVERTISING_PHYSICAL_CHANNEL_TX_POWER       0x2007
+#define HCI_LE_SET_ADVERTISING_DATA			        0x2008
+#define HCI_LE_SET_SCAN_RESPONSE_DATA			        0x2009
+#define HCI_LE_SET_ADVERTISING_ENABLE			        0x200A
+#define HCI_LE_SET_SCAN_PARAMETERS			        0x200B
+#define HCI_LE_SET_SCAN_ENABLE			                0x200C
+#define HCI_LE_CREATE_CONNECTION			        0x200D
+#define HCI_LE_CREATE_CONNECTION_CANCEL			        0x200E
+#define HCI_LE_READ_FILTER_ACCEPT_LIST_SIZE			0x200F
+#define HCI_LE_CLEAR_FILTER_ACCEPT_LIST			        0x2010
+#define HCI_LE_ADD_DEVICE_TO_FILTER_ACCEPT_LIST			0x2011
+#define HCI_LE_REMOVE_DEVICE_FROM_FILTER_ACCEPT_LIST		0x2012
+#define HCI_LE_CONNECTION_UPDATE			        0x2013
 #define HCI_LE_SET_HOST_CHANNEL_CLASSIFICATION			0x2014
-#define HCI_LE_READ_CHANNEL_MAP					0x2015
-#define HCI_LE_READ_REMOTE_FEATURES				0x2016
-#define HCI_LE_ENCRYPT						0x2017
-#define HCI_LE_RAND						0x2018
-#define HCI_LE_START_ENCRYPTION					0x2019
+#define HCI_LE_READ_CHANNEL_MAP			                0x2015
+#define HCI_LE_READ_REMOTE_FEATURES			        0x2016
+#define HCI_LE_ENCRYPT			                        0x2017
+#define HCI_LE_RAND			                        0x2018
+#define HCI_LE_ENABLE_ENCRYPTION			        0x2019
 #define HCI_LE_LONG_TERM_KEY_REQUEST_REPLY			0x201A
-#define HCI_LE_LONG_TERM_KEY_REQUESTED_NEGATIVE_REPLY		0x201B
-#define HCI_LE_READ_SUPPORTED_STATES				0x201C
-#define HCI_LE_SET_DATA_LENGTH					0x2022
+#define HCI_LE_LONG_TERM_KEY_REQUEST_NEGATIVE_REPLY		0x201B
+#define HCI_LE_READ_SUPPORTED_STATES			        0x201C
+#define HCI_LE_SET_DATA_LENGTH			                0x2022
 #define HCI_LE_READ_SUGGESTED_DEFAULT_DATA_LENGTH		0x2023
 #define HCI_LE_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH		0x2024
 #define HCI_LE_READ_LOCAL_P256_PUBLIC_KEY			0x2025
-#define HCI_LE_GENERATE_DHKEY					0x2026
+#define HCI_LE_GENERATE_DHKEY			                0x2026
 #define HCI_LE_ADD_DEVICE_TO_RESOLVING_LIST			0x2027
 #define HCI_LE_REMOVE_DEVICE_FROM_RESOLVING_LIST		0x2028
-#define HCI_LE_CLEAR_RESOLVING_LIST				0x2029
-#define HCI_LE_READ_RESOLVING_LIST_SIZE				0x202A
+#define HCI_LE_CLEAR_RESOLVING_LIST			        0x2029
+#define HCI_LE_READ_RESOLVING_LIST_SIZE			        0x202A
 #define HCI_LE_READ_PEER_RESOLVABLE_ADDRESS			0x202B
 #define HCI_LE_READ_LOCAL_RESOLVABLE_ADDRESS			0x202C
 #define HCI_LE_SET_ADDRESS_RESOLUTION_ENABLE			0x202D
 #define HCI_LE_SET_RESOLVABLE_PRIVATE_ADDRESS_TIMEOUT		0x202E
-#define HCI_LE_READ_MAXIMUM_DATA_LENGTH 			0x202F
-#define HCI_LE_READ_PHY 					0x2030
-#define HCI_LE_SET_DEFAULT_PHY 					0x2031
-#define HCI_LE_SET_PHY 						0x2032
-#define HCI_LE_SET_PRIVACY_MODE 				0x204E
-#define HCI_LE_RECEIVER_TEST 					0x201D
-#define HCI_LE_TRANSMITTER_TEST 				0x201E
-#define HCI_LE_TEST_END 					0x201F
-#define HCI_LE_ENHANCED_RECEIVER_TEST 				0x2033
-#define HCI_LE_ENHANCED_TRANSMITTER_TEST 			0x2034
+#define HCI_LE_READ_MAXIMUM_DATA_LENGTH			        0x202F
+#define HCI_LE_READ_PHY			                        0x2030
+#define HCI_LE_SET_DEFAULT_PHY			                0x2031
+#define HCI_LE_SET_PHY			                        0x2032
+#define HCI_LE_SET_ADVERTISING_SET_RANDOM_ADDRESS		0x2035
+#define HCI_LE_SET_EXTENDED_ADVERTISING_PARAMETERS		0x2036
+#define HCI_LE_SET_EXTENDED_ADVERTISING_DATA			0x2037
+#define HCI_LE_SET_EXTENDED_SCAN_RESPONSE_DATA			0x2038
+#define HCI_LE_SET_EXTENDED_ADVERTISING_ENABLE			0x2039
+#define HCI_LE_READ_MAXIMUM_ADVERTISING_DATA_LENGTH		0x203A
+#define HCI_LE_READ_NUMBER_OF_SUPPORTED_ADVERTISING_SETS	0x203B
+#define HCI_LE_REMOVE_ADVERTISING_SET			        0x203C
+#define HCI_LE_CLEAR_ADVERTISING_SETS			        0x203D
+#define HCI_LE_SET_EXTENDED_SCAN_PARAMETERS			0x2041
+#define HCI_LE_SET_EXTENDED_SCAN_ENABLE			        0x2042
+#define HCI_LE_EXTENDED_CREATE_CONNECTION			0x2043
+#define HCI_LE_READ_TRANSMIT_POWER			        0x204B
+#define HCI_LE_READ_RF_PATH_COMPENSATION			0x204C
+#define HCI_LE_WRITE_RF_PATH_COMPENSATION			0x204D
+#define HCI_LE_SET_PRIVACY_MODE			                0x204E
+#define HCI_LE_RECEIVER_TEST			                0x201D
+#define HCI_LE_TRANSMITTER_TEST			                0x201E
+#define HCI_LE_TEST_END			                        0x201F
+#define HCI_LE_RECEIVER_TEST_V2			                0x2033
+#define HCI_LE_TRANSMITTER_TEST_V2			        0x2034
 
 /* ACI HAL commands */
-#define ACI_HAL_GET_FW_BUILD_NUMBER 				0xFC00
-#define ACI_HAL_WRITE_CONFIG_DATA 				0xFC0C
-#define ACI_HAL_READ_CONFIG_DATA 				0xFC0D
-#define ACI_HAL_SET_TX_POWER_LEVEL 				0xFC0F
-#define ACI_HAL_LE_TX_TEST_PACKET_NUMBER 			0xFC14
-#define ACI_HAL_TONE_START 					0xFC15
-#define ACI_HAL_TONE_STOP 					0xFC16
-#define ACI_HAL_GET_LINK_STATUS 				0xFC17
-#define ACI_HAL_SET_RADIO_ACTIVITY_MASK 			0xFC18
-#define ACI_HAL_GET_ANCHOR_PERIOD 				0xFC19
-#define ACI_HAL_SET_EVENT_MASK 					0xFC1A
-#define ACI_HAL_SET_SMP_ENG_CONFIG 				0xFC1B
-#define ACI_HAL_GET_PM_DEBUG_INFO 				0xFC1C
-#define ACI_HAL_READ_RADIO_REG 					0xFC30
-#define ACI_HAL_WRITE_RADIO_REG 				0xFC31
-#define ACI_HAL_READ_RAW_RSSI 					0xFC32
-#define ACI_HAL_RX_START 					0xFC33
-#define ACI_HAL_RX_STOP 					0xFC34
-#define ACI_HAL_STACK_RESET 					0xFC3B
+#define ACI_HAL_GET_FW_BUILD_NUMBER                             0xFC00
+#define ACI_HAL_WRITE_CONFIG_DATA			        0xFC0C
+#define ACI_HAL_READ_CONFIG_DATA			        0xFC0D
+#define ACI_HAL_SET_TX_POWER_LEVEL			        0xFC0F
+#define ACI_HAL_LE_TX_TEST_PACKET_NUMBER			0xFC14
+#define ACI_HAL_TONE_START			                0xFC15
+#define ACI_HAL_TONE_STOP			                0xFC16
+#define ACI_HAL_GET_LINK_STATUS			                0xFC17
+#define ACI_HAL_SET_RADIO_ACTIVITY_MASK			        0xFC18
+#define ACI_HAL_GET_ANCHOR_PERIOD			        0xFC19
+#define ACI_HAL_SET_EVENT_MASK			                0xFC1A
+#define ACI_HAL_GET_PM_DEBUG_INFO			        0xFC1C
+#define ACI_HAL_SET_SLAVE_LATENCY			        0xFC20
+#define ACI_HAL_READ_RADIO_REG			                0xFC30
+#define ACI_HAL_WRITE_RADIO_REG			                0xFC31
+#define ACI_HAL_READ_RAW_RSSI			                0xFC32
+#define ACI_HAL_RX_START			                0xFC33
+#define ACI_HAL_RX_STOP			                        0xFC34
+#define ACI_HAL_STACK_RESET			                0xFC3B
 
 /* ACI GAP commands */
-#define ACI_GAP_SET_NON_DISCOVERABLE 				0xFC81
-#define ACI_GAP_SET_LIMITED_DISCOVERABLE 			0xFC82
-#define ACI_GAP_SET_DISCOVERABLE 				0xFC83
-#define ACI_GAP_SET_DIRECT_CONNECTABLE 				0xFC84
-#define ACI_GAP_SET_IO_CAPABILITY 				0xFC85
-#define ACI_GAP_SET_AUTHENTICATION_REQUIREMENT 			0xFC86
-#define ACI_GAP_SET_AUTHORIZATION_REQUIREMENT 			0xFC87
-#define ACI_GAP_PASS_KEY_RESP 					0xFC88
-#define ACI_GAP_AUTHORIZATION_RESP 				0xFC89
-#define ACI_GAP_INIT 						0xFC8A
-#define ACI_GAP_SET_NON_CONNECTABLE 				0xFC8B
-#define ACI_GAP_SET_UNDIRECTED_CONNECTABLE 			0xFC8C
-#define ACI_GAP_SLAVE_SECURITY_REQ 				0xFC8D
-#define ACI_GAP_UPDATE_ADV_DATA 				0xFC8E
-#define ACI_GAP_DELETE_AD_TYPE 					0xFC8F
-#define ACI_GAP_GET_SECURITY_LEVEL 				0xFC90
-#define ACI_GAP_SET_EVENT_MASK 					0xFC91
-#define ACI_GAP_CONFIGURE_WHITELIST 				0xFC92
-#define ACI_GAP_TERMINATE 					0xFC93
-#define ACI_GAP_CLEAR_SECURITY_DB 				0xFC94
-#define ACI_GAP_ALLOW_REBOND 					0xFC95
-#define ACI_GAP_START_LIMITED_DISCOVERY_PROC 			0xFC96
-#define ACI_GAP_START_GENERAL_DISCOVERY_PROC 			0xFC97
-#define ACI_GAP_START_NAME_DISCOVERY_PROC 			0xFC98
-#define ACI_GAP_START_AUTO_CONNECTION_ESTABLISH_PROC 		0xFC99
+#define ACI_GAP_SET_NON_DISCOVERABLE                            0xFC81
+#define ACI_GAP_SET_LIMITED_DISCOVERABLE			0xFC82
+#define ACI_GAP_SET_DISCOVERABLE			        0xFC83
+#define ACI_GAP_SET_DIRECT_CONNECTABLE			        0xFC84
+#define ACI_GAP_SET_IO_CAPABILITY			        0xFC85
+#define ACI_GAP_SET_AUTHENTICATION_REQUIREMENT			0xFC86
+#define ACI_GAP_SET_AUTHORIZATION_REQUIREMENT			0xFC87
+#define ACI_GAP_PASS_KEY_RESP			                0xFC88
+#define ACI_GAP_AUTHORIZATION_RESP			        0xFC89
+#define ACI_GAP_INIT			                        0xFC8A
+#define ACI_GAP_SET_NON_CONNECTABLE			        0xFC8B
+#define ACI_GAP_SET_UNDIRECTED_CONNECTABLE			0xFC8C
+#define ACI_GAP_SLAVE_SECURITY_REQ			        0xFC8D
+#define ACI_GAP_UPDATE_ADV_DATA			                0xFC8E
+#define ACI_GAP_DELETE_AD_TYPE			                0xFC8F
+#define ACI_GAP_GET_SECURITY_LEVEL			        0xFC90
+#define ACI_GAP_SET_EVENT_MASK			                0xFC91
+#define ACI_GAP_CONFIGURE_WHITELIST			        0xFC92
+#define ACI_GAP_TERMINATE			                0xFC93
+#define ACI_GAP_CLEAR_SECURITY_DB			        0xFC94
+#define ACI_GAP_ALLOW_REBOND			                0xFC95
+#define ACI_GAP_START_LIMITED_DISCOVERY_PROC			0xFC96
+#define ACI_GAP_START_GENERAL_DISCOVERY_PROC			0xFC97
+#define ACI_GAP_START_AUTO_CONNECTION_ESTABLISH_PROC		0xFC99
 #define ACI_GAP_START_GENERAL_CONNECTION_ESTABLISH_PROC		0xFC9A
 #define ACI_GAP_START_SELECTIVE_CONNECTION_ESTABLISH_PROC	0xFC9B
-#define ACI_GAP_CREATE_CONNECTION 				0xFC9C
-#define ACI_GAP_TERMINATE_GAP_PROC 				0xFC9D
-#define ACI_GAP_START_CONNECTION_UPDATE 			0xFC9E
-#define ACI_GAP_SEND_PAIRING_REQ 				0xFC9F
-#define ACI_GAP_RESOLVE_PRIVATE_ADDR 				0xFCA0
-#define ACI_GAP_SET_BROADCAST_MODE 				0xFCA1
-#define ACI_GAP_START_OBSERVATION_PROC 				0xFCA2
-#define ACI_GAP_GET_BONDED_DEVICES 				0xFCA3
-#define ACI_GAP_IS_DEVICE_BONDED 				0xFCA4
-#define ACI_GAP_NUMERIC_COMPARISON_VALUE_CONFIRM_YESNO 		0xFCA5
-#define ACI_GAP_PASSKEY_INPUT 					0xFCA6
-#define ACI_GAP_GET_OOB_DATA 					0xFCA7
-#define ACI_GAP_SET_OOB_DATA 					0xFCA8
-#define ACI_GAP_ADD_DEVICES_TO_RESOLVING_LIST 			0xFCA9
-#define ACI_GAP_REMOVE_BONDED_DEVICE 				0xFCAA
+#define ACI_GAP_CREATE_CONNECTION			        0xFC9C
+#define ACI_GAP_TERMINATE_GAP_PROC			        0xFC9D
+#define ACI_GAP_START_CONNECTION_UPDATE			        0xFC9E
+#define ACI_GAP_SEND_PAIRING_REQ			        0xFC9F
+#define ACI_GAP_RESOLVE_PRIVATE_ADDR			        0xFCA0
+#define ACI_GAP_SET_BROADCAST_MODE			        0xFCA1
+#define ACI_GAP_START_OBSERVATION_PROC			        0xFCA2
+#define ACI_GAP_GET_BONDED_DEVICES			        0xFCA3
+#define ACI_GAP_IS_DEVICE_BONDED			        0xFCA4
+#define ACI_GAP_NUMERIC_COMPARISON_VALUE_CONFIRM_YESNO		0xFCA5
+#define ACI_GAP_PASSKEY_INPUT			                0xFCA6
+#define ACI_GAP_GET_OOB_DATA			                0xFCA7
+#define ACI_GAP_SET_OOB_DATA			                0xFCA8
+#define ACI_GAP_ADD_DEVICES_TO_RESOLVING_LIST			0xFCA9
+#define ACI_GAP_REMOVE_BONDED_DEVICE			        0xFCAA
+#define ACI_GAP_ADD_DEVICES_TO_LIST			        0xFCAB
+#define ACI_GAP_ADDITIONAL_BEACON_START			        0xFCB0
+#define ACI_GAP_ADDITIONAL_BEACON_STOP			        0xFCB1
+#define ACI_GAP_ADDITIONAL_BEACON_SET_DATA			0xFCB2
+#define ACI_GAP_ADV_SET_CONFIGURATION			        0xFCC0
+#define ACI_GAP_ADV_SET_ENABLE			                0xFCC1
+#define ACI_GAP_ADV_SET_ADV_DATA			        0xFCC2
+#define ACI_GAP_ADV_SET_SCAN_RESP_DATA			        0xFCC3
+#define ACI_GAP_ADV_REMOVE_SET			                0xFCC4
+#define ACI_GAP_ADV_CLEAR_SETS			                0xFCC5
+#define ACI_GAP_ADV_SET_RANDOM_ADDRESS			        0xFCC6
 
 /* ACI GATT/ATT commands */
-#define ACI_GATT_INIT 						0xFD01
-#define ACI_GATT_ADD_SERVICE 					0xFD02
-#define ACI_GATT_INCLUDE_SERVICE 				0xFD03
-#define ACI_GATT_ADD_CHAR 					0xFD04
-#define ACI_GATT_ADD_CHAR_DESC 					0xFD05
-#define ACI_GATT_UPDATE_CHAR_VALUE 				0xFD06
-#define ACI_GATT_DEL_CHAR 					0xFD07
-#define ACI_GATT_DEL_SERVICE 					0xFD08
-#define ACI_GATT_DEL_INCLUDE_SERVICE 				0xFD09
-#define ACI_GATT_SET_EVENT_MASK 				0xFD0A
-#define ACI_GATT_EXCHANGE_CONFIG 				0xFD0B
-#define ACI_ATT_FIND_INFO_REQ 					0xFD0C
-#define ACI_ATT_FIND_BY_TYPE_VALUE_REQ 				0xFD0D
-#define ACI_ATT_READ_BY_TYPE_REQ 				0xFD0E
-#define ACI_ATT_READ_BY_GROUP_TYPE_REQ 				0xFD0F
-#define ACI_ATT_PREPARE_WRITE_REQ 				0xFD10
-#define ACI_ATT_EXECUTE_WRITE_REQ 				0xFD11
-#define ACI_GATT_DISC_ALL_PRIMARY_SERVICES 			0xFD12
-#define ACI_GATT_DISC_PRIMARY_SERVICE_BY_UUID 			0xFD13
-#define ACI_GATT_FIND_INCLUDED_SERVICES 			0xFD14
-#define ACI_GATT_DISC_ALL_CHAR_OF_SERVICE 			0xFD15
-#define ACI_GATT_DISC_CHAR_BY_UUID 				0xFD16
-#define ACI_GATT_DISC_ALL_CHAR_DESC 				0xFD17
-#define ACI_GATT_READ_CHAR_VALUE 				0xFD18
-#define ACI_GATT_READ_USING_CHAR_UUID 				0xFD19
-#define ACI_GATT_READ_LONG_CHAR_VALUE 				0xFD1A
-#define ACI_GATT_READ_MULTIPLE_CHAR_VALUE 			0xFD1B
-#define ACI_GATT_WRITE_CHAR_VALUE 				0xFD1C
-#define ACI_GATT_WRITE_LONG_CHAR_VALUE 				0xFD1D
-#define ACI_GATT_WRITE_CHAR_RELIABLE 				0xFD1E
-#define ACI_GATT_WRITE_LONG_CHAR_DESC 				0xFD1F
-#define ACI_GATT_READ_LONG_CHAR_DESC 				0xFD20
-#define ACI_GATT_WRITE_CHAR_DESC 				0xFD21
-#define ACI_GATT_READ_CHAR_DESC 				0xFD22
-#define ACI_GATT_WRITE_WITHOUT_RESP 				0xFD23
-#define ACI_GATT_SIGNED_WRITE_WITHOUT_RESP 			0xFD24
-#define ACI_GATT_CONFIRM_INDICATION 				0xFD25
-#define ACI_GATT_WRITE_RESP 					0xFD26
-#define ACI_GATT_ALLOW_READ 					0xFD27
-#define ACI_GATT_SET_SECURITY_PERMISSION 			0xFD28
-#define ACI_GATT_SET_DESC_VALUE 				0xFD29
-#define ACI_GATT_READ_HANDLE_VALUE 				0xFD2A
-#define ACI_GATT_UPDATE_CHAR_VALUE_EXT 				0xFD2C
-#define ACI_GATT_DENY_READ 					0xFD2D
-#define ACI_GATT_SET_ACCESS_PERMISSION 				0xFD2E
-#define ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_REQ 		0xFD81
+#define ACI_GATT_INIT                                           0xFD01
+#define ACI_GATT_ADD_SERVICE			                0xFD02
+#define ACI_GATT_INCLUDE_SERVICE			        0xFD03
+#define ACI_GATT_ADD_CHAR		                        0xFD04
+#define ACI_GATT_ADD_CHAR_DESC			                0xFD05
+#define ACI_GATT_UPDATE_CHAR_VALUE			        0xFD06
+#define ACI_GATT_DEL_CHAR			                0xFD07
+#define ACI_GATT_DEL_SERVICE			                0xFD08
+#define ACI_GATT_DEL_INCLUDE_SERVICE			        0xFD09
+#define ACI_GATT_SET_EVENT_MASK			                0xFD0A
+#define ACI_GATT_EXCHANGE_CONFIG			        0xFD0B
+#define ACI_ATT_FIND_INFO_REQ			                0xFD0C
+#define ACI_ATT_FIND_BY_TYPE_VALUE_REQ			        0xFD0D
+#define ACI_ATT_READ_BY_TYPE_REQ			        0xFD0E
+#define ACI_ATT_READ_BY_GROUP_TYPE_REQ			        0xFD0F
+#define ACI_ATT_PREPARE_WRITE_REQ			        0xFD10
+#define ACI_ATT_EXECUTE_WRITE_REQ			        0xFD11
+#define ACI_GATT_DISC_ALL_PRIMARY_SERVICES			0xFD12
+#define ACI_GATT_DISC_PRIMARY_SERVICE_BY_UUID			0xFD13
+#define ACI_GATT_FIND_INCLUDED_SERVICES			        0xFD14
+#define ACI_GATT_DISC_ALL_CHAR_OF_SERVICE			0xFD15
+#define ACI_GATT_DISC_CHAR_BY_UUID			        0xFD16
+#define ACI_GATT_DISC_ALL_CHAR_DESC			        0xFD17
+#define ACI_GATT_READ_CHAR_VALUE			        0xFD18
+#define ACI_GATT_READ_USING_CHAR_UUID			        0xFD19
+#define ACI_GATT_READ_LONG_CHAR_VALUE			        0xFD1A
+#define ACI_GATT_READ_MULTIPLE_CHAR_VALUE			0xFD1B
+#define ACI_GATT_WRITE_CHAR_VALUE			        0xFD1C
+#define ACI_GATT_WRITE_LONG_CHAR_VALUE			        0xFD1D
+#define ACI_GATT_WRITE_CHAR_RELIABLE			        0xFD1E
+#define ACI_GATT_WRITE_LONG_CHAR_DESC			        0xFD1F
+#define ACI_GATT_READ_LONG_CHAR_DESC			        0xFD20
+#define ACI_GATT_WRITE_CHAR_DESC			        0xFD21
+#define ACI_GATT_READ_CHAR_DESC			                0xFD22
+#define ACI_GATT_WRITE_WITHOUT_RESP			        0xFD23
+#define ACI_GATT_SIGNED_WRITE_WITHOUT_RESP			0xFD24
+#define ACI_GATT_CONFIRM_INDICATION			        0xFD25
+#define ACI_GATT_WRITE_RESP			                0xFD26
+#define ACI_GATT_ALLOW_READ			                0xFD27
+#define ACI_GATT_SET_SECURITY_PERMISSION			0xFD28
+#define ACI_GATT_SET_DESC_VALUE			                0xFD29
+#define ACI_GATT_READ_HANDLE_VALUE			        0xFD2A
+#define ACI_GATT_UPDATE_CHAR_VALUE_EXT			        0xFD2C
+#define ACI_GATT_DENY_READ			                0xFD2D
+#define ACI_GATT_SET_ACCESS_PERMISSION			        0xFD2E
+
+/* ACI L2CAP commands */
+#define ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_REQ		0xFD81
 #define ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_RESP		0xFD82
+#define ACI_L2CAP_COC_CONNECT			                0xFD88
+#define ACI_L2CAP_COC_CONNECT_CONFIRM			        0xFD89
+#define ACI_L2CAP_COC_RECONF			                0xFD8A
+#define ACI_L2CAP_COC_RECONF_CONFIRM			        0xFD8B
+#define ACI_L2CAP_COC_DISCONNECT			        0xFD8C
+#define ACI_L2CAP_COC_FLOW_CONTROL			        0xFD8D
+#define ACI_L2CAP_COC_TX_DATA			                0xFD8E
 
 /* ------------------------------------------------------------------------- */
 
 /* HCI events */
-#define HCI_DISCONNECTION_COMPLETE_EVENT 	   		0x05
-#define HCI_ENCRYPTION_CHANGE_EVENT 				0x08
-#define HCI_READ_REMOTE_VERSION_INFORMATION_COMPLETE_EVENT 	0x0C
-#define HCI_COMMAND_COMPLETE_EVENT 				0x0E
-#define HCI_COMMAND_STATUS_EVENT 				0x0F
-#define HCI_HARDWARE_ERROR_EVENT 				0x10
-#define HCI_NUMBER_OF_COMPLETED_PACKETS_EVENT 			0x13
-#define HCI_ENCRYPTION_KEY_REFRESH_COMPLETE_EVENT 		0x30
-#define HCI_LE_META_EVENT 		                        0x3E
-#define HCI_VENDOR_SPECIFIC_EVENT 		                0xFF
+#define HCI_DISCONNECTION_COMPLETE_EVENT			0x05
+#define HCI_ENCRYPTION_CHANGE_EVENT			        0x08
+#define HCI_READ_REMOTE_VERSION_INFORMATION_COMPLETE_EVENT	0x0C
+#define HCI_COMMAND_COMPLETE_EVENT			        0x0E
+#define HCI_COMMAND_STATUS_EVENT			        0x0F
+#define HCI_HARDWARE_ERROR_EVENT			        0x10
+#define HCI_NUMBER_OF_COMPLETED_PACKETS_EVENT			0x13
+#define HCI_ENCRYPTION_KEY_REFRESH_COMPLETE_EVENT		0x30
+#define HCI_LE_META_EVENT                                       0x3E
+#define HCI_VENDOR_SPECIFIC_EVENT                               0xFF
 
 /* HCI LE events */
-#define HCI_LE_CONNECTION_COMPLETE_EVENT 			0x01
-#define HCI_LE_ADVERTISING_REPORT_EVENT 			0x02
-#define HCI_LE_CONNECTION_UPDATE_COMPLETE_EVENT 		0x03
-#define HCI_LE_READ_REMOTE_FEATURES_COMPLETE_EVENT 		0x04
-#define HCI_LE_LONG_TERM_KEY_REQUEST_EVENT 			0x05
-#define HCI_LE_DATA_LENGTH_CHANGE_EVENT 			0x07
-#define HCI_LE_READ_LOCAL_P256_PUBLIC_KEY_COMPLETE_EVENT 	0x08
-#define HCI_LE_GENERATE_DHKEY_COMPLETE_EVENT 			0x09
-#define HCI_LE_ENHANCED_CONNECTION_COMPLETE_EVENT 		0x0A
-#define HCI_LE_DIRECT_ADVERTISING_REPORT_EVENT 			0x0B
-#define HCI_LE_PHY_UPDATE_COMPLETE_EVENT 			0x0C
+#define HCI_LE_CONNECTION_COMPLETE_EVENT			0x01
+#define HCI_LE_ADVERTISING_REPORT_EVENT			        0x02
+#define HCI_LE_CONNECTION_UPDATE_COMPLETE_EVENT			0x03
+#define HCI_LE_READ_REMOTE_FEATURES_COMPLETE_EVENT		0x04
+#define HCI_LE_LONG_TERM_KEY_REQUEST_EVENT			0x05
+#define HCI_LE_DATA_LENGTH_CHANGE_EVENT			        0x07
+#define HCI_LE_READ_LOCAL_P256_PUBLIC_KEY_COMPLETE_EVENT	0x08
+#define HCI_LE_GENERATE_DHKEY_COMPLETE_EVENT			0x09
+#define HCI_LE_ENHANCED_CONNECTION_COMPLETE_EVENT		0x0A
+#define HCI_LE_DIRECT_ADVERTISING_REPORT_EVENT			0x0B
+#define HCI_LE_PHY_UPDATE_COMPLETE_EVENT			0x0C
+#define HCI_LE_EXTENDED_ADVERTISING_REPORT_EVENT		0x0D
+#define HCI_LE_SCAN_TIMEOUT_EVENT			        0x11
+#define HCI_LE_ADVERTISING_SET_TERMINATED_EVENT			0x12
+#define HCI_LE_SCAN_REQUEST_RECEIVED_EVENT			0x13
+#define HCI_LE_CHANNEL_SELECTION_ALGORITHM_EVENT		0x14
 
 /* ACI HAL events */
-#define ACI_HAL_END_OF_RADIO_ACTIVITY_EVENT 			0x0004
-#define ACI_HAL_SCAN_REQ_REPORT_EVENT 				0x0005
-#define ACI_HAL_FW_ERROR_EVENT 					0x0006
+#define ACI_HAL_END_OF_RADIO_ACTIVITY_EVENT			0x0004
+#define ACI_HAL_SCAN_REQ_REPORT_EVENT			        0x0005
+#define ACI_HAL_FW_ERROR_EVENT			                0x0006
 
 /* ACI GAP events */
-#define ACI_GAP_LIMITED_DISCOVERABLE_EVENT 			0x0400
-#define ACI_GAP_PAIRING_COMPLETE_EVENT 				0x0401
-#define ACI_GAP_PASS_KEY_REQ_EVENT 				0x0402
-#define ACI_GAP_AUTHORIZATION_REQ_EVENT 			0x0403
-#define ACI_GAP_SLAVE_SECURITY_INITIATED_EVENT 			0x0404
-#define ACI_GAP_BOND_LOST_EVENT 				0x0405
-#define ACI_GAP_PROC_COMPLETE_EVENT 				0x0407
-#define ACI_GAP_ADDR_NOT_RESOLVED_EVENT 			0x0408
-#define ACI_GAP_NUMERIC_COMPARISON_VALUE_EVENT 			0x0409
-#define ACI_GAP_KEYPRESS_NOTIFICATION_EVENT 			0x040A
+#define ACI_GAP_LIMITED_DISCOVERABLE_EVENT			0x0400
+#define ACI_GAP_PAIRING_COMPLETE_EVENT			        0x0401
+#define ACI_GAP_PASS_KEY_REQ_EVENT			        0x0402
+#define ACI_GAP_AUTHORIZATION_REQ_EVENT			        0x0403
+#define ACI_GAP_SLAVE_SECURITY_INITIATED_EVENT			0x0404
+#define ACI_GAP_BOND_LOST_EVENT			                0x0405
+#define ACI_GAP_PROC_COMPLETE_EVENT			        0x0407
+#define ACI_GAP_ADDR_NOT_RESOLVED_EVENT			        0x0408
+#define ACI_GAP_NUMERIC_COMPARISON_VALUE_EVENT			0x0409
+#define ACI_GAP_KEYPRESS_NOTIFICATION_EVENT			0x040A
 
 /* ACI L2CAP events */
-#define ACI_L2CAP_CONNECTION_UPDATE_RESP_EVENT 			0x0800
-#define ACI_L2CAP_PROC_TIMEOUT_EVENT 				0x0801
-#define ACI_L2CAP_CONNECTION_UPDATE_REQ_EVENT 			0x0802
-#define ACI_L2CAP_COMMAND_REJECT_EVENT 				0x080A
+#define ACI_L2CAP_CONNECTION_UPDATE_RESP_EVENT			0x0800
+#define ACI_L2CAP_PROC_TIMEOUT_EVENT			        0x0801
+#define ACI_L2CAP_CONNECTION_UPDATE_REQ_EVENT			0x0802
+#define ACI_L2CAP_COMMAND_REJECT_EVENT			        0x080A
+#define ACI_L2CAP_COC_CONNECT_EVENT			        0x0810
+#define ACI_L2CAP_COC_CONNECT_CONFIRM_EVENT			0x0811
+#define ACI_L2CAP_COC_RECONF_EVENT			        0x0812
+#define ACI_L2CAP_COC_RECONF_CONFIRM_EVENT			0x0813
+#define ACI_L2CAP_COC_DISCONNECT_EVENT			        0x0814
+#define ACI_L2CAP_COC_FLOW_CONTROL_EVENT			0x0815
+#define ACI_L2CAP_COC_RX_DATA_EVENT			        0x0816
+#define ACI_L2CAP_COC_TX_POOL_AVAILABLE_EVENT			0x0817
 
 /* ACI GATT/ATT events */
-#define ACI_GATT_ATTRIBUTE_MODIFIED_EVENT 			0x0C01
-#define ACI_GATT_PROC_TIMEOUT_EVENT 				0x0C02
-#define ACI_ATT_EXCHANGE_MTU_RESP_EVENT 			0x0C03
-#define ACI_ATT_FIND_INFO_RESP_EVENT 				0x0C04
-#define ACI_ATT_FIND_BY_TYPE_VALUE_RESP_EVENT 			0x0C05
-#define ACI_ATT_READ_BY_TYPE_RESP_EVENT 			0x0C06
-#define ACI_ATT_READ_RESP_EVENT 				0x0C07
-#define ACI_ATT_READ_BLOB_RESP_EVENT 				0x0C08
-#define ACI_ATT_READ_MULTIPLE_RESP_EVENT 			0x0C09
-#define ACI_ATT_READ_BY_GROUP_TYPE_RESP_EVENT 			0x0C0A
-#define ACI_ATT_PREPARE_WRITE_RESP_EVENT 			0x0C0C
-#define ACI_ATT_EXEC_WRITE_RESP_EVENT 				0x0C0D
-#define ACI_GATT_INDICATION_EVENT 				0x0C0E
-#define ACI_GATT_NOTIFICATION_EVENT 				0x0C0F
-#define ACI_GATT_PROC_COMPLETE_EVENT 				0x0C10
-#define ACI_GATT_ERROR_RESP_EVENT 				0x0C11
-#define ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_EVENT 		0x0C12
-#define ACI_GATT_WRITE_PERMIT_REQ_EVENT 			0x0C13
-#define ACI_GATT_READ_PERMIT_REQ_EVENT 				0x0C14
-#define ACI_GATT_READ_MULTI_PERMIT_REQ_EVENT 			0x0C15
-#define ACI_GATT_TX_POOL_AVAILABLE_EVENT 			0x0C16
-#define ACI_GATT_SERVER_CONFIRMATION_EVENT 			0x0C17
-#define ACI_GATT_PREPARE_WRITE_PERMIT_REQ_EVENT 		0x0C18
-#define ACI_GATT_READ_EXT_EVENT 				0x0C1D
-#define ACI_GATT_INDICATION_EXT_EVENT 				0x0C1E
-#define ACI_GATT_NOTIFICATION_EXT_EVENT 			0x0C1F
+#define ACI_GATT_ATTRIBUTE_MODIFIED_EVENT			0x0C01
+#define ACI_GATT_PROC_TIMEOUT_EVENT			        0x0C02
+#define ACI_ATT_EXCHANGE_MTU_RESP_EVENT			        0x0C03
+#define ACI_ATT_FIND_INFO_RESP_EVENT			        0x0C04
+#define ACI_ATT_FIND_BY_TYPE_VALUE_RESP_EVENT			0x0C05
+#define ACI_ATT_READ_BY_TYPE_RESP_EVENT			        0x0C06
+#define ACI_ATT_READ_RESP_EVENT			                0x0C07
+#define ACI_ATT_READ_BLOB_RESP_EVENT			        0x0C08
+#define ACI_ATT_READ_MULTIPLE_RESP_EVENT			0x0C09
+#define ACI_ATT_READ_BY_GROUP_TYPE_RESP_EVENT			0x0C0A
+#define ACI_ATT_PREPARE_WRITE_RESP_EVENT			0x0C0C
+#define ACI_ATT_EXEC_WRITE_RESP_EVENT			        0x0C0D
+#define ACI_GATT_INDICATION_EVENT			        0x0C0E
+#define ACI_GATT_NOTIFICATION_EVENT			        0x0C0F
+#define ACI_GATT_PROC_COMPLETE_EVENT			        0x0C10
+#define ACI_GATT_ERROR_RESP_EVENT			        0x0C11
+#define ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_EVENT		0x0C12
+#define ACI_GATT_WRITE_PERMIT_REQ_EVENT			        0x0C13
+#define ACI_GATT_READ_PERMIT_REQ_EVENT			        0x0C14
+#define ACI_GATT_READ_MULTI_PERMIT_REQ_EVENT			0x0C15
+#define ACI_GATT_TX_POOL_AVAILABLE_EVENT			0x0C16
+#define ACI_GATT_SERVER_CONFIRMATION_EVENT			0x0C17
+#define ACI_GATT_PREPARE_WRITE_PERMIT_REQ_EVENT			0x0C18
+#define ACI_GATT_READ_EXT_EVENT			                0x0C1D
+#define ACI_GATT_INDICATION_EXT_EVENT			        0x0C1E
+#define ACI_GATT_NOTIFICATION_EXT_EVENT			        0x0C1F
 
 /* ------------------------------------------------------------------------- */
 
-/* HCI events */
+/* ACI GAP vendor specific event codes
+ */
 
-/* HCI LE events */
-
-/* ACI HAL events */
-#define ACI_HAL_END_OF_RADIO_ACTIVITY_VSEVT_CODE        0x0004U
-#define ACI_HAL_SCAN_REQ_REPORT_VSEVT_CODE              0x0005U
-#define ACI_HAL_FW_ERROR_VSEVT_CODE                     0x0006U
-
-/* ACI GAP events */
+/* ACI_GAP_LIMITED_DISCOVERABLE_EVENT code: */
 #define ACI_GAP_LIMITED_DISCOVERABLE_VSEVT_CODE         0x0400U
+
+/* ACI_GAP_PAIRING_COMPLETE_EVENT code: */
 #define ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE             0x0401U
+
+/* ACI_GAP_PASS_KEY_REQ_EVENT code: */
 #define ACI_GAP_PASS_KEY_REQ_VSEVT_CODE                 0x0402U
+
+/* ACI_GAP_AUTHORIZATION_REQ_EVENT code: */
 #define ACI_GAP_AUTHORIZATION_REQ_VSEVT_CODE            0x0403U
+
+/* ACI_GAP_SLAVE_SECURITY_INITIATED_EVENT code: */
 #define ACI_GAP_SLAVE_SECURITY_INITIATED_VSEVT_CODE     0x0404U
+
+/* ACI_GAP_BOND_LOST_EVENT code: */
 #define ACI_GAP_BOND_LOST_VSEVT_CODE                    0x0405U
+
+/* ACI_GAP_PROC_COMPLETE_EVENT code: */
 #define ACI_GAP_PROC_COMPLETE_VSEVT_CODE                0x0407U
+
+/* ACI_GAP_ADDR_NOT_RESOLVED_EVENT code: */
 #define ACI_GAP_ADDR_NOT_RESOLVED_VSEVT_CODE            0x0408U
+
+/* ACI_GAP_NUMERIC_COMPARISON_VALUE_EVENT code: */
 #define ACI_GAP_NUMERIC_COMPARISON_VALUE_VSEVT_CODE     0x0409U
+
+/* ACI_GAP_KEYPRESS_NOTIFICATION_EVENT code: */
 #define ACI_GAP_KEYPRESS_NOTIFICATION_VSEVT_CODE        0x040AU
 
-/* ACI L2CAP events */
+/* ACI GATT/ATT vendor specific event codes
+ */
+
+/* ACI_GATT_ATTRIBUTE_MODIFIED_EVENT code: */
+#define ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE          0x0C01U
+
+/* ACI_GATT_PROC_TIMEOUT_EVENT code: */
+#define ACI_GATT_PROC_TIMEOUT_VSEVT_CODE                0x0C02U
+
+/* ACI_ATT_EXCHANGE_MTU_RESP_EVENT code: */
+#define ACI_ATT_EXCHANGE_MTU_RESP_VSEVT_CODE            0x0C03U
+
+/* ACI_ATT_FIND_INFO_RESP_EVENT code: */
+#define ACI_ATT_FIND_INFO_RESP_VSEVT_CODE               0x0C04U
+
+/* ACI_ATT_FIND_BY_TYPE_VALUE_RESP_EVENT code: */
+#define ACI_ATT_FIND_BY_TYPE_VALUE_RESP_VSEVT_CODE      0x0C05U
+
+/* ACI_ATT_READ_BY_TYPE_RESP_EVENT code: */
+#define ACI_ATT_READ_BY_TYPE_RESP_VSEVT_CODE            0x0C06U
+
+/* ACI_ATT_READ_RESP_EVENT code: */
+#define ACI_ATT_READ_RESP_VSEVT_CODE                    0x0C07U
+
+/* ACI_ATT_READ_BLOB_RESP_EVENT code: */
+#define ACI_ATT_READ_BLOB_RESP_VSEVT_CODE               0x0C08U
+
+/* ACI_ATT_READ_MULTIPLE_RESP_EVENT code: */
+#define ACI_ATT_READ_MULTIPLE_RESP_VSEVT_CODE           0x0C09U
+
+/* ACI_ATT_READ_BY_GROUP_TYPE_RESP_EVENT code: */
+#define ACI_ATT_READ_BY_GROUP_TYPE_RESP_VSEVT_CODE      0x0C0AU
+
+/* ACI_ATT_PREPARE_WRITE_RESP_EVENT code: */
+#define ACI_ATT_PREPARE_WRITE_RESP_VSEVT_CODE           0x0C0CU
+
+/* ACI_ATT_EXEC_WRITE_RESP_EVENT code: */
+#define ACI_ATT_EXEC_WRITE_RESP_VSEVT_CODE              0x0C0DU
+
+/* ACI_GATT_INDICATION_EVENT code: */
+#define ACI_GATT_INDICATION_VSEVT_CODE                  0x0C0EU
+
+/* ACI_GATT_NOTIFICATION_EVENT code: */
+#define ACI_GATT_NOTIFICATION_VSEVT_CODE                0x0C0FU
+
+/* ACI_GATT_PROC_COMPLETE_EVENT code: */
+#define ACI_GATT_PROC_COMPLETE_VSEVT_CODE               0x0C10U
+
+/* ACI_GATT_ERROR_RESP_EVENT code: */
+#define ACI_GATT_ERROR_RESP_VSEVT_CODE                  0x0C11U
+
+/* ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_EVENT code: */
+#define ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_VSEVT_CODE 0x0C12U
+
+/* ACI_GATT_WRITE_PERMIT_REQ_EVENT code: */
+#define ACI_GATT_WRITE_PERMIT_REQ_VSEVT_CODE            0x0C13U
+
+/* ACI_GATT_READ_PERMIT_REQ_EVENT code: */
+#define ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE             0x0C14U
+
+/* ACI_GATT_READ_MULTI_PERMIT_REQ_EVENT code: */
+#define ACI_GATT_READ_MULTI_PERMIT_REQ_VSEVT_CODE       0x0C15U
+
+/* ACI_GATT_TX_POOL_AVAILABLE_EVENT code: */
+#define ACI_GATT_TX_POOL_AVAILABLE_VSEVT_CODE           0x0C16U
+
+/* ACI_GATT_SERVER_CONFIRMATION_EVENT code: */
+#define ACI_GATT_SERVER_CONFIRMATION_VSEVT_CODE         0x0C17U
+
+/* ACI_GATT_PREPARE_WRITE_PERMIT_REQ_EVENT code: */
+#define ACI_GATT_PREPARE_WRITE_PERMIT_REQ_VSEVT_CODE    0x0C18U
+
+/* ACI_GATT_READ_EXT_EVENT code: */
+#define ACI_GATT_READ_EXT_VSEVT_CODE                    0x0C1DU
+
+/* ACI_GATT_INDICATION_EXT_EVENT code: */
+#define ACI_GATT_INDICATION_EXT_VSEVT_CODE              0x0C1EU
+
+/* ACI_GATT_NOTIFICATION_EXT_EVENT code: */
+#define ACI_GATT_NOTIFICATION_EXT_VSEVT_CODE            0x0C1FU
+
+/* ACI L2CAP vendor specific event codes
+ */
+
+/* ACI_L2CAP_CONNECTION_UPDATE_RESP_EVENT code: */
 #define ACI_L2CAP_CONNECTION_UPDATE_RESP_VSEVT_CODE     0x0800U
+
+/* ACI_L2CAP_PROC_TIMEOUT_EVENT code: */
 #define ACI_L2CAP_PROC_TIMEOUT_VSEVT_CODE               0x0801U
+
+/* ACI_L2CAP_CONNECTION_UPDATE_REQ_EVENT code: */
 #define ACI_L2CAP_CONNECTION_UPDATE_REQ_VSEVT_CODE      0x0802U
+
+/* ACI_L2CAP_COMMAND_REJECT_EVENT code: */
 #define ACI_L2CAP_COMMAND_REJECT_VSEVT_CODE             0x080AU
 
-/* ACI GATT/ATT events */
-#define ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE          0x0C01U
-#define ACI_GATT_PROC_TIMEOUT_VSEVT_CODE                0x0C02U
-#define ACI_ATT_EXCHANGE_MTU_RESP_VSEVT_CODE            0x0C03U
-#define ACI_ATT_FIND_INFO_RESP_VSEVT_CODE               0x0C04U
-#define ACI_ATT_FIND_BY_TYPE_VALUE_RESP_VSEVT_CODE      0x0C05U
-#define ACI_ATT_READ_BY_TYPE_RESP_VSEVT_CODE            0x0C06U
-#define ACI_ATT_READ_RESP_VSEVT_CODE                    0x0C07U
-#define ACI_ATT_READ_BLOB_RESP_VSEVT_CODE               0x0C08U
-#define ACI_ATT_READ_MULTIPLE_RESP_VSEVT_CODE           0x0C09U
-#define ACI_ATT_READ_BY_GROUP_TYPE_RESP_VSEVT_CODE      0x0C0AU
-#define ACI_ATT_PREPARE_WRITE_RESP_VSEVT_CODE           0x0C0CU
-#define ACI_ATT_EXEC_WRITE_RESP_VSEVT_CODE              0x0C0DU
-#define ACI_GATT_INDICATION_VSEVT_CODE                  0x0C0EU
-#define ACI_GATT_NOTIFICATION_VSEVT_CODE                0x0C0FU
-#define ACI_GATT_PROC_COMPLETE_VSEVT_CODE               0x0C10U
-#define ACI_GATT_ERROR_RESP_VSEVT_CODE                  0x0C11U
-#define ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_VSEVT_CODE 0x0C12U
-#define ACI_GATT_WRITE_PERMIT_REQ_VSEVT_CODE            0x0C13U
-#define ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE             0x0C14U
-#define ACI_GATT_READ_MULTI_PERMIT_REQ_VSEVT_CODE       0x0C15U
-#define ACI_GATT_TX_POOL_AVAILABLE_VSEVT_CODE           0x0C16U
-#define ACI_GATT_SERVER_CONFIRMATION_VSEVT_CODE         0x0C17U
-#define ACI_GATT_PREPARE_WRITE_PERMIT_REQ_VSEVT_CODE    0x0C18U
-#define ACI_GATT_READ_EXT_VSEVT_CODE                    0x0C1DU
-#define ACI_GATT_INDICATION_EXT_VSEVT_CODE              0x0C1EU
-#define ACI_GATT_NOTIFICATION_EXT_VSEVT_CODE            0x0C1FU
+/* ACI_L2CAP_COC_CONNECT_EVENT code: */
+#define ACI_L2CAP_COC_CONNECT_VSEVT_CODE                0x0810U
+
+/* ACI_L2CAP_COC_CONNECT_CONFIRM_EVENT code: */
+#define ACI_L2CAP_COC_CONNECT_CONFIRM_VSEVT_CODE        0x0811U
+
+/* ACI_L2CAP_COC_RECONF_EVENT code: */
+#define ACI_L2CAP_COC_RECONF_VSEVT_CODE                 0x0812U
+
+/* ACI_L2CAP_COC_RECONF_CONFIRM_EVENT code: */
+#define ACI_L2CAP_COC_RECONF_CONFIRM_VSEVT_CODE         0x0813U
+
+/* ACI_L2CAP_COC_DISCONNECT_EVENT code: */
+#define ACI_L2CAP_COC_DISCONNECT_VSEVT_CODE             0x0814U
+
+/* ACI_L2CAP_COC_FLOW_CONTROL_EVENT code: */
+#define ACI_L2CAP_COC_FLOW_CONTROL_VSEVT_CODE           0x0815U
+
+/* ACI_L2CAP_COC_RX_DATA_EVENT code: */
+#define ACI_L2CAP_COC_RX_DATA_VSEVT_CODE                0x0816U
+
+/* ACI_L2CAP_COC_TX_POOL_AVAILABLE_EVENT code: */
+#define ACI_L2CAP_COC_TX_POOL_AVAILABLE_VSEVT_CODE      0x0817U
+
+/* ACI HAL vendor specific event codes
+ */
+
+/* ACI_HAL_END_OF_RADIO_ACTIVITY_EVENT code: */
+#define ACI_HAL_END_OF_RADIO_ACTIVITY_VSEVT_CODE        0x0004U
+
+/* ACI_HAL_SCAN_REQ_REPORT_EVENT code: */
+#define ACI_HAL_SCAN_REQ_REPORT_VSEVT_CODE              0x0005U
+
+/* ACI_HAL_FW_ERROR_EVENT code: */
+#define ACI_HAL_FW_ERROR_VSEVT_CODE                     0x0006U
 
 /* ------------------------------------------------------------------------- */
 
@@ -344,49 +502,6 @@
 /* Returned when the command has completed with success
  */
 #define BLE_STATUS_SUCCESS                              0x00U
-
-/* The Connection Identifier does not exist at SMP level.
- */
-#define BLE_STATUS_UNKNOWN_CONNECTION_ID                0x40U
-
-/* The Host failed while performing the requested operation.
- */
-#define BLE_STATUS_FAILED                               0x41U
-
-/* Invalid parameters in Host commands
- */
-#define BLE_STATUS_INVALID_PARAMS                       0x42U
-
-/* The Host is already processing another request received in advance.
- */
-#define BLE_STATUS_BUSY                                 0x43U
-
-/* The operation requested cannot be completed immediately by the Host
- * (usually because of lack of resources). 
- * The operation is generally put on hold by the caller and it's usually 
- * retried on later time.
- */
-#define BLE_STATUS_PENDING                              0x45U
-
-/* The requested operation cannot be performed by the Host in the current
- * status.
- */
-#define BLE_STATUS_NOT_ALLOWED                          0x46U
-
-/* The requested operation violates the logic of the called layer/function or
- * the format of the data to be processed during the operation.
- */
-#define BLE_STATUS_ERROR                                0x47U
-
-/* The requested operation failed because of lack of memory.
- * Out of memory shall be returned for situations where memory will never 
- * become available again (e.g. ATT database)
- */
-#define BLE_STATUS_OUT_OF_MEMORY                        0x48U
-
-/* An invalid L2CAP CID/channel has been selected to send data over.
- */
-#define BLE_STATUS_INVALID_CID                          0x50U
 
 /* The remote device in in the Blacklist and the pairing operation it requested
  * cannot be performed.
@@ -483,6 +598,36 @@
  * requested slot length.
  */
 #define BLE_STATUS_LENGTH_FAILED                        0x86U
+
+/* The Host failed while performing the requested operation.
+ */
+#define BLE_STATUS_FAILED                               0x91U
+
+/* Invalid parameters in Host commands
+ */
+#define BLE_STATUS_INVALID_PARAMS                       0x92U
+
+/* The Host is already processing another request received in advance.
+ */
+#define BLE_STATUS_BUSY                                 0x93U
+
+/* The operation requested cannot be completed immediately by the Host
+ * (usually because of lack of resources). 
+ * The operation is generally put on hold by the caller and it's usually 
+ * retried on later time.
+ */
+#define BLE_STATUS_PENDING                              0x95U
+
+/* The requested operation violates the logic of the called layer/function or
+ * the format of the data to be processed during the operation.
+ */
+#define BLE_STATUS_ERROR                                0x97U
+
+/* The requested operation failed because of lack of memory.
+ * Out of memory shall be returned for situations where memory will never 
+ * become available again (e.g. ATT database)
+ */
+#define BLE_STATUS_OUT_OF_MEMORY                        0x98U
 
 /* Returned when a timeout occurs at BLE application interface
  */
@@ -626,13 +771,12 @@
 #define GAP_DIRECT_CONNECTION_ESTABLISHMENT_PROC     0x40U
 #define GAP_OBSERVATION_PROC                         0x80U
 
-/* Advertising Types
+/* GAP Address Type
  */
-#define GAP_ADV_IND                                  0x00U
-#define GAP_ADV_HIGH_DC_DIRECT_IND                   0x01U
-#define GAP_ADV_SCAN_IND                             0x02U
-#define GAP_ADV_NONCONN_IND                          0x03U
-#define GAP_ADV_LOW_DC_DIRECT_IND                    0x04U
+#define GAP_PUBLIC_ADDR                              0x00U
+#define GAP_STATIC_RANDOM_ADDR                       0x01U
+#define GAP_RESOLVABLE_PRIVATE_ADDR                  0x02U
+#define GAP_NON_RESOLVABLE_PRIVATE_ADDR              0x03U
 
 /* ------------------------------------------------------------------------- */
 
@@ -858,6 +1002,7 @@
 #define CONFIG_DATA_ER_OFFSET                  0x08U
 #define CONFIG_DATA_IR_OFFSET                  0x18U
 #define CONFIG_DATA_RANDOM_ADDRESS_OFFSET      0x2EU
+#define CONFIG_DATA_SMP_MODE_OFFSET            0xB0U
 
 /* Length for configuration values (see ACI_HAL_WRITE_CONFIG_DATA)
  */
@@ -865,6 +1010,7 @@
 #define CONFIG_DATA_ER_LEN                    16
 #define CONFIG_DATA_IR_LEN                    16
 #define CONFIG_DATA_RANDOM_ADDRESS_LEN         6
+#define CONFIG_DATA_SMP_MODE_LEN               1
 
 /* ------------------------------------------------------------------------- */
 

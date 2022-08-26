@@ -34,12 +34,6 @@
 
 typedef void (*stm32wb_hsem_handler_t)(void);
 
-typedef struct _stm32wb_hsem_device_t {
-    volatile uint8_t                  procid[32];
-} stm32wb_hsem_device_t;
-
-static stm32wb_hsem_device_t stm32wb_hsem_device;
-
 static const stm32wb_hsem_handler_t stm32wb_hsem_handler[] = {
     HSEM0_HSEMHandler,
     HSEM1_HSEMHandler,
@@ -91,11 +85,12 @@ bool __attribute__((optimize("O3"))) __stm32wb_hsem_lock(uint32_t index, uint32_
 
     if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
     {
-	return true;
+        // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
+
+        
+        return true;
     }
 	
-    stm32wb_hsem_device.procid[index] = procid;
-
     armv7m_atomic_or(&HSEM->C1IER, (1u << index));
 
     return false;
@@ -103,7 +98,7 @@ bool __attribute__((optimize("O3"))) __stm32wb_hsem_lock(uint32_t index, uint32_
 
 void  __attribute__((optimize("O3"))) HSEM_IRQHandler(void)
 {
-    uint32_t mask, index, procid;
+    uint32_t mask, index;
 
     mask = HSEM->C1ISR;
 
@@ -113,18 +108,12 @@ void  __attribute__((optimize("O3"))) HSEM_IRQHandler(void)
 	{
 	    index = __builtin_ctz(mask);
 	    mask = (1u << index);
-	    procid = stm32wb_hsem_device.procid[index];
 	    
 	    HSEM->C1ICR = mask;
 
-	    HSEM->R[index] = (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid);
-	    
-	    if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
-	    {
-		armv7m_atomic_and(&HSEM->C1IER, ~mask);
+            armv7m_atomic_and(&HSEM->C1IER, ~mask);
 
-		(*stm32wb_hsem_handler[index])();
-	    }
+            (*stm32wb_hsem_handler[index])();
 	    
 	    mask = HSEM->C1ISR;
 	}

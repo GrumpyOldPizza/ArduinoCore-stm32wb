@@ -45,6 +45,8 @@ Uart::Uart(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *pa
     m_tx_size2 = 0;
 
     m_tx_busy = false;
+
+    m_enabled = false;
     m_nonblocking = false;
 
     if (serialEventRun) {
@@ -53,8 +55,8 @@ Uart::Uart(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *pa
 
     stm32wb_uart_create(uart, params);
 
-    m_transmit_callback = Callback(__emptyCallback);
-    m_receive_callback = Callback(__wakeupCallback);
+    m_transmit_callback = Callback();
+    m_receive_callback = Callback();
 
     k_work_create(&m_work, (k_work_routine_t)Uart::workRoutine, this);
 }
@@ -64,6 +66,8 @@ void Uart::begin(unsigned long baudrate) {
 }
 
 void Uart::begin(unsigned long baudrate, uint32_t config) {
+    uint32_t option;
+
     if (!baudrate) {
         return;
     }
@@ -73,7 +77,14 @@ void Uart::begin(unsigned long baudrate, uint32_t config) {
         stm32wb_uart_disable(m_uart);
     }
 
-    m_enabled = (stm32wb_uart_enable(m_uart, baudrate, config, &m_rx_data[0], sizeof(m_rx_data), NULL, (stm32wb_uart_event_callback_t)Uart::eventCallback, (void*)this));
+    option = (m_option & (STM32WB_UART_OPTION_RTS | STM32WB_UART_OPTION_CTS | STM32WB_UART_OPTION_WAKEUP)) | config;
+
+    m_enabled = (stm32wb_uart_enable(m_uart, baudrate, option, &m_rx_data[0], sizeof(m_rx_data), NULL, (stm32wb_uart_event_callback_t)Uart::eventCallback, (void*)this));
+
+    if (m_enabled) {
+        m_baudrate = baudrate;
+        m_option = option;
+    }
 }
 
 void Uart::end() {
@@ -243,7 +254,7 @@ size_t Uart::write(const uint8_t *buffer, size_t size) {
 }
 
 bool Uart::write(const uint8_t *buffer, size_t size, volatile uint8_t &status) {
-    return write(buffer, size, status, Callback(__wakeupCallback));
+    return write(buffer, size, status, Callback());
 }
 
 bool Uart::write(const uint8_t *buffer, size_t size, volatile uint8_t &status, void(*callback)(void)) {
@@ -267,7 +278,7 @@ bool Uart::write(const uint8_t *buffer, size_t size, volatile uint8_t &status, C
     m_tx_size2 = size;
     m_tx_status2 = &status;
 
-    m_transmit_callback = callback ? callback : Callback(__emptyCallback);
+    m_transmit_callback = callback;
     
     if (!m_tx_busy) {
         m_tx_busy = true;
@@ -285,12 +296,26 @@ bool Uart::write(const uint8_t *buffer, size_t size, volatile uint8_t &status, C
     return true;
 }
 
+bool Uart::cts() {
+    return stm32wb_uart_cts_state(m_uart);
+}
+
 void Uart::setNonBlocking(bool enable) {
     m_nonblocking = enable;
 }
 
+void Uart::setFlowControl(enum FlowControl mode) {
+    m_option = ((m_option & ~(STM32WB_UART_OPTION_RTS | STM32WB_UART_OPTION_CTS | STM32WB_UART_OPTION_XONOFF)) |
+                ((mode == 1) ? (STM32WB_UART_OPTION_RTS)
+                 : ((mode == 2) ? (STM32WB_UART_OPTION_CTS)
+                    : ((mode == 3) ? (STM32WB_UART_OPTION_RTS | STM32WB_UART_OPTION_CTS)
+                       : ((mode == 4) ? (STM32WB_UART_OPTION_XONOFF) : 0)))));
+
+    stm32wb_uart_configure(m_uart, m_baudrate, m_option, NULL);
+}
+
 void Uart::onReceive(Callback callback) {
-    m_receive_callback = callback ? callback : Callback(__wakeupCallback);
+    m_receive_callback = callback;
 }
 
 void Uart::workRoutine(class Uart *self) {
@@ -298,12 +323,12 @@ void Uart::workRoutine(class Uart *self) {
 
     events = armv7m_atomic_swap(&self->m_events, 0);
 
-    if (events & UART_EVENT_TRANSMIT) {
-        self->m_transmit_callback();
-    }
-
     if (events & UART_EVENT_RECEIVE) {
         self->m_receive_callback();
+    }
+
+    if (events & UART_EVENT_TRANSMIT) {
+        self->m_transmit_callback();
     }
 }
 

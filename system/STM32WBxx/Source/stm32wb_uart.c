@@ -43,14 +43,22 @@ typedef struct _stm32wb_uart_device_t {
 
 static stm32wb_uart_device_t stm32wb_uart_device;
 
-#define STM32WB_UART_OPTION_SYSCLK             0x20000000
 #define STM32WB_UART_OPTION_RX_DMA             0x40000000
 #define STM32WB_UART_OPTION_TX_DMA             0x80000000
+
+#define STM32WB_UART_RX_DATA_XON               0x11
+#define STM32WB_UART_RX_DATA_XOFF              0x13
 
 #define STM32WB_UART_MODE_RX_IDLE              0x0001
 #define STM32WB_UART_MODE_RX_SUSPENDED         0x0002
 #define STM32WB_UART_MODE_RX_BREAK             0x0004
 #define STM32WB_UART_MODE_RX_SUSPEND_REQUEST   0x0008
+#define STM32WB_UART_MODE_TX_BUSY              0x0010
+#define STM32WB_UART_MODE_TX_SUSPENDED         0x0020
+#define STM32WB_UART_MODE_TX_BREAK             0x0040
+#define STM32WB_UART_MODE_TX_XONOFF_REQUEST    0x0080
+#define STM32WB_UART_MODE_TX_SUSPEND_REQUEST   0x0100
+#define STM32WB_UART_MODE_TX_BREAK_REQUEST     0x0200
 
 #define STM32WB_UART_RX_DMA_OPTION               \
     (STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE |    \
@@ -70,6 +78,9 @@ static stm32wb_uart_device_t stm32wb_uart_device;
      STM32WB_DMA_OPTION_PRIORITY_MEDIUM)
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
+
+static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_rx_none;
+static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_tx_default;
 
 #define STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE    \
     (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
@@ -152,7 +163,7 @@ static inline void stm32wb_uart_stop_leave(stm32wb_uart_t *uart)
     {
         armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_RX_IDLE);
                             
-        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     }
 
@@ -197,7 +208,7 @@ static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *c
     {
         if (stm32wb_uart_device.instances[STM32WB_UART_INSTANCE_USART1])
         {
-            stm32wb_uart_device.instances[STM32WB_UART_INSTANCE_USART1]->control = ~0;
+            stm32wb_uart_device.instances[STM32WB_UART_INSTANCE_USART1]->clock = 0;
         }
     }
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
@@ -205,7 +216,11 @@ static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *c
 
 static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_request(stm32wb_uart_t *uart)
 { 
-    uint32_t mode, rx_count;
+    USART_TypeDef *USART = uart->USART;
+    uint32_t state, mode, rx_count;
+    volatile uint8_t *p_status_return;
+    stm32wb_uart_done_callback_t callback;
+    void *context;
     
     if (uart->mode & STM32WB_UART_MODE_RX_SUSPEND_REQUEST)
     {
@@ -218,6 +233,13 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_request(stm32
             if (rx_count < uart->rx_threshold[1])
             {
                 armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_RX_SUSPENDED);
+                
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+                if (uart->option & STM32WB_UART_OPTION_XONOFF)
+                {
+                    armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_TX_XONOFF_REQUEST);
+                }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 */
                 
 #if (STM32WB_UART_RTS_SUPPORTED == 1)
                 if (uart->option & STM32WB_UART_OPTION_RTS)
@@ -233,6 +255,13 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_request(stm32
             {
                 armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_SUSPENDED);
                 
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+                if (uart->option & STM32WB_UART_OPTION_XONOFF)
+                {
+                    armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_TX_XONOFF_REQUEST);
+                }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 */
+                
 #if (STM32WB_UART_RTS_SUPPORTED == 1)
                 if (uart->option & STM32WB_UART_OPTION_RTS)
                 {
@@ -241,6 +270,134 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_request(stm32
 #endif /* STM32WB_UART_RTS_SUPPORTED == 1 */
             }
         }
+    }
+
+    if (uart->mode & (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_BREAK_REQUEST | STM32WB_UART_MODE_TX_XONOFF_REQUEST | STM32WB_UART_MODE_TX_BUSY))
+    {
+        state = uart->state;
+
+        if (state == STM32WB_UART_STATE_TRANSMIT_DATA)
+        {
+#if (STM32WB_UART_FIFO_SUPPORTED == 1)
+            USART->CR3 &= ~USART_CR3_TXFTIE;
+            USART->CR1 |= USART_CR1_TCIE;
+#else /* STM32WB_UART_FIFO_SUPPORTED == 1 */
+            USART->CR1 = (USART->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
+#endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
+
+            state = STM32WB_UART_STATE_TRANSMIT_SUSPEND;
+        }
+        
+        if (state == STM32WB_UART_STATE_TRANSMIT_STOP)
+        {
+            if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+            {
+                USART->CR3 &= ~USART_CR3_DMAT;
+            }
+            
+            state = STM32WB_UART_STATE_TRANSMIT_SUSPEND;
+        }
+        
+        if (state == STM32WB_UART_STATE_TRANSMIT_SUSPEND)
+        {
+            if (USART->ISR & USART_ISR_TC)
+            {
+                USART->CR1 &= ~USART_CR1_TCIE;
+                
+                USART->ICR = USART_ICR_TCCF;
+                
+                if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+                {
+                    if (stm32wb_dma_done(uart->tx_dma))
+                    {
+                        uart->tx_data = uart->tx_data_e;
+
+                        stm32wb_dma_stop(uart->tx_dma);
+                    }
+                }
+
+                if (uart->tx_data == uart->tx_data_e)
+                {
+                    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
+
+                    p_status_return = uart->xf_status;
+
+                    armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
+
+                    uart->state = STM32WB_UART_STATE_READY;
+                    
+                    callback = uart->xf_callback;
+                    context = uart->xf_context;
+                    
+                    *p_status_return = STM32WB_UART_STATUS_SUCCESS;
+                    
+                    if (callback)
+                    {
+                        (*callback)(context);
+                    }
+                    
+                    state = uart->state;
+
+                    if (state != STM32WB_UART_STATE_TRANSMIT_START)
+                    {
+                        if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+                        {
+                            stm32wb_dma_disable(uart->tx_dma);
+
+                            uart->option &= ~STM32WB_UART_OPTION_TX_DMA;
+                        }
+                    }
+                }
+                else
+                {
+                    state = STM32WB_UART_STATE_TRANSMIT_RESTART;
+                }
+            }
+        }
+
+        if (uart->mode & STM32WB_UART_MODE_TX_BUSY)
+        {
+            if (USART->ISR & USART_ISR_TC)
+            {
+                armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_TX_BUSY);
+                
+                USART->CR1 &= ~USART_CR1_TCIE;
+                
+                USART->ICR = USART_ICR_TCCF;
+            }
+        }
+
+        /* If the state is READY, TRANSMIT_SETUP, TRANSMIT_START, TRANSMIT_RESTART the state changes can be injected.
+         */
+        if (state <= STM32WB_UART_STATE_TRANSMIT_RESTART)
+        {
+            mode = armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_TX_SUSPEND_REQUEST);
+
+#if (STM32WB_UART_BREAK_SUPPORTED == 1)
+            if ((mode & STM32WB_UART_MODE_TX_BREAK_REQUEST) && !(mode & STM32WB_UART_MODE_TX_BUSY))
+            {
+                mode = armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_TX_BREAK_REQUEST);
+                        
+                stm32wb_gpio_pin_configure(uart->pins.tx,
+                                           ((mode & STM32WB_UART_MODE_TX_BREAK) 
+                                            ? (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE   | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT)
+                                            : (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE)));
+            }
+#endif /* STM32WB_UART_BREAK_SUPPORTED == 1 */
+            
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+            if ((mode & STM32WB_UART_MODE_TX_XONOFF_REQUEST) && !(mode & (STM32WB_UART_MODE_TX_BUSY | STM32WB_UART_MODE_TX_BREAK)))
+            {
+                armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_XONOFF_REQUEST | STM32WB_UART_MODE_TX_BUSY), STM32WB_UART_MODE_TX_BUSY);
+                
+                USART->TDR = (mode & STM32WB_UART_MODE_RX_SUSPENDED) ? STM32WB_UART_RX_DATA_XOFF : STM32WB_UART_RX_DATA_XON;
+                
+                USART->CR1 |= USART_CR1_TCIE;
+            }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 */
+        }
+        
+        uart->state = state;
     }
 }
 
@@ -279,7 +436,7 @@ static __attribute__((noinline, optimize("O3"))) uint32_t stm32wb_uart_dma_recei
 
                 if (mode & STM32WB_UART_MODE_RX_IDLE)
                 {
-                    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
                 }
                 
 #if (STM32WB_UART_BREAK_SUPPORTED == 1)
@@ -300,6 +457,25 @@ static __attribute__((noinline, optimize("O3"))) uint32_t stm32wb_uart_dma_recei
                 }
 #endif /* STM32WB_UART_BREAK_SUPPORTED == 1 */
             }
+            
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+            if (uart->option & STM32WB_UART_OPTION_XONOFF)
+            {
+                if (rx_data == STM32WB_UART_RX_DATA_XON)
+                {
+                    armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED), STM32WB_UART_MODE_TX_SUSPEND_REQUEST);
+                    
+                    continue;
+                }
+
+                if (rx_data == STM32WB_UART_RX_DATA_XOFF)
+                {
+                    armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED), (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED));
+                    
+                    continue;
+                }
+            }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 */
             
             if (rx_count == uart->rx_size)
             {
@@ -337,15 +513,15 @@ static __attribute__((noinline, optimize("O3"))) uint32_t stm32wb_uart_dma_recei
             
             armv7m_atomic_addh(&uart->rx_count, (rx_count - rx_count_previous));
 
-#if (STM32WB_UART_RTS_SUPPORTED == 1)
-            if (uart->option & STM32WB_UART_OPTION_RTS)
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1)
+            if (uart->option & (STM32WB_UART_OPTION_XONOFF | STM32WB_UART_OPTION_RTS))
             {
                 if ((rx_count >= uart->rx_threshold[2]) && !(uart->mode & STM32WB_UART_MODE_RX_SUSPENDED))
                 {
                     armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_SUSPEND_REQUEST);
                 }
             }
-#endif /* STM32WB_UART_RTS_SUPPORTED == 1 */
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
         }
     }
     
@@ -363,12 +539,12 @@ static __attribute__((optimize("O3"))) void stm32wb_uart_dma_callback(void *cont
         (*uart->ev_callback)(uart->ev_context, events);
     }
 
-#if (STM32WB_UART_RTS_SUPPORTED == 1)
-    if (uart->mode & STM32WB_UART_MODE_RX_SUSPEND_REQUEST)
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1) || (STM32WB_UART_BREAK_SUPPORTED == 1)
+    if (uart->mode & (STM32WB_UART_MODE_RX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_BREAK_REQUEST | STM32WB_UART_MODE_TX_XONOFF_REQUEST))
     {
         stm32wb_uart_request(uart);
     }
-#endif /* STM32WB_UART_RTS_SUPPORTED == 1 */
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 ||STM32WB_UART_BREAK_SUPPORTED == 1 */
 }
 
 static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm32wb_uart_t *uart)
@@ -382,7 +558,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
 
     usart_isr = USART->ISR;
     
-    if (usart_isr & (USART_ISR_PE | USART_ISR_FE | USART_ISR_NE | USART_ISR_ORE | USART_ISR_IDLE | USART_ISR_RXNE))
+    if (usart_isr & (USART_ISR_PE | USART_ISR_FE | USART_ISR_NE | USART_ISR_ORE | USART_ISR_IDLE | USART_ISR_RXNE | USART_ISR_CMF))
     {
         events = 0;
 
@@ -414,7 +590,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
                     {
                         armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_IDLE);
 
-                        stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                        stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
                     }
                 }
                 else
@@ -482,7 +658,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
                             {
                                 armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_IDLE);
                                 
-                                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
                             }
                         }
                         else
@@ -528,7 +704,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
                             
                             if (mode & STM32WB_UART_MODE_RX_IDLE)
                             {
-                                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
                             }
                         
 #if (STM32WB_UART_BREAK_SUPPORTED == 1)
@@ -551,6 +727,29 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
                         }
                         
                         rx_data = USART->RDR;
+
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+                        if (uart->option & STM32WB_UART_OPTION_XONOFF)
+                        {
+                            if (rx_data == STM32WB_UART_RX_DATA_XON)
+                            {
+                                armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED), STM32WB_UART_MODE_TX_SUSPEND_REQUEST);
+                                
+                                usart_isr = USART->ISR;
+                                
+                                continue;
+                            }
+                            
+                            if (rx_data == STM32WB_UART_RX_DATA_XOFF)
+                            {
+                                armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED), (STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPENDED));
+                                
+                                usart_isr = USART->ISR;
+                                
+                                continue;
+                            }
+                        }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 */
                         
                         if (rx_count == uart->rx_size)
                         {
@@ -589,20 +788,20 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
                     
                     armv7m_atomic_addh(&uart->rx_count, (rx_count - rx_count_previous));
                     
-#if (STM32WB_UART_RTS_SUPPORTED == 1)
-                    if (uart->option & STM32WB_UART_OPTION_RTS)
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1)
+                    if (uart->option & (STM32WB_UART_OPTION_XONOFF | STM32WB_UART_OPTION_RTS))
                     {
                         if ((rx_count >= uart->rx_threshold[2]) && !(uart->mode & STM32WB_UART_MODE_RX_SUSPENDED))
                         {
                             armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_SUSPEND_REQUEST);
                         }
                     }
-#endif /* STM32WB_UART_RTS_SUPPORTED == 1 */
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
                 }
             }
         }
 
-        USART->ICR = USART_ICR_WUCF | USART_ICR_IDLECF | USART_ICR_ORECF;
+        USART->ICR = USART_ICR_WUCF | USART_ICR_CMCF | USART_ICR_IDLECF | USART_ICR_ORECF;
 
         if (usart_isr & USART_ISR_IDLE)
         {
@@ -610,7 +809,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
             {
                 armv7m_atomic_or(&uart->mode, STM32WB_UART_MODE_RX_IDLE);
 
-                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
                 if ((uart->rx_write != uart->rx_event) && (uart->rx_count < uart->rx_threshold[0]))
                 {
@@ -632,233 +831,189 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_interrupt(stm
         }
     }
 
-#if (STM32WB_UART_RTS_SUPPORTED == 1)
-    if (uart->mode & STM32WB_UART_MODE_RX_SUSPEND_REQUEST)
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1) || (STM32WB_UART_BREAK_SUPPORTED == 1)
+    if (uart->mode & (STM32WB_UART_MODE_RX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_BREAK_REQUEST | STM32WB_UART_MODE_TX_XONOFF_REQUEST | STM32WB_UART_MODE_TX_BUSY))
     {
         stm32wb_uart_request(uart);
     }
-#endif /* STM32WB_UART_RTS_SUPPORTED == 1  */
 
-    state = uart->state;
-
-    if (state >= STM32WB_UART_STATE_TRANSMIT_START)
+    if (!(uart->mode & (STM32WB_UART_MODE_TX_SUSPENDED | STM32WB_UART_MODE_TX_BREAK | STM32WB_UART_MODE_TX_SUSPEND_REQUEST | STM32WB_UART_MODE_TX_BREAK_REQUEST | STM32WB_UART_MODE_TX_XONOFF_REQUEST | STM32WB_UART_MODE_TX_BUSY)))
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 ||STM32WB_UART_BREAK_SUPPORTED == 1 */
     {
-        if (state == STM32WB_UART_STATE_TRANSMIT_DATA)
+        state = uart->state;
+
+        if (state >= STM32WB_UART_STATE_TRANSMIT_START)
         {
             usart_isr = USART->ISR;
             
-            if (usart_isr & USART_ISR_TXE)
+            if (state == STM32WB_UART_STATE_TRANSMIT_DATA)
             {
-                do
+                if (usart_isr & USART_ISR_TXE)
                 {
-                    USART->TDR = *uart->tx_data++;
-
-                    usart_isr = USART->ISR;
-
-                    if (uart->tx_data == uart->tx_data_e)
+                    do
                     {
+                        USART->TDR = *uart->tx_data++;
+
+                        usart_isr = USART->ISR;
+
+                        if (uart->tx_data == uart->tx_data_e)
+                        {
 #if (STM32WB_UART_FIFO_SUPPORTED == 1)
-                        USART->CR3 &= ~USART_CR3_TXFTIE;
-                        USART->CR1 |= USART_CR1_TCIE;
+                            USART->CR3 &= ~USART_CR3_TXFTIE;
+                            USART->CR1 |= USART_CR1_TCIE;
 #else /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-                        USART->CR1 = (USART->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
+                            USART->CR1 = (USART->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
 #endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
                     
-                        state = STM32WB_UART_STATE_TRANSMIT_STOP;
+                            state = STM32WB_UART_STATE_TRANSMIT_STOP;
 
-                        break;
+                            break;
+                        }
                     }
+                    while (usart_isr & USART_ISR_TXE);
                 }
-                while (usart_isr & USART_ISR_TXE);
             }
-        }
         
-        if (state == STM32WB_UART_STATE_TRANSMIT_STOP)
-        {
-            usart_isr = USART->ISR;
-
-            if (usart_isr & USART_ISR_TC)
+            if (state == STM32WB_UART_STATE_TRANSMIT_STOP)
             {
-                USART->CR1 &= ~USART_CR1_TCIE;
+                if (usart_isr & USART_ISR_TC)
+                {
+                    USART->CR1 &= ~USART_CR1_TCIE;
 
-                USART->ICR = USART_ICR_TCCF;
+                    USART->ICR = USART_ICR_TCCF;
             
-                if (uart->option & STM32WB_UART_OPTION_TX_DMA)
-                {
-                    USART->CR3 &= ~USART_CR3_DMAT;
-                
-                    stm32wb_dma_stop(uart->tx_dma);
-                }
-
-                stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_1);
-
-                p_status_return = uart->xf_status;
-                    
-                armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
-
-                callback = uart->xf_callback;
-                context = uart->xf_context;
-
-                uart->state = STM32WB_UART_STATE_READY; 
-                    
-                *p_status_return = STM32WB_UART_STATUS_SUCCESS;
-                    
-                if (callback)
-                {
-                    (*callback)(context);
-                }
-
-                state = uart->state;
-                
-                if (state != STM32WB_UART_STATE_TRANSMIT_START)
-                {
                     if (uart->option & STM32WB_UART_OPTION_TX_DMA)
                     {
-                        stm32wb_dma_disable(uart->tx_dma);
-
-                        uart->option &= ~STM32WB_UART_OPTION_TX_DMA;
+                        USART->CR3 &= ~USART_CR3_DMAT;
+                
+                        stm32wb_dma_stop(uart->tx_dma);
                     }
-                }
-            }
-        }
 
-        if (state == STM32WB_UART_STATE_TRANSMIT_START)
-        {
-            stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_1);
+                    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
-            if (uart->tx_dma != STM32WB_DMA_CHANNEL_NONE)
-            {
-                if (!(uart->option & STM32WB_UART_OPTION_TX_DMA))
-                {
-                    if (stm32wb_dma_enable(uart->tx_dma, uart->priority, NULL, NULL))
-                    {
-                        uart->option |= STM32WB_UART_OPTION_TX_DMA;
-                    }
-                }
-            }
-        
-            if (uart->option & STM32WB_UART_OPTION_TX_DMA)
-            {
-                stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)uart->tx_data, ((uint32_t)uart->tx_data_e - (uint32_t)uart->tx_data), STM32WB_UART_TX_DMA_OPTION);
-
-                USART->CR3 |= USART_CR3_DMAT;
-                USART->CR1 |= USART_CR1_TCIE;
-            
-                state = STM32WB_UART_STATE_TRANSMIT_STOP;
-            }
-            else
-            {
-                do
-                {
-                    USART->TDR = *uart->tx_data++;
-
-                    usart_isr = USART->ISR;
-
-                    if (uart->tx_data == uart->tx_data_e)
-                    {
-                        USART->CR1 |= USART_CR1_TCIE;
+                    p_status_return = uart->xf_status;
                     
-                        state = STM32WB_UART_STATE_TRANSMIT_STOP;
+                    armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
 
-                        break;
+                    callback = uart->xf_callback;
+                    context = uart->xf_context;
+
+                    uart->state = STM32WB_UART_STATE_READY; 
+                    
+                    *p_status_return = STM32WB_UART_STATUS_SUCCESS;
+                    
+                    if (callback)
+                    {
+                        (*callback)(context);
+                    }
+
+                    state = uart->state;
+                
+                    if (state != STM32WB_UART_STATE_TRANSMIT_START)
+                    {
+                        if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+                        {
+                            stm32wb_dma_disable(uart->tx_dma);
+
+                            uart->option &= ~STM32WB_UART_OPTION_TX_DMA;
+                        }
                     }
                 }
-                while (usart_isr & USART_ISR_TXE);
+            }
 
-                if (state != STM32WB_UART_STATE_TRANSMIT_STOP)
+            if (state == STM32WB_UART_STATE_TRANSMIT_START)
+            {
+                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+
+                if (uart->tx_dma != STM32WB_DMA_CHANNEL_NONE)
                 {
+                    if (!(uart->option & STM32WB_UART_OPTION_TX_DMA))
+                    {
+                        if (stm32wb_dma_enable(uart->tx_dma, uart->priority, NULL, NULL))
+                        {
+                            uart->option |= STM32WB_UART_OPTION_TX_DMA;
+                        }
+                    }
+                }
+        
+                if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+                {
+                    stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)uart->tx_data, ((uint32_t)uart->tx_data_e - (uint32_t)uart->tx_data), STM32WB_UART_TX_DMA_OPTION);
+                }
+
+                state = STM32WB_UART_STATE_TRANSMIT_RESTART;
+            }
+
+            if (state == STM32WB_UART_STATE_TRANSMIT_RESTART)
+            {
+                if (uart->option & STM32WB_UART_OPTION_TX_DMA)
+                {
+                    USART->CR3 |= USART_CR3_DMAT;
+                    USART->CR1 |= USART_CR1_TCIE;
+            
+                    state = STM32WB_UART_STATE_TRANSMIT_STOP;
+                }
+                else
+                {
+                    do
+                    {
+                        USART->TDR = *uart->tx_data++;
+
+                        usart_isr = USART->ISR;
+
+                        if (uart->tx_data == uart->tx_data_e)
+                        {
+                            USART->CR1 |= USART_CR1_TCIE;
+                    
+                            state = STM32WB_UART_STATE_TRANSMIT_STOP;
+
+                            break;
+                        }
+                    }
+                    while (usart_isr & USART_ISR_TXE);
+
+                    if (state != STM32WB_UART_STATE_TRANSMIT_STOP)
+                    {
 #if (STM32WB_UART_FIFO_SUPPORTED == 1)
-                    USART->CR3 |= USART_CR3_TXFTIE;
+                        USART->CR3 |= USART_CR3_TXFTIE;
 #else /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-                    USART->CR1 |= USART_CR1_TXEIE;
+                        USART->CR1 |= USART_CR1_TXEIE;
 #endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
 
-                    state = STM32WB_UART_STATE_TRANSMIT_DATA;
+                        state = STM32WB_UART_STATE_TRANSMIT_DATA;
+                    }
                 }
             }
-        }
-        
-        if (state == STM32WB_UART_STATE_BREAK_ON)
-        {
-            stm32wb_gpio_pin_output(uart->pins.tx);
-
-            p_status_return = uart->xf_status;
-                
-            armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
-                
-            callback = uart->xf_callback;
-            context = uart->xf_context;
-                
-            uart->state = STM32WB_UART_STATE_BREAK; 
-                
-            *p_status_return = STM32WB_UART_STATUS_SUCCESS;
-                
-            if (callback)
-            {
-                (*callback)(context);
-            }
             
-            state = uart->state;
+            uart->state = state;
         }
-
-        if (state == STM32WB_UART_STATE_BREAK_OFF)
-        {
-            stm32wb_gpio_pin_alternate(uart->pins.tx);
-
-            p_status_return = uart->xf_status;
-                
-            armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
-                
-            callback = uart->xf_callback;
-            context = uart->xf_context;
-                
-            uart->state = STM32WB_UART_STATE_READY; 
-                
-            *p_status_return = STM32WB_UART_STATUS_SUCCESS;
-                
-            if (callback)
-            {
-                (*callback)(context);
-            }
-            
-            state = uart->state;
-        }
-            
-        uart->state = state;
     }
+
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1)
+    if (uart->mode & STM32WB_UART_MODE_TX_XONOFF_REQUEST)
+    {
+        if (uart->state <= STM32WB_UART_STATE_TRANSMIT_START)
+        {
+            mode = armv7m_atomic_and(&uart->mode, ~STM32WB_UART_MODE_TX_XONOFF_REQUEST);
+            
+            USART->TDR = (mode & STM32WB_UART_MODE_RX_SUSPENDED) ? STM32WB_UART_RX_DATA_XOFF : STM32WB_UART_RX_DATA_XON;
+        }
+    }
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
 }
 
 static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_start(stm32wb_uart_t *uart)
 {
     USART_TypeDef *USART = uart->USART;
-    uint32_t uartclk;
-    
-    if (uart->option & STM32WB_UART_OPTION_SYSCLK)
-    {
-        stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_USART1 << uart->instance);
 
-        uartclk = stm32wb_system_sysclk();
-    }
-    else
-    {
-        stm32wb_system_hsi16_enable();
+    stm32wb_system_hsi16_enable();
 
-        if (uart->instance == STM32WB_UART_INSTANCE_LPUART1)
-        {
-            uartclk = 16000000u * 256u;
-        }
-        else
-        {
-            uartclk = 16000000u;
-        }
-    }
-    
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_USART1 + uart->instance);
 
     USART->CR1 = uart->cr1;
     USART->CR2 = uart->cr2;
     USART->CR3 = uart->cr3;
-    USART->BRR = (uartclk + (uart->clock -1)) / uart->clock;
+    USART->BRR = uart->brr;
     USART->ICR = ~0;
 
     USART->CR1 |= USART_CR1_UE;
@@ -957,14 +1112,7 @@ static __attribute__((noinline, optimize("O3"))) void stm32wb_uart_stop(stm32wb_
     
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_USART1 + uart->instance);
 
-    if (uart->option & STM32WB_UART_OPTION_SYSCLK)
-    {
-        stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_USART1 << uart->instance);
-    }
-    else
-    {
-        stm32wb_system_hsi16_disable();
-    }
+    stm32wb_system_hsi16_disable();
 }
 
 bool stm32wb_uart_create(stm32wb_uart_t *uart, const stm32wb_uart_params_t *params)
@@ -1070,7 +1218,7 @@ bool stm32wb_uart_enable(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t optio
 
 bool stm32wb_uart_disable(stm32wb_uart_t *uart)
 {
-    if ((uart->state != STM32WB_UART_STATE_READY) && (uart->state != STM32WB_UART_STATE_BREAK))
+    if (uart->state != STM32WB_UART_STATE_READY)
     {
         return false;
     }
@@ -1117,7 +1265,7 @@ bool stm32wb_uart_disable(stm32wb_uart_t *uart)
 
 bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t option, uint32_t rx_threshold[3])
 {
-    uint32_t usart_cr1, usart_cr2, usart_cr3;
+    uint32_t usart_cr1, usart_cr2, usart_cr3, usart_brr;
 
     if ((uart->state != STM32WB_UART_STATE_NOT_READY) && (uart->state != STM32WB_UART_STATE_READY))
     {
@@ -1137,19 +1285,16 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
             return false;
         }
 
-        if (!(stm32wb_system_options() & STM32WB_SYSTEM_OPTION_USART1_SYSCLK))
-        {
-            return false;
-        }
-        
 #if (STM32WB_UART_FIFO_SUPPORTED == 1)
         usart_cr1 = USART_CR1_OVER8 | USART_CR1_FIFOEN;
         usart_cr2 = 0;
         usart_cr3 = USART_CR3_ONEBIT | USART_CR3_TXFTCFG_1 | USART_CR3_RXFTCFG_1; /* 1/2 TXFIFO, 1/2 RXFIFO */
+        usart_brr = 0;
 #else /* STM32WB_UART_FIFO_SUPPORTED == 1 */
         usart_cr1 = USART_CR1_OVER8;
         usart_cr2 = 0;
         usart_cr3 = USART_CR3_ONEBIT;
+        usart_brr = 0;
 #endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
 
         stm32wb_gpio_pin_configure(uart->pins.rx, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
@@ -1163,6 +1308,7 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
         uart->cr1 = usart_cr1;
         uart->cr2 = usart_cr2;
         uart->cr3 = usart_cr3;
+        uart->brr = usart_brr;
     }
     else
 #endif /* STM32WB_UART_SPI_SUPPORTED == 1 */
@@ -1194,14 +1340,6 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
             uart->rx_threshold[1] = uart->rx_size - (uart->rx_entries ? uart->rx_entries : 8);
             uart->rx_threshold[2] = uart->rx_size - (uart->rx_entries ? uart->rx_entries : 8);
         }
-
-        if (uart->instance == STM32WB_UART_INSTANCE_USART1)
-        {
-            if (stm32wb_system_options() & STM32WB_SYSTEM_OPTION_USART1_SYSCLK)
-            {
-                option |= STM32WB_UART_OPTION_SYSCLK;
-            }
-        }
         
 #if (STM32WB_UART_FIFO_SUPPORTED == 1)
         usart_cr1 = USART_CR1_FIFOEN | USART_CR1_IDLEIE;
@@ -1212,17 +1350,12 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
         usart_cr2 = 0;
         usart_cr3 = USART_CR3_EIE;
 #endif /* STM32WB_UART_FIFO_SUPPORTED == 1 */
-
-        if (option & (STM32WB_UART_OPTION_STOP_1_5 | STM32WB_UART_OPTION_STOP_2))
+        
+        if (option & STM32WB_UART_OPTION_STOP_2)
         {
             usart_cr2 |= USART_CR2_STOP_1;
-
-            if (option & STM32WB_UART_OPTION_STOP_1_5)
-            {
-                usart_cr2 |= USART_CR2_STOP_0;
-            }
         }
-            
+        
         if (option & (STM32WB_UART_OPTION_PARITY_EVEN | STM32WB_UART_OPTION_PARITY_ODD))
         {
             usart_cr1 |= (USART_CR1_PCE | USART_CR1_PEIE);
@@ -1237,6 +1370,12 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
         else
         {
             usart_cr1 |= ((option & STM32WB_UART_OPTION_DATA_SIZE_8) ? 0 : USART_CR1_M1);
+        }
+        
+        if (option & STM32WB_UART_OPTION_XONOFF)
+        {
+            usart_cr1 |= USART_CR1_CMIE;
+            usart_cr2 |= (STM32WB_UART_RX_DATA_XOFF << USART_CR2_ADD_Pos);
         }
         
         if (option & STM32WB_UART_OPTION_WAKEUP)
@@ -1259,14 +1398,38 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
             usart_cr2 |= USART_CR2_DATAINV;
         }
 
-        stm32wb_gpio_pin_configure(uart->pins.rx, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-        stm32wb_gpio_pin_configure(uart->pins.tx, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        if (uart->instance == STM32WB_UART_INSTANCE_LPUART1)
+        {
+            usart_brr = (256u * 16000000u + (baudrate -1)) / baudrate; /* HSI16 */
+        }
+        else
+        {
+            usart_brr = (16000000u + (baudrate -1)) / baudrate;        /* HSI16 */
+        }
+        
+        if (option & STM32WB_UART_OPTION_WAKEUP)
+        {
+            /* Pullup needed if peer disconnects. USART cannot detect BREAK as wakeup from STOP.
+             */
+            stm32wb_gpio_pin_configure(uart->pins.rx, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        }
+        else
+        {
+            /* Pulldown needed to detect BREAK condition if peer disconnects.
+             */
+            stm32wb_gpio_pin_configure(uart->pins.rx, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        }
+        
+        stm32wb_gpio_pin_configure(uart->pins.tx,
+                                   ((uart->mode & STM32WB_UART_MODE_TX_BREAK) 
+                                    ? (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE   | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT)
+                                    : (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE)));
         stm32wb_gpio_pin_write(uart->pins.tx, 0);
         
 #if (STM32WB_UART_RTS_SUPPORTED == 1)
         if (option & STM32WB_UART_OPTION_RTS)
         {
-            stm32wb_gpio_pin_configure(uart->pins.rts, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+            stm32wb_gpio_pin_configure(uart->pins.rts, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
             stm32wb_gpio_pin_write(uart->pins.rts, ((uart->mode & STM32WB_UART_MODE_RX_SUSPENDED) ? 1 : 0));
         }
         else
@@ -1281,7 +1444,7 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
 #if (STM32WB_UART_CTS_SUPPORTED == 1)
         if (option & STM32WB_UART_OPTION_CTS)
         {
-            stm32wb_gpio_pin_configure(uart->pins.cts, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+            stm32wb_gpio_pin_configure(uart->pins.cts, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
             
             usart_cr3 |= USART_CR3_CTSE;
         }
@@ -1306,6 +1469,7 @@ bool stm32wb_uart_configure(stm32wb_uart_t *uart, uint32_t baudrate, uint32_t op
         uart->cr1 = usart_cr1;
         uart->cr2 = usart_cr2;
         uart->cr3 = usart_cr3;
+        uart->brr = usart_brr;
         
         stm32wb_uart_start(uart);
     }
@@ -1327,6 +1491,23 @@ bool stm32wb_uart_break_state(stm32wb_uart_t *uart)
 #endif /* STM32WB_UART_BREAK_SUPPORTED == 1 */
 }
 
+bool stm32wb_uart_cts_state(stm32wb_uart_t *uart)
+{
+    USART_TypeDef *USART = uart->USART;
+
+    if (uart->state < STM32WB_UART_STATE_READY)
+    {
+        return false;
+    }
+
+    if (!(uart->option & STM32WB_UART_OPTION_CTS))
+    {
+        return true;
+    }
+
+    return !!(USART->ISR & USART_ISR_CTS);
+}
+
 uint32_t stm32wb_uart_count(stm32wb_uart_t *uart)
 {
     if (uart->state < STM32WB_UART_STATE_READY)
@@ -1340,18 +1521,18 @@ uint32_t stm32wb_uart_count(stm32wb_uart_t *uart)
 uint32_t stm32wb_uart_read(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_count)
 {
     uint32_t rx_size, rx_read;
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1)
     uint32_t rx_count_previous;
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
 
     if (uart->state < STM32WB_UART_STATE_READY)
     {
         return 0;
     }
 
-    rx_size = uart->rx_count;
-
-    if (rx_count > rx_size)
+    if (rx_count > uart->rx_count)
     {
-        rx_count = rx_size;
+        rx_count = uart->rx_count;
     }
 
     if (rx_count)
@@ -1386,10 +1567,10 @@ uint32_t stm32wb_uart_read(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_c
 
         uart->rx_read = rx_read;
 
-#if (STM32WB_UART_RTS_SUPPORTED == 1)
+#if (STM32WB_UART_XONOFF_SUPPORTED == 1) || (STM32WB_UART_RTS_SUPPORTED == 1)
         rx_count_previous = armv7m_atomic_subh(&uart->rx_count, rx_count);
 
-        if (uart->option & STM32WB_UART_OPTION_RTS)
+        if (uart->option & (STM32WB_UART_OPTION_XONOFF | STM32WB_UART_OPTION_RTS))
         {
             if (((rx_count_previous - rx_count) < uart->rx_threshold[1]) && (uart->mode & STM32WB_UART_MODE_RX_SUSPENDED))
             {
@@ -1401,11 +1582,11 @@ uint32_t stm32wb_uart_read(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_c
                 }
             }
         }
-#else /* STM32WB_UART_RTS_SUPPORTED == 1 */
+#else /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
         armv7m_atomic_subh(&uart->rx_count, rx_count);
-#endif /* STM32WB_UART_RTS_SUPPORTED == 1 */
+#endif /* STM32WB_UART_XONOFF_SUPPORTED == 1 || STM32WB_UART_RTS_SUPPORTED == 1 */
     }
-    
+
     return rx_count;
 }
 
@@ -1424,17 +1605,36 @@ int32_t stm32wb_uart_peek(stm32wb_uart_t *uart)
     return uart->rx_data[uart->rx_read];
 }
 
-bool stm32wb_uart_transmit(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context)
+bool stm32wb_uart_break(stm32wb_uart_t *uart, bool onoff)
 {
-    if (armv7m_atomic_cas((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
+#if (STM32WB_UART_BREAK_SUPPORTED == 1)
+    if (uart->state < STM32WB_UART_STATE_READY)
     {
         return false;
     }
 
+    armv7m_atomic_modify(&uart->mode, (STM32WB_UART_MODE_TX_BREAK_REQUEST | STM32WB_UART_MODE_TX_BREAK), (STM32WB_UART_MODE_TX_BREAK_REQUEST | (onoff ? STM32WB_UART_MODE_TX_BREAK : 0)));
+    
+    if (__current_irq() != uart->interrupt)
+    {
+        NVIC_SetPendingIRQ(uart->interrupt);
+    }
+
+    return true;
+#else /* STM32WB_UART_BREAK_SUPPORTED == 1 */
+    return false;
+#endif /* STM32WB_UART_BREAK_SUPPORTED == 1 */
+}
+
+bool stm32wb_uart_transmit(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context)
+{
     if (uart->state != STM32WB_UART_STATE_READY)
     {
-        armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
+        return false;
+    }
 
+    if (armv7m_atomic_cas((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
+    {
         return false;
     }
 
@@ -1447,35 +1647,6 @@ bool stm32wb_uart_transmit(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_
     uart->tx_data_e = tx_data + tx_count;
 
     uart->state = STM32WB_UART_STATE_TRANSMIT_START;
-
-    if (__current_irq() != uart->interrupt)
-    {
-        NVIC_SetPendingIRQ(uart->interrupt);
-    }
-
-    return true;
-}
-
-bool stm32wb_uart_break(stm32wb_uart_t *uart, bool onoff, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context)
-{
-    if (armv7m_atomic_cas((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
-    {
-        return false;
-    }
-
-    if (uart->state != (onoff ? STM32WB_UART_STATE_READY : STM32WB_UART_STATE_BREAK))
-    {
-        armv7m_atomic_store((volatile uint32_t*)&uart->xf_status, (uint32_t)NULL);
-
-        return false;
-    }
-
-    *p_status_return = STM32WB_UART_STATUS_BUSY;
-    
-    uart->xf_callback = callback;
-    uart->xf_context = context;
-
-    uart->state = (onoff ? STM32WB_UART_STATE_BREAK_ON : STM32WB_UART_STATE_BREAK_OFF);
 
     if (__current_irq() != uart->interrupt)
     {
@@ -1607,14 +1778,21 @@ bool stm32wb_uart_spi_acquire(stm32wb_uart_t *uart, uint32_t clock, uint32_t con
         stm32wb_exti_block(uart->mask);
     }
 
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
     stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_USART1 << uart->instance);
 
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_USART1 + uart->instance);
 
     if ((uart->clock != clock) || (uart->control != control))
     {
-        uartclk = stm32wb_system_sysclk();
+        if (stm32wb_system_options() & STM32WB_SYSTEM_OPTION_USART1_SYSCLK)
+        {
+            uartclk = stm32wb_system_sysclk();
+        }
+        else
+        {
+            uartclk = 16000000;
+        }
 
         uartdiv = ((uartclk + (clock -1)) / clock) * 2;
 
@@ -1622,17 +1800,18 @@ bool stm32wb_uart_spi_acquire(stm32wb_uart_t *uart, uint32_t clock, uint32_t con
         {
             uartdiv = 16;
         }
-
+        
         uart->cr2 = ((USART_CR2_CLKEN | USART_CR2_LBCL) |
                      ((control & STM32WB_UART_SPI_CONTROL_LSB_FIRST) ? 0 : USART_CR2_MSBFIRST) |
                      ((control & STM32WB_UART_SPI_CONTROL_CPOL) ? USART_CR2_CPOL : 0) |
                      ((control & STM32WB_UART_SPI_CONTROL_CPHA) ? USART_CR2_CPHA : 0));
 
+        uart->brr = (uartdiv & ~15) | ((uartdiv & 15) >> 1);
 
         USART->CR1 = uart->cr1;
         USART->CR2 = uart->cr2;
         USART->CR3 = uart->cr3;
-        USART->BRR = (uartdiv & ~15) | ((uartdiv & 15) >> 1);
+        USART->BRR = uart->brr;
         
         uart->clock = clock;
         uart->control = control;
@@ -1682,7 +1861,7 @@ bool stm32wb_uart_spi_release(stm32wb_uart_t *uart)
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_USART1 + uart->instance);
 
     stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_USART1 << uart->instance);
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     uart->state = STM32WB_UART_STATE_READY;
 
@@ -2165,7 +2344,7 @@ __attribute__((optimize("O3"))) bool stm32wb_uart_spi_data_dma_receive(stm32wb_u
     USART->CR3 = uart->cr3 | (USART_CR3_DMAR | USART_CR3_DMAT);
 
     stm32wb_dma_start(uart->rx_dma, (uint32_t)rx_data, (uint32_t)&USART->RDR, rx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
-    stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)&uart->tx_default, rx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
+    stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)&stm32wb_uart_spi_dma_tx_default, rx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
         
     return true;
 }
@@ -2219,7 +2398,7 @@ __attribute__((optimize("O3"))) bool stm32wb_uart_spi_data_dma_transmit(stm32wb_
 
     USART->CR3 = uart->cr3 | (USART_CR3_DMAR | USART_CR3_DMAT);
                 
-    stm32wb_dma_start(uart->rx_dma, (uint32_t)&uart->rx_none, (uint32_t)&USART->RDR, tx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
+    stm32wb_dma_start(uart->rx_dma, (uint32_t)&stm32wb_uart_spi_dma_rx_none, (uint32_t)&USART->RDR, tx_count, STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE | STM32WB_DMA_OPTION_EVENT_TRANSFER_DONE);
     stm32wb_dma_start(uart->tx_dma, (uint32_t)&USART->TDR, (uint32_t)tx_data, tx_count, STM32WB_UART_SPI_TX_DMA_OPTION_RECEIVE);
 
     return true;

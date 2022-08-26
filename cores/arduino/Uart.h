@@ -30,14 +30,14 @@
 
 #include "HardwareSerial.h"
 
-#define SERIAL_WAKEUP         0x0080
+#define SERIAL_SBUS     (STM32WB_UART_OPTION_DATA_SIZE_8 | STM32WB_UART_OPTION_PARITY_EVEN | STM32WB_UART_OPTION_STOP_2 | STM32WB_UART_OPTION_RX_INVERT | STM32WB_UART_OPTION_TX_INVERT)
+#define SERIAL_WAKEUP   (STM32WB_UART_OPTION_WAKEUP)
 
 #define SERIAL_STATUS_SUCCESS 0
 #define SERIAL_STATUS_FAILURE 1
 #define SERIAL_STATUS_BUSY    2
 
 
-//#define UART_RX_BUFFER_SIZE 64
 #define UART_RX_BUFFER_SIZE 128
 #define UART_TX_BUFFER_SIZE 128
 #define UART_TX_PACKET_SIZE 32
@@ -49,6 +49,14 @@
 class Uart : public HardwareSerial
 {
 public:
+    enum FlowControl: uint32_t {
+        DISABLED           = 0,
+        RTS                = 1,
+        CTS                = 2,
+        RTS_CTS            = 3,
+        XONOFF             = 4,
+    };
+  
     Uart(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *params, void (*serialEventRun)(void));
     void begin(unsigned long baudRate);
     void begin(unsigned long baudrate, uint32_t config);
@@ -64,6 +72,9 @@ public:
     using Print::write; // pull in write(str) and write(buf, size) from Print
     operator bool() { return true; }
 
+    // STM32WB EXTENSION: CTS state
+    bool cts();
+
     // STM32WB EXTENSTION: asynchronous write with callback
     bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status);
     bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status, void(*callback)(void));
@@ -72,12 +83,17 @@ public:
     // STM32WB EXTENSION: enable/disable non-blocking writes
     void setNonBlocking(bool enable);
 
+    // STM32WB EXTENSION: configure flow control
+    void setFlowControl(enum FlowControl mode);
+
     // STM32WB EXTENSION: asynchronous receive
     void onReceive(Callback callback);
     void onReceive(void(*callback)(void)) { onReceive(Callback(callback)); }
-
+  
  private:
     struct _stm32wb_uart_t *m_uart;
+    uint32_t m_baudrate;
+    uint32_t m_option;
     uint8_t m_rx_data[UART_RX_BUFFER_SIZE];
     uint8_t m_tx_data[UART_TX_BUFFER_SIZE];
     volatile uint16_t m_tx_write;

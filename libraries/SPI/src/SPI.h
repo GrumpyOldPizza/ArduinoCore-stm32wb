@@ -77,8 +77,8 @@ public:
     }
 
 protected:
-    const uint32_t m_clock;
-    const uint32_t m_control;
+    uint32_t m_clock;
+    uint32_t m_control;
 
     friend class SPIClass;
 };

@@ -161,16 +161,18 @@
      STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_1 |  \
      STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_1)
 
-extern uint32_t __Vectors[];
-extern uint32_t __StackTop[];
+extern uint8_t __Vectors[];
+extern uint8_t __StackTop[];
 
-extern uint32_t __ipcram_start__[];
-extern uint32_t __ipcram_end__[];
-extern uint32_t __retram_start__[];
-extern uint32_t __retram_end__[];
-extern uint32_t __retram_flash__[];
-extern uint32_t __ccmram_start__[];
-extern uint32_t __ccmram_end__[];
+extern uint8_t __ipcc_start__[];
+extern uint8_t __ipcc_end__[];
+extern uint8_t __ccram_start__[];
+extern uint8_t __ccram_end__[];
+extern uint8_t __data2a_start__[];
+extern uint8_t __data2a_end__[];
+extern uint8_t __data2a_flash__[];
+extern uint8_t __bss2a_start__[];
+extern uint8_t __bss2a_end__[];
 
 typedef struct _stm32wb_system_device_t {
     uint32_t                        options;
@@ -191,10 +193,10 @@ typedef struct _stm32wb_system_device_t {
     uint8_t                         hsi16;
     uint8_t                         clk48;
     uint8_t                         pllsys;
+    uint8_t                         latency;
     uint8_t                         smps;
     uint8_t                         palevel;
     uint32_t                        msirange;
-    uint32_t                        c1spre[2];
     uint32_t                        c2hpre;
     stm32wb_system_pvm1_callback_t  pvm1_callback;
     void                            *pvm1_context;
@@ -321,6 +323,8 @@ static uint32_t const stm32wb_system_xlate_ENMSK[STM32WB_SYSTEM_PERIPH_COUNT] = 
 
 __attribute__((section(".noinit"))) uint32_t SystemCoreClock;
 
+static void stm32wb_system_timeout(void *context, uint64_t clock);
+
 void SystemInit(void)
 {
     uint32_t flash_acr;
@@ -397,17 +401,17 @@ void SystemInit(void)
                 RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN | RCC_AHB2ENR_GPIOCEN); 
                 
                 RCC->APB1ENR1 &= ~RCC_APB1ENR1_RTCAPBEN;
-                
+
                 /* This needs to be assembly code as GCC catches NULL 
                  * dereferences ...
                  */
-                __asm__ volatile ("   mov     r2, #0                         \n"
-                                  "   ldr     r0, [r2, #0]                   \n"
-                                  "   ldr     r1, [r2, #4]                   \n"
-                                  "   msr     MSP, r0                        \n"
-                                  "   dsb                                    \n"
-                                  "   isb                                    \n"
-                                  "   bx      r1                             \n");
+                __asm__ volatile ("   mov     r2, #0       \n"
+                                  "   ldr     r0, [r2, #0] \n"
+                                  "   ldr     r1, [r2, #4] \n"
+                                  "   msr     MSP, r0      \n"
+                                  "   dsb                  \n"
+                                  "   isb                  \n"
+                                  "   bx      r1           \n");
             }
         }
     }
@@ -460,11 +464,11 @@ void SystemInit(void)
     __armv7m_core_initialize();
 }
 
-void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, uint32_t lseclk, uint32_t hseclk, uint32_t options)
+void stm32wb_system_initialize(uint32_t sysclk, uint32_t hclk, uint32_t pclk1, uint32_t pclk2, uint32_t lseclk, uint32_t hseclk, uint32_t options)
 {
     uint32_t count;
-    uint32_t *ipcram, *ipcram_e, *retram, *retram_e;
-    const uint32_t *retram_f;
+    uint32_t *ipcc, *ipcc_e, *data2a, *data2a_e, *bss2a, *bss2a_e;
+    const uint32_t *data2a_f;
 
     __disable_irq();
 
@@ -548,7 +552,7 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
             lseclk = 0;
         }
 
-        if (!(RTC->BKP17R & STM32WB_RTC_BKP17R_HSECLK))
+        if (!(RTC->BKP18R & STM32WB_RTC_BKP18R_HSECLK))
         {
             hseclk = 0;
         }
@@ -565,6 +569,10 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
             {
                 if (!(RCC->BDCR & RCC_BDCR_LSEON))
                 {
+                    /* Add LSEDRV before turning on LSE.
+                     */
+                    RCC->BDCR |= (((options & STM32WB_SYSTEM_OPTION_LSE_MODE_MASK) >> STM32WB_SYSTEM_OPTION_LSE_MODE_SHIFT) << RCC_BDCR_LSEDRV_Pos);
+
                     RCC->BDCR |= RCC_BDCR_LSEON;
 
                     /* The loop below take about 8 cycles per iteration. The startup time for
@@ -640,32 +648,50 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
          */
         PWR->C2CR1 = (PWR->C2CR1 & ~PWR_C2CR1_LPMS) | PWR_C2CR1_LPMS_SHUTDOWN;
 
-        /* Zero .ipcram in SRAM2a */
-        ipcram = (uint32_t*)__ipcram_start__;
-        ipcram_e = (uint32_t*)__ipcram_end__;
-
-        while (ipcram != ipcram_e)
+        if (&__ipcc_start__[0] != &__ipcc_end__[0])
         {
-            *ipcram++ = 0x00000000;
+            ipcc = (uint32_t*)&__ipcc_start__[0];
+            ipcc_e = (uint32_t*)&__ipcc_end__[0];
+
+            do
+            {
+                *ipcc++ = 0x00000000;
+            }
+            while (ipcc != ipcc_e);
         }
 
-        /* Copy .retram in SRAM2a */
-        retram = (uint32_t*)__retram_start__;
-        retram_e = (uint32_t*)__retram_end__;
-        retram_f = (const uint32_t*)__retram_flash__;
-
-        while (retram != retram_e)
+        if (&__data2a_start__[0] != &__data2a_end__[0])
         {
-            *retram++ = *retram_f++;
+            data2a = (uint32_t*)&__data2a_start__[0];
+            data2a_e = (uint32_t*)&__data2a_end__[0];
+            data2a_f = (const uint32_t*)&__data2a_flash__[0];
+
+            do
+            {
+                *data2a++ = *data2a_f++;
+            }
+            while (data2a != data2a_e);
+        }
+
+        if (&__bss2a_start__[0] != &__bss2a_end__[0])
+        {
+            bss2a = (uint32_t*)&__bss2a_start__[0];
+            bss2a_e = (uint32_t*)&__bss2a_end__[0];
+
+            do
+            {
+                *bss2a++ = 0x00000000;
+            }
+            while (bss2a != bss2a_e);
         }
     }
     
-    /* Write protect .ccmram in SRAM2b */
-    if (__ccmram_start__ != __ccmram_end__)
-    {
-        SYSCFG->SWPR2 = 0xffffffff >> (32 - (((uint32_t)__ccmram_end__ - (uint32_t)__ccmram_start__ + 1023) / 1024));
-    }
-    
+    /* Write protect .ccram in SRAM2b */
+#if 0    
+    SYSCFG->SWPR2 = (0xffffffff >> (32 - (((uint32_t)__ccram_end__ - (uint32_t)__ccram_start__ + 1023) / 1024))) << (((uint32_t)__ccram_start__ - SRAM2B_BASE + 1023) / 1024);
+#endif    
+    SYSCFG->SWPR2 = 0x0000000f; // 4k
+
     /* Disable SMPS for now ... */
     PWR->CR5 &= ~(PWR_CR5_SMPSEN | PWR_CR5_BORHC);
     
@@ -727,6 +753,20 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
                   (lseclk
                    ? (RCC_CCIPR_LPTIM1SEL_1 | RCC_CCIPR_LPTIM1SEL_0) /* LPTIM1 is LSE          */
                    : (RCC_CCIPR_LPTIM1SEL_0)));                      /* LPTIM1 is LSI          */
+
+
+#if 0    
+    EXTI->IMR2 |= EXTI_IMR2_IM48;
+    EXTI->C2IMR2 |= EXTI_C2IMR2_IM48;
+#endif
+    
+    EXTI->IMR2 &= ~EXTI_IMR2_IM48;
+    EXTI->C2IMR2 &= ~EXTI_C2IMR2_IM48;
+    
+    stm32wb_system_device.reference = 0;
+    stm32wb_system_device.options = options;
+    stm32wb_system_device.lseclk = lseclk;
+    stm32wb_system_device.hseclk = hseclk;
     
     if (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk)
     {
@@ -737,18 +777,21 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
                             DBGMCU_APB1FZR1_DBG_I2C3_STOP |
                             DBGMCU_APB1FZR1_DBG_LPTIM1_STOP);
         DBGMCU->APB1FZR2 = (DBGMCU_APB1FZR2_DBG_LPTIM2_STOP);
+        DBGMCU->APB2FZR  = 0;
 
+        // RTT in SRAM2
+        RCC->AHB3SMENR |= RCC_AHB3SMENR_SRAM2SMEN;
+
+#if 0        
         EXTI->IMR2 |= EXTI_IMR2_IM48;
         EXTI->C2IMR2 |= EXTI_C2IMR2_IM48;
+#endif
+        
+        stm32wb_system_device.reference |= STM32WB_SYSTEM_REFERENCE_SWD;
     }
-
+         
     NVIC_SetPriority(PVD_PVM_IRQn, STM32WB_PVD_PVM_IRQ_PRIORITY);
     NVIC_EnableIRQ(PVD_PVM_IRQn);
-            
-    stm32wb_system_device.options = options;
-    stm32wb_system_device.lseclk = lseclk;
-    stm32wb_system_device.hseclk = hseclk;
-    stm32wb_system_device.reference = STM32WB_SYSTEM_REFERENCE_SWD;
     
     __stm32wb_hsem_initialize();
     __stm32wb_gpio_initialize();
@@ -760,27 +803,121 @@ void stm32wb_system_initialize(uint32_t hclk, uint32_t pclk1, uint32_t pclk2, ui
     
     __enable_irq();
     
-    stm32wb_system_sysclk_configure(hclk, pclk1, pclk2);
+    stm32wb_system_sysclk_configure(sysclk, hclk, pclk1, pclk2);
 
     __stm32wb_flash_initialize();
     __stm32wb_eeprom_initialize();
     __stm32wb_random_initialize();
 
-    stm32wb_rtc_timer_create(&stm32wb_system_device.timeout, (stm32wb_rtc_timer_callback_t)stm32wb_system_wakeup, NULL);
+    stm32wb_rtc_timer_create(&stm32wb_system_device.timeout, (stm32wb_rtc_timer_callback_t)stm32wb_system_timeout, NULL);
 }
 
-static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
+static void stm32wb_system_sysclk_ext_compute(uint32_t sysclk, uint32_t hclk, uint32_t *p_latency_return, uint32_t *p_c2hpre_return, uint32_t *p_shdhpre_return)
 {
-    uint32_t primask, pllcfg, msirange, ppre1, ppre2, c2hpre, c1spre[2], latency, smpsvos;
+    uint32_t hclk2, hclk4, latency, c2hpre, shdhpre;
+
+    if      (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS) { hclk2 = 32000000; }
+    else if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_CPU2)     { hclk2 = 16000000; }
+    else                                                                          { hclk2 =  2000000; }
+
+    if      (hclk2 >= (sysclk / 1))   { hclk2 = sysclk / 1;   c2hpre = RCC_EXTCFGR_C2HPRE_DIV1;   }
+    else if (hclk2 >= (sysclk / 2))   { hclk2 = sysclk / 2;   c2hpre = RCC_EXTCFGR_C2HPRE_DIV2;   }
+    else if (hclk2 >= (sysclk / 4))   { hclk2 = sysclk / 4;   c2hpre = RCC_EXTCFGR_C2HPRE_DIV4;   }
+    else if (hclk2 >= (sysclk / 8))   { hclk2 = sysclk / 8;   c2hpre = RCC_EXTCFGR_C2HPRE_DIV8;   }
+    else if (hclk2 >= (sysclk / 16))  { hclk2 = sysclk / 16;  c2hpre = RCC_EXTCFGR_C2HPRE_DIV16;  }
+    else if (hclk2 >= (sysclk / 32))  { hclk2 = sysclk / 32;  c2hpre = RCC_EXTCFGR_C2HPRE_DIV32;  }
+    else if (hclk2 >= (sysclk / 64))  { hclk2 = sysclk / 64;  c2hpre = RCC_EXTCFGR_C2HPRE_DIV64;  }
+    else if (hclk2 >= (sysclk / 128)) { hclk2 = sysclk / 128; c2hpre = RCC_EXTCFGR_C2HPRE_DIV128; }
+    else if (hclk2 >= (sysclk / 256)) { hclk2 = sysclk / 256; c2hpre = RCC_EXTCFGR_C2HPRE_DIV256; }
+    else                              { hclk2 = sysclk / 512; c2hpre = RCC_EXTCFGR_C2HPRE_DIV512; }
+
+    hclk4 = (hclk >= hclk2) ? hclk : hclk2;
+
+    if      (hclk4 >= (sysclk / 1))   { hclk4 = sysclk / 1;   shdhpre = RCC_EXTCFGR_SHDHPRE_DIV1;   }
+    else if (hclk4 >= (sysclk / 2))   { hclk4 = sysclk / 2;   shdhpre = RCC_EXTCFGR_SHDHPRE_DIV2;   }
+    else if (hclk4 >= (sysclk / 4))   { hclk4 = sysclk / 4;   shdhpre = RCC_EXTCFGR_SHDHPRE_DIV4;   }
+    else if (hclk4 >= (sysclk / 8))   { hclk4 = sysclk / 8;   shdhpre = RCC_EXTCFGR_SHDHPRE_DIV8;   }
+    else if (hclk4 >= (sysclk / 16))  { hclk4 = sysclk / 16;  shdhpre = RCC_EXTCFGR_SHDHPRE_DIV16;  }
+    else if (hclk4 >= (sysclk / 32))  { hclk4 = sysclk / 32;  shdhpre = RCC_EXTCFGR_SHDHPRE_DIV32;  }
+    else if (hclk4 >= (sysclk / 64))  { hclk4 = sysclk / 64;  shdhpre = RCC_EXTCFGR_SHDHPRE_DIV64;  }
+    else if (hclk4 >= (sysclk / 128)) { hclk4 = sysclk / 128; shdhpre = RCC_EXTCFGR_SHDHPRE_DIV128; }
+    else if (hclk4 >= (sysclk / 256)) { hclk4 = sysclk / 256; shdhpre = RCC_EXTCFGR_SHDHPRE_DIV256; }
+    else                              { hclk4 = sysclk / 512; shdhpre = RCC_EXTCFGR_SHDHPRE_DIV512; }
+    
+    if (hclk4 <= 16000000)
+    {
+        if      (hclk4 <=  60000000) { latency = FLASH_ACR_LATENCY_0WS; }
+        else if (hclk4 <= 120000000) { latency = FLASH_ACR_LATENCY_1WS; }
+        else                         { latency = FLASH_ACR_LATENCY_2WS; }
+    } 
+    else
+    {
+        if      (hclk4 <=  16000000) { latency = FLASH_ACR_LATENCY_0WS; }
+        else if (hclk4 <=  32000000) { latency = FLASH_ACR_LATENCY_1WS; }
+        else if (hclk4 <=  48000000) { latency = FLASH_ACR_LATENCY_2WS; }
+        else                         { latency = FLASH_ACR_LATENCY_3WS; }
+    }
+
+    *p_latency_return = latency;
+    *p_c2hpre_return  = c2hpre;
+    *p_shdhpre_return = shdhpre;
+}
+
+static void stm32wb_system_sysclk_ext_configure(uint32_t sysclk, uint32_t hclk)
+{
+    uint32_t latency, c2hpre, shdhpre;
+    
+    stm32wb_system_sysclk_ext_compute(sysclk, hclk, &latency, &c2hpre, &shdhpre);
+    
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE))
+    {
+    }
+    
+    FLASH->ACR = FLASH_ACR_ICEN | FLASH_ACR_DCEN | FLASH_ACR_LATENCY_3WS;
+   
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE);
+    
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
+    {
+    }
+    
+    RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_SHDHPRE | RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF)) | shdhpre | c2hpre;
+    
+    while ((RCC->EXTCFGR & (RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF)) != (RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF))
+    {
+    }
+    
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
+    
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE))
+    {
+    }
+    
+    FLASH->ACR = FLASH_ACR_ICEN | FLASH_ACR_DCEN | latency;
+    
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE);
+
+    stm32wb_system_device.latency = latency;
+    stm32wb_system_device.c2hpre = c2hpre;
+}
+
+static bool __svc_stm32wb_system_sysclk_configure(uint32_t sysclk, uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
+{
+    uint32_t primask, pllcfg, msirange, hpre, ppre1, ppre2, c2hpre, shdhpre, latency, smpsvos;
     bool pllsys, smps;
 
+    if (!sysclk)
+    {
+        sysclk = hclk;
+    }
+    
     if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
     {
         /* Use HSE */
 
-        if (hclk >= 64000000)
+        if (sysclk >= 64000000)
         {
-            hclk = 64000000;
+            sysclk = 64000000;
 
             msirange = RCC_CR_MSIRANGE_8;
 
@@ -790,7 +927,7 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         }
         else
         {
-            hclk = 32000000;
+            sysclk = 32000000;
 
             msirange = RCC_CR_MSIRANGE_10;
             
@@ -803,9 +940,9 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
     {
         /* Use MSI */
 
-        if (hclk >= 64000000)
+        if (sysclk >= 64000000)
         {
-            hclk = 64000000;
+            sysclk = 64000000;
 
             msirange = RCC_CR_MSIRANGE_8;
                 
@@ -815,15 +952,57 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         }
         else
         {
-            if      (hclk >= 32000000) { hclk = 32000000; msirange = RCC_CR_MSIRANGE_10; pllcfg = (((8-1) << RCC_PLLCFGR_PLLM_Pos) | RCC_PLLCFGR_PLLSRC_MSI); }
-            else if (hclk >= 16000000) { hclk = 16000000; msirange = RCC_CR_MSIRANGE_8;  pllcfg = (((4-1) << RCC_PLLCFGR_PLLM_Pos) | RCC_PLLCFGR_PLLSRC_MSI); }
-            else                       { hclk =  2000000; msirange = RCC_CR_MSIRANGE_5;  pllcfg = RCC_PLLCFGR_PLLSRC_NONE;                                    }
+            if      (sysclk >= 32000000) { sysclk = 32000000; msirange = RCC_CR_MSIRANGE_10; pllcfg = (((8-1) << RCC_PLLCFGR_PLLM_Pos) | RCC_PLLCFGR_PLLSRC_MSI); }
+            else if (sysclk >= 16000000) { sysclk = 16000000; msirange = RCC_CR_MSIRANGE_8;  pllcfg = (((4-1) << RCC_PLLCFGR_PLLM_Pos) | RCC_PLLCFGR_PLLSRC_MSI); }
+            else                         { sysclk =  2000000; msirange = RCC_CR_MSIRANGE_5;  pllcfg = RCC_PLLCFGR_PLLSRC_NONE;                                    }
             
             pllsys = false;
         }
     }
     
-    if ((hclk >= 32000000) && (stm32wb_system_device.options & (STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_10uH | STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_2_2uH)))
+    if      (hclk >= (sysclk / 1))   { hclk = sysclk / 1;   hpre = RCC_CFGR_HPRE_DIV1;   }
+    else if (hclk >= (sysclk / 2))   { hclk = sysclk / 2;   hpre = RCC_CFGR_HPRE_DIV2;   }
+    else if (hclk >= (sysclk / 4))   { hclk = sysclk / 4;   hpre = RCC_CFGR_HPRE_DIV4;   }
+    else if (hclk >= (sysclk / 8))   { hclk = sysclk / 8;   hpre = RCC_CFGR_HPRE_DIV8;   }
+    else if (hclk >= (sysclk / 16))  { hclk = sysclk / 16;  hpre = RCC_CFGR_HPRE_DIV16;  }
+    else if (hclk >= (sysclk / 32))  { hclk = sysclk / 32;  hpre = RCC_CFGR_HPRE_DIV32;  }
+    else if (hclk >= (sysclk / 64))  { hclk = sysclk / 64;  hpre = RCC_CFGR_HPRE_DIV64;  }
+    else if (hclk >= (sysclk / 128)) { hclk = sysclk / 128; hpre = RCC_CFGR_HPRE_DIV128; }
+    else if (hclk >= (sysclk / 256)) { hclk = sysclk / 256; hpre = RCC_CFGR_HPRE_DIV256; }
+    else                             { hclk = sysclk / 512; hpre = RCC_CFGR_HPRE_DIV512; }
+    
+    if (pclk1)
+    {
+        if      (pclk1 >= (hclk / 1)) { pclk1 = hclk / 1;  ppre1 = RCC_CFGR_PPRE1_DIV1;  }
+        else if (pclk1 >= (hclk / 2)) { pclk1 = hclk / 2;  ppre1 = RCC_CFGR_PPRE1_DIV2;  }
+        else if (pclk1 >= (hclk / 4)) { pclk1 = hclk / 4;  ppre1 = RCC_CFGR_PPRE1_DIV4;  }
+        else if (pclk1 >= (hclk / 8)) { pclk1 = hclk / 8;  ppre1 = RCC_CFGR_PPRE1_DIV8;  }
+        else                          { pclk1 = hclk / 16; ppre1 = RCC_CFGR_PPRE1_DIV16; }
+    }
+    else
+    {
+        if      (hclk >= 64000000)    { pclk1 = hclk / 4;  ppre1 = RCC_CFGR_PPRE1_DIV4;  }
+        else if (hclk >= 32000000)    { pclk1 = hclk / 2;  ppre1 = RCC_CFGR_PPRE1_DIV2;  }
+        else                          { pclk1 = hclk / 1;  ppre1 = RCC_CFGR_PPRE1_DIV1;  }
+    }
+
+    if (pclk2)
+    {
+        if      (pclk2 >= (hclk / 1)) { pclk2 = hclk / 1;  ppre2 = RCC_CFGR_PPRE2_DIV1;  }
+        else if (pclk2 >= (hclk / 2)) { pclk2 = hclk / 2;  ppre2 = RCC_CFGR_PPRE2_DIV2;  }
+        else if (pclk2 >= (hclk / 4)) { pclk2 = hclk / 4;  ppre2 = RCC_CFGR_PPRE2_DIV4;  }
+        else if (pclk2 >= (hclk / 8)) { pclk2 = hclk / 8;  ppre2 = RCC_CFGR_PPRE2_DIV8;  }
+        else                          { pclk2 = hclk / 16; ppre2 = RCC_CFGR_PPRE2_DIV16; }
+    }
+    else
+    {
+        if      (hclk >= 32000000)    { pclk2 = hclk / 2;  ppre2 = RCC_CFGR_PPRE2_DIV2;  }
+        else                          { pclk2 = hclk / 1;  ppre2 = RCC_CFGR_PPRE2_DIV1;  }
+    }
+
+    stm32wb_system_sysclk_ext_compute(sysclk, hclk, &latency, &c2hpre, &shdhpre);
+
+    if ((sysclk >= 32000000) && (stm32wb_system_device.options & (STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_10uH | STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_2_2uH)))
     {
         smps = true;
         smpsvos = ((*((const uint32_t*)0x1fff7558) >> 8) & 15);
@@ -844,65 +1023,6 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         smps = false;
         smpsvos = 8;
     }
-    
-    if (pclk1)
-    {
-        if      (pclk1 >= (hclk / 1)) { pclk1 = hclk / 1;  ppre1 = RCC_CFGR_PPRE1_DIV1;  }
-        else if (pclk1 >= (hclk / 2)) { pclk1 = hclk / 2;  ppre1 = RCC_CFGR_PPRE1_DIV2;  }
-        else if (pclk1 >= (hclk / 4)) { pclk1 = hclk / 4;  ppre1 = RCC_CFGR_PPRE1_DIV4;  }
-        else if (pclk1 >= (hclk / 8)) { pclk1 = hclk / 8;  ppre1 = RCC_CFGR_PPRE1_DIV8;  }
-        else                          { pclk1 = hclk / 16; ppre1 = RCC_CFGR_PPRE1_DIV16; }
-    }
-    else
-    {
-        if      (hclk <= 2000000)     { pclk1 = hclk / 1; ppre1 = RCC_CFGR_PPRE1_DIV1; }
-        else if (hclk <= 32000000)    { pclk1 = hclk / 2; ppre1 = RCC_CFGR_PPRE1_DIV2; }
-        else                          { pclk1 = hclk / 4; ppre1 = RCC_CFGR_PPRE1_DIV4; }
-    }
-
-    if (pclk2)
-    {
-        if      (pclk2 >= (hclk / 1)) { pclk2 = hclk / 1;  ppre2 = RCC_CFGR_PPRE2_DIV1;  }
-        else if (pclk2 >= (hclk / 2)) { pclk2 = hclk / 2;  ppre2 = RCC_CFGR_PPRE2_DIV2;  }
-        else if (pclk2 >= (hclk / 4)) { pclk2 = hclk / 4;  ppre2 = RCC_CFGR_PPRE2_DIV4;  }
-        else if (pclk2 >= (hclk / 8)) { pclk2 = hclk / 8;  ppre2 = RCC_CFGR_PPRE2_DIV8;  }
-        else                          { pclk2 = hclk / 16; ppre2 = RCC_CFGR_PPRE2_DIV16; }
-    }
-    else
-    {
-        if   (hclk <= 2000000)        { pclk2 = hclk / 1; ppre2 = RCC_CFGR_PPRE2_DIV1; }
-        else                          { pclk2 = hclk / 2; ppre2 = RCC_CFGR_PPRE2_DIV2; }
-    }
-
-    if (hclk <= 16000000)
-    {
-        if      (hclk <=  60000000) { latency = FLASH_ACR_LATENCY_0WS; }
-        else if (hclk <= 120000000) { latency = FLASH_ACR_LATENCY_1WS; }
-        else                        { latency = FLASH_ACR_LATENCY_2WS; }
-    } 
-    else
-    {
-        if      (hclk <=  16000000) { latency = FLASH_ACR_LATENCY_0WS; }
-        else if (hclk <=  32000000) { latency = FLASH_ACR_LATENCY_1WS; }
-        else if (hclk <=  48000000) { latency = FLASH_ACR_LATENCY_2WS; }
-        else                        { latency = FLASH_ACR_LATENCY_3WS; }
-    }
-
-    c1spre[0] = RCC_CFGR_HPRE_DIV1 | ppre1 | ppre2;
-
-    if      (hclk == 64000000) { c1spre[1] = (RCC_CFGR_HPRE_DIV32 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1); }
-    else if (hclk == 32000000) { c1spre[1] = (RCC_CFGR_HPRE_DIV16 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1); }
-    else if (hclk == 16000000) { c1spre[1] = (RCC_CFGR_HPRE_DIV8  | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1); }
-    else                       { c1spre[1] = c1spre[0];                                                         }
-
-    if (PWR->CR4 & PWR_CR4_C2BOOT)
-    {
-        c2hpre = (hclk > 32000000) ? RCC_EXTCFGR_C2HPRE_DIV2 : RCC_EXTCFGR_C2HPRE_DIV1;
-    }
-    else
-    {
-        c2hpre = RCC_EXTCFGR_C2HPRE_DIV512;
-    }
 
     primask = __get_PRIMASK();
     
@@ -918,7 +1038,8 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
           STM32WB_SYSTEM_REFERENCE_TIM17 |
           STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_1 |
           STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_2)) ||
-        ((stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS) && (hclk < 32000000)) ||
+        ((stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS) && (sysclk < 32000000)) ||
+        ((stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_CPU2) && (sysclk < 16000000)) ||
         ((stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_USB) && (pclk1 < 16000000)))
     {
         __set_PRIMASK(primask);
@@ -928,9 +1049,9 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
 
     armv7m_systick_disable();
     
-    if (hclk <= STM32WB_SYSTEM_FREQUENCY_RANGE_2)
+    if (sysclk <= STM32WB_SYSTEM_FREQUENCY_RANGE_2)
     {
-        if (hclk <= STM32WB_SYSTEM_FREQUENCY_LPRUN)
+        if (sysclk <= STM32WB_SYSTEM_FREQUENCY_LPRUN)
         {
             stm32wb_system_device.reference = stm32wb_system_device.reference & ~(STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_1 | STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_2);
         }
@@ -944,7 +1065,7 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         stm32wb_system_device.reference = (stm32wb_system_device.reference & ~STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_2) | STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_1;
     }
 
-    if (stm32wb_system_device.hclk < hclk)
+    if (stm32wb_system_device.sysclk < sysclk)
     {
         /* Leave LPrun */
         if (PWR->CR1 & PWR_CR1_LPR)
@@ -972,15 +1093,15 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         PWR->CR5 = (PWR->CR5 & ~(PWR_CR5_SMPSEN | PWR_CR5_BORHC | PWR_CR5_SMPSVOS)) | (8 << PWR_CR5_SMPSVOS_Pos);
     }
 
-    while (!stm32wb_hsem_trylock(STM32WB_HSEM_FLASH, 0))
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE))
     {
     }
     
     FLASH->ACR = FLASH_ACR_ICEN | FLASH_ACR_DCEN | FLASH_ACR_LATENCY_3WS;
     
-    stm32wb_hsem_unlock(STM32WB_HSEM_FLASH, 0);
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE);
     
-    while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
     {
     }
 
@@ -989,7 +1110,7 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         PWR->CR5 = (PWR->CR5 & ~(PWR_CR5_SMPSEN | PWR_CR5_BORHC | PWR_CR5_SMPSVOS)) | (8 << PWR_CR5_SMPSVOS_Pos);
     }
     
-    if (stm32wb_system_device.hclk != hclk)
+    if (stm32wb_system_device.sysclk != sysclk)
     {
         RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2 | RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) | (RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1);
 
@@ -1077,10 +1198,13 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
             }
 
             RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_MSI;
-            
-            /* MSI is wakeup clock */
-            RCC->CFGR &= ~RCC_CFGR_STOPWUCK;
 
+            /* Here HSI16 is selected as wakeup clock to allow CSS at some point.
+             */
+            
+            /* HSI16 is wakeup clock */
+            RCC->CFGR |= RCC_CFGR_STOPWUCK;
+            
             stm32wb_system_device.hse &= ~0x80;
             stm32wb_system_device.msi |= 0x80;
         }
@@ -1122,15 +1246,15 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         }
     }
     
-    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2 | RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) | c1spre[0];
+    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2 | RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) | hpre | ppre1 | ppre2;
     
     while ((RCC->CFGR & (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) != (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F))
     {
     }
     
-    RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_C2HPREF)) | c2hpre;
+    RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_SHDHPRE | RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF)) | shdhpre | c2hpre;
     
-    while ((RCC->EXTCFGR & RCC_EXTCFGR_C2HPREF) != RCC_EXTCFGR_C2HPREF)
+    while ((RCC->EXTCFGR & (RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF)) != (RCC_EXTCFGR_SHDHPREF | RCC_EXTCFGR_C2HPREF))
     {
     }
 
@@ -1141,7 +1265,7 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
 
     if (!stm32wb_system_device.msi)
     {
-      RCC->CR &= ~(RCC_CR_MSIPLLEN | RCC_CR_MSION);
+        RCC->CR &= ~(RCC_CR_MSIPLLEN | RCC_CR_MSION);
     }
 
     if (!stm32wb_system_device.hse)
@@ -1149,15 +1273,15 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
         RCC->CR &= ~RCC_CR_HSEON;
     }
     
-    stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
 
-    while (!stm32wb_hsem_trylock(STM32WB_HSEM_FLASH, 0))
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE))
     {
     }
 
     FLASH->ACR = FLASH_ACR_ICEN | FLASH_ACR_DCEN | latency;
 
-    stm32wb_hsem_unlock(STM32WB_HSEM_FLASH, 0);
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE);
 
     if (smps)
     {
@@ -1181,17 +1305,16 @@ static bool __svc_stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1,
 
     SystemCoreClock = hclk;
     
-    stm32wb_system_device.sysclk    = hclk;
-    stm32wb_system_device.hclk      = hclk;
-    stm32wb_system_device.pclk1     = pclk1;
-    stm32wb_system_device.pclk2     = pclk2;
+    stm32wb_system_device.sysclk   = sysclk;
+    stm32wb_system_device.hclk     = hclk;
+    stm32wb_system_device.pclk1    = pclk1;
+    stm32wb_system_device.pclk2    = pclk2;
 
-    stm32wb_system_device.pllsys    = pllsys;
-    stm32wb_system_device.smps      = smps;
-    stm32wb_system_device.msirange  = msirange;
-    stm32wb_system_device.c1spre[0] = c1spre[0];
-    stm32wb_system_device.c1spre[1] = c1spre[1];
-    stm32wb_system_device.c2hpre    = c2hpre;
+    stm32wb_system_device.pllsys   = pllsys;
+    stm32wb_system_device.latency  = latency;
+    stm32wb_system_device.smps     = smps;
+    stm32wb_system_device.msirange = msirange;
+    stm32wb_system_device.c2hpre   = c2hpre;
 
     armv7m_core_configure();
     armv7m_systick_configure();
@@ -1289,9 +1412,6 @@ static void stm32wb_system_wireless_enter(void)
 
     RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSE;
     
-    /* HSI16 is wakeup clock */
-    RCC->CFGR |= RCC_CFGR_STOPWUCK;
-    
     stm32wb_system_device.msi &= ~0x80;
     
     if (!stm32wb_system_device.msi)
@@ -1365,9 +1485,6 @@ static void stm32wb_system_wireless_leave(void)
     
     RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_MSI;
     
-    /* MSI is wakeup clock */
-    RCC->CFGR &= ~RCC_CFGR_STOPWUCK;
-    
     stm32wb_system_device.hse &= ~0x80;
     stm32wb_system_device.msi |= 0x80;
     
@@ -1410,7 +1527,7 @@ static bool __svc_stm32wb_system_saiclk_configure(uint32_t saiclk)
                 stm32wb_system_voltage_increase();
             }
             
-            while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+            while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
             {
             }
             
@@ -1428,7 +1545,7 @@ static bool __svc_stm32wb_system_saiclk_configure(uint32_t saiclk)
             {
             }
 
-            stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+            stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
 
             if (stm32wb_system_device.saiclk > saiclk)
             {
@@ -1437,7 +1554,7 @@ static bool __svc_stm32wb_system_saiclk_configure(uint32_t saiclk)
         }
         else
         {
-            while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+            while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
             {
             }
 
@@ -1462,7 +1579,7 @@ static bool __svc_stm32wb_system_saiclk_configure(uint32_t saiclk)
                 }
             }
             
-            stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+            stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
 
             stm32wb_system_voltage_decrease();
         }
@@ -1520,13 +1637,13 @@ static bool __svc_stm32wb_system_mco_configure(uint32_t mco)
     mcosel = (mco & STM32WB_SYSTEM_MCO_SOURCE_MASK) >> STM32WB_SYSTEM_MCO_SOURCE_SHIFT;
     mcopre = (mco & STM32WB_SYSTEM_MCO_DIVIDE_MASK) >> STM32WB_SYSTEM_MCO_DIVIDE_SHIFT;
 
-    while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
     {
     }
 
     RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCOSEL | RCC_CFGR_MCOPRE)) | (((mcosel << RCC_CFGR_MCOSEL_Pos) | (mcopre << RCC_CFGR_MCOPRE_Pos)));
 
-    stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
 
     return true;
 }
@@ -1589,28 +1706,22 @@ static bool __svc_stm32wb_system_smps_configure(uint32_t palevel)
 
 static bool __svc_stm32wb_system_cpu2_boot(void)
 {
-    if (PWR->CR4 & PWR_CR4_C2BOOT)
-    {
-        return true;
-    }
-
-    if (stm32wb_system_device.hclk < 32000000)
+    if (stm32wb_system_device.sysclk < 16000000)
     {
         return false;
     }
 
-    PWR->C2CR1 &= ~PWR_C2CR1_LPMS;
-    
-    stm32wb_system_device.c2hpre = (stm32wb_system_device.c2hpre & ~RCC_EXTCFGR_C2HPRE) | ((stm32wb_system_device.hclk > 32000000) ? RCC_EXTCFGR_C2HPRE_DIV2 : RCC_EXTCFGR_C2HPRE_DIV1);
-
-    RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_C2HPREF)) | stm32wb_system_device.c2hpre;
-    
-    while ((RCC->EXTCFGR & RCC_EXTCFGR_C2HPREF) != RCC_EXTCFGR_C2HPREF)
+    if (armv7m_atomic_or(&stm32wb_system_device.reference, STM32WB_SYSTEM_REFERENCE_CPU2) & STM32WB_SYSTEM_REFERENCE_CPU2)
     {
+        return true;
     }
-    
+   
+    stm32wb_system_sysclk_ext_configure(stm32wb_system_device.sysclk, stm32wb_system_device.hclk);
+
+    PWR->C2CR1 &= ~PWR_C2CR1_LPMS;
+
     PWR->CR4 |= PWR_CR4_C2BOOT;
-        
+
     return true;
 }
 
@@ -1618,13 +1729,32 @@ static bool __svc_stm32wb_system_wireless_enable(void)
 {
     uint32_t smpsvos;
     
-    if (!stm32wb_system_device.lseclk || !stm32wb_system_device.hseclk || (stm32wb_system_device.hclk < 32000000)) {
+    if (!stm32wb_system_device.lseclk || !stm32wb_system_device.hseclk || (stm32wb_system_device.sysclk < 32000000))
+    {
         return false;
     }
 
+    if (!(stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_CPU2))
+    {
+        return false;
+    }
+    
     if (armv7m_atomic_or(&stm32wb_system_device.reference, STM32WB_SYSTEM_REFERENCE_WIRELESS) & STM32WB_SYSTEM_REFERENCE_WIRELESS)
     {
         return true;
+    }
+
+    stm32wb_system_sysclk_ext_configure(stm32wb_system_device.sysclk, stm32wb_system_device.hclk);
+    
+    if (stm32wb_system_device.smps)
+    {
+        smpsvos = ((*((const uint32_t*)0x1fff7558) >> 8) & 15);
+
+        if      (stm32wb_system_device.palevel == 0x1f) { smpsvos += 5; } /* 1750mV */
+        else if (stm32wb_system_device.palevel == 0x1e) { smpsvos += 2; } /* 1600mV */
+        else                                            { smpsvos -= 1; } /* 1450mV */
+
+        PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
     }
 
     if (!stm32wb_system_device.hse)
@@ -1643,17 +1773,6 @@ static bool __svc_stm32wb_system_wireless_enable(void)
         stm32wb_system_wireless_enter();
     }
     
-    if (stm32wb_system_device.smps)
-    {
-        smpsvos = ((*((const uint32_t*)0x1fff7558) >> 8) & 15);
-
-        if      (stm32wb_system_device.palevel == 0x1f) { smpsvos += 5; } /* 1750mV */
-        else if (stm32wb_system_device.palevel == 0x1e) { smpsvos += 2; } /* 1600mV */
-        else                                            { smpsvos -= 1; } /* 1450mV */
-
-        PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
-    }
-
     stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_2);
     
     return true;
@@ -1683,7 +1802,9 @@ static bool __svc_stm32wb_system_wireless_disable(void)
 
         PWR->CR5 = (PWR->CR5 & ~PWR_CR5_SMPSVOS) | (PWR_CR5_SMPSEN | PWR_CR5_BORHC | (smpsvos << PWR_CR5_SMPSVOS_Pos));
     }
-    
+
+    stm32wb_system_sysclk_ext_configure(stm32wb_system_device.sysclk, stm32wb_system_device.hclk);
+
     return true;
 }
 
@@ -1733,17 +1854,12 @@ static bool __svc_stm32wb_system_clk48_enable(void)
         while(!(RCC->CRRCR & RCC_CRRCR_HSI48RDY))
         {
         }
-    
-        if (stm32wb_system_device.lseclk)
-        {
-            armv7m_atomic_or(&RCC->APB1ENR1, RCC_APB1ENR1_CRSEN);
-            RCC->APB1ENR1;
         
-            CRS->CFGR = (((1465 -1) << CRS_CFGR_RELOAD_Pos) | (2 << CRS_CFGR_FELIM_Pos) | CRS_CFGR_SYNCSRC_0);
-            CRS->CR |= (CRS_CR_AUTOTRIMEN | CRS_CR_CEN);
-        }
-        
+        stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_CLK48, STM32WB_HSEM_PROCID_NONE);
+            
         stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_HSI48);
+
+        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
     }
     
     return true;
@@ -1753,14 +1869,11 @@ static bool __svc_stm32wb_system_clk48_disable(void)
 {
     if (stm32wb_system_device.clk48 == 1)
     {
+        stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
+
         stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_HSI48);
 
-        if (stm32wb_system_device.lseclk)
-        {
-            CRS->CR &= ~(CRS_CR_AUTOTRIMEN | CRS_CR_CEN);
-
-            armv7m_atomic_and(&RCC->APB1ENR1, ~RCC_APB1ENR1_CRSEN);
-        }
+        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_CLK48, STM32WB_HSEM_PROCID_NONE);
         
         RCC->CRRCR &= ~RCC_CRRCR_HSI48ON;
 
@@ -1774,16 +1887,16 @@ static bool __svc_stm32wb_system_clk48_disable(void)
 
 /*****************************************************************************************************/
 
-bool stm32wb_system_sysclk_configure(uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
+bool stm32wb_system_sysclk_configure(uint32_t sysclk, uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
 {
     if (armv7m_core_is_in_thread())
     {
-        return armv7m_svcall_3((uint32_t)&__svc_stm32wb_system_sysclk_configure, hclk, pclk1, pclk2);
+        return armv7m_svcall_4((uint32_t)&__svc_stm32wb_system_sysclk_configure, sysclk, hclk, pclk1, pclk2);
     }
 
     if (armv7m_core_is_in_pendsv_or_svcall())
     {
-        return __svc_stm32wb_system_sysclk_configure(hclk, pclk1, pclk2);
+        return __svc_stm32wb_system_sysclk_configure(sysclk, hclk, pclk1, pclk2);
     }
 
     return false;
@@ -1989,7 +2102,7 @@ void stm32wb_system_hsi16_enable(void)
 
     if (!(stm32wb_system_device.hsi16 & 0x80))
     {
-        while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+        while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
         {
         }
 
@@ -1999,7 +2112,7 @@ void stm32wb_system_hsi16_enable(void)
         {
         }
 
-        stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
     }
 }
 
@@ -2009,13 +2122,13 @@ void stm32wb_system_hsi16_disable(void)
 
     if (!(stm32wb_system_device.hsi16 & 0x80))
     {
-        while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+        while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
         {
         }
 
         armv7m_atomic_andzb(&RCC->CR, ~RCC_CR_HSION, &stm32wb_system_device.hsi16);
 
-        stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
     }
 }
 
@@ -2134,8 +2247,13 @@ void stm32wb_system_swd_enable(void)
     DBGMCU->APB1FZR2 = (DBGMCU_APB1FZR2_DBG_LPTIM2_STOP);
     DBGMCU->APB2FZR  = 0;
 
+    // RTT in SRAM2
+    armv7m_atomic_or(&RCC->AHB3SMENR, RCC_AHB3SMENR_SRAM2SMEN);
+    
+#if 0        
     armv7m_atomic_or(&EXTI->IMR2, EXTI_IMR2_IM48);
     armv7m_atomic_or(&EXTI->C2IMR2, EXTI_C2IMR2_IM48);
+#endif
     
     __stm32wb_gpio_swd_enable();
 
@@ -2148,8 +2266,13 @@ void stm32wb_system_swd_disable(void)
 
     __stm32wb_gpio_swd_disable();
 
+#if 0        
     armv7m_atomic_and(&EXTI->IMR2, ~EXTI_IMR2_IM48);
     armv7m_atomic_and(&EXTI->C2IMR2, ~EXTI_C2IMR2_IM48);
+#endif
+    
+    // RTT in SRAM2
+    armv7m_atomic_and(&RCC->AHB3SMENR, ~RCC_AHB3SMENR_SRAM2SMEN);
     
     DBGMCU->CR       = 0;
     DBGMCU->APB1FZR1 = 0;
@@ -2226,74 +2349,145 @@ void stm32wb_system_unreference(uint32_t reference)
     __armv7m_atomic_and(&stm32wb_system_device.reference, ~reference);
 }
 
-void stm32wb_system_sleep(uint32_t policy, uint32_t timeout)
+uint32_t __flash_acr = 0xdeadbeef;
+
+uint32_t stm32wb_system_sleep(uint32_t policy, uint32_t mask, uint32_t timeout)
 {
-    uint32_t primask;
+    uint32_t events, primask, lpms;
     bool hsi16;
-
-    if (!stm32wb_system_device.events)
+    
+    mask &= 0x7fffffff;
+    
+    if (timeout)
     {
-        if (timeout)
+        // armv7m_rtt_printf("SLEEP_ENTER(policy=%d, locks=[%d, %d,%d,%d])\n", policy, stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP], stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0], stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1], stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_2]);
+        
+        events = mask;
+        
+        if (!(stm32wb_system_device.events & events))
         {
-            stm32wb_rtc_timer_start(&stm32wb_system_device.timeout, stm32wb_rtc_clock_read() + stm32wb_rtc_millis_to_clock(timeout));
-        }
-
-        if (!stm32wb_system_device.events)
-        {
-            if (policy >= STM32WB_SYSTEM_POLICY_SLEEP)
+            if (timeout != 0xffffffff)
             {
-                stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_SLEEP);
+                events |= 0x80000000;
+                
+                stm32wb_rtc_timer_start(&stm32wb_system_device.timeout, stm32wb_rtc_clock_read() + stm32wb_rtc_millis_to_clock(timeout));
             }
 
-            while (!stm32wb_system_device.events)
+            if (!(stm32wb_system_device.events & events))
             {
-                if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_RUN])
+                if (policy <= STM32WB_SYSTEM_POLICY_RUN)
                 {
-                    __NOP();
+                    while (!(stm32wb_system_device.events & events))
+                    {
+                        __NOP();
+                    }
                 }
                 else
                 {
-                    if ((policy <= STM32WB_SYSTEM_POLICY_WAIT) || stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_0])
+                    if (policy <= STM32WB_SYSTEM_POLICY_SLEEP)
                     {
-                        __WFE();
+                        while (!(stm32wb_system_device.events & events))
+                        {
+                            __WFE();
+                        }
                     }
                     else
                     {
-                        primask = __get_PRIMASK();
+                        stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_STOP_PREPARE);
 
-                        __disable_irq();
-
-                        if (!(stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_RUN] || stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_0]))
+                        while (!(stm32wb_system_device.events & events))
                         {
-                            if ((policy <= STM32WB_SYSTEM_POLICY_SLEEP) || stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_1])
+                            primask = __get_PRIMASK();
+
+                            __disable_irq();
+
+                            if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP])
                             {
-                                if (stm32wb_system_device.c1spre[0] == stm32wb_system_device.c1spre[1])
-                                {
-                                    __DSB();
-                                    __WFI();
-                                    __NOP();
-                                    __NOP();
-                                    __NOP();
-                                    __NOP();
-                                }
-                                else
-                                {
-                                    while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
-                                    {
-                                    }
-                                    
-                                    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2 | RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) | stm32wb_system_device.c1spre[1];
+                                __WFI();
+                            }
+                            else
+                            {
+                                stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_STOP_ENTER);
                                 
-                                    while ((RCC->CFGR & (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) != (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F))
+                                if (!(SCB->ICSR & SCB_ICSR_VECTPENDING_Msk))
+                                {
+                                    armv7m_systick_disable();
+
+                                    __stm32wb_gpio_stop_enter();
+
+                                    if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0])
                                     {
+                                        lpms = PWR_CR1_LPMS_STOP0;
+                                    }
+                                    else
+                                    {
+                                        if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1] || !(stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_RANGE_1_2))
+                                        {
+                                            lpms = PWR_CR1_LPMS_STOP1;
+                                        }
+                                        else
+                                        {
+                                            lpms = PWR_CR1_LPMS_STOP2;
+                                        }
                                     }
 
-                                    if (!(SCB->ICSR & SCB_ICSR_ISRPENDING_Msk))
-                                    {
-                                        stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+                                    PWR->CR1 = (PWR->CR1 & ~PWR_CR1_LPMS) | lpms;
 
-                                        SysTick->CTRL |= SysTick_CTRL_CLKSOURCE_Msk;
-                                    
+                                    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+                                        
+                                    if (!(SCB->ICSR & SCB_ICSR_VECTPENDING_Msk))
+                                    {
+                                        while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
+                                        {
+                                        }
+                                        
+                                        if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
+                                        {
+                                            hsi16 = !stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_DEEPSLEEP, STM32WB_HSEM_PROCID_NONE);
+                                        }
+                                        else
+                                        {
+                                            hsi16 = true;
+                                        }
+                                        
+                                        if (hsi16)
+                                        {
+                                            if (!stm32wb_system_device.hsi16)
+                                            {
+                                                RCC->CR |= RCC_CR_HSION;
+                                                
+                                                while (!(RCC->CR & RCC_CR_HSIRDY))
+                                                {
+                                                }
+                                            }
+                                            
+                                            RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSI;
+                                            
+                                            while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSI)
+                                            {
+                                            }
+                                            
+                                            RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSI;
+
+                                            FLASH->ACR = FLASH->ACR & ~FLASH_ACR_LATENCY;
+                                        }
+                                        
+                                        if (stm32wb_system_device.msi)
+                                        {
+                                            RCC->CR &= ~RCC_CR_MSIPLLEN;
+                                        }
+                                        
+                                        if (lpms == PWR_CR1_LPMS_STOP0)
+                                        {
+                                            RCC->CR |= RCC_CR_HSIKERON;
+                                            
+                                            while (!(RCC->CR & RCC_CR_HSIKERDY))
+                                            {
+                                            }
+                                        }
+
+                                        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
+
                                         __DSB();
                                         __WFI();
                                         __NOP();
@@ -2301,275 +2495,172 @@ void stm32wb_system_sleep(uint32_t policy, uint32_t timeout)
                                         __NOP();
                                         __NOP();
                                         
-                                        SysTick->CTRL &= ~SysTick_CTRL_CLKSOURCE_Msk;
-                                    
-                                        while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+                                        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_DEEPSLEEP, STM32WB_HSEM_PROCID_NONE);
+                                        
+                                        while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
                                         {
                                         }
+
+                                        PWR->EXTSCR = PWR_EXTSCR_C1CSSF;
+                                        
+                                        if (stm32wb_system_device.msi)
+                                        {
+                                            if (!(RCC->CR & RCC_CR_MSION))
+                                            {
+                                                RCC->CR |= RCC_CR_MSION;
+                                                
+                                                while (!(RCC->CR & RCC_CR_MSIRDY))
+                                                {
+                                                }
+                                                
+                                                if (stm32wb_system_device.lseclk)
+                                                {
+                                                    RCC->CR |= RCC_CR_MSIPLLEN;
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (stm32wb_system_device.hse)
+                                        {
+                                            if (!(RCC->CR & RCC_CR_HSEON))
+                                            {
+                                                RCC->CR |= RCC_CR_HSEON;
+                                                
+                                                while (!(RCC->CR & RCC_CR_HSERDY))
+                                                {
+                                                }
+                                            }
+                                        }
+
+                                        if (stm32wb_system_device.pllsys)
+                                        {
+                                            RCC->CR |= RCC_CR_PLLON;
+                                            
+                                            while (!(RCC->CR & RCC_CR_PLLRDY))
+                                            {
+                                            }
+                                        }
+
+                                        if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
+                                        {
+                                            RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSE;
+                                        }
+                                        else
+                                        {
+                                            RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_MSI;
+                                        }
+                                        
+                                        RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_C2HPREF)) | stm32wb_system_device.c2hpre;
+                                        
+                                        while ((RCC->EXTCFGR & RCC_EXTCFGR_C2HPREF) != RCC_EXTCFGR_C2HPREF)
+                                        {
+                                        }
+
+                                        FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | stm32wb_system_device.latency;
+                                        
+                                        if (stm32wb_system_device.pllsys)
+                                        {
+                                            RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
+                                            
+                                            while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL)
+                                            {
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
+                                            {
+                                                RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSE;
+                                                
+                                                while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSE)
+                                                {
+                                                }
+                                            }
+                                            else
+                                            {
+                                                RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_MSI;
+                                                
+                                                while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_MSI)
+                                                {
+                                                }
+                                            }
+                                        }
+
+                                        if (lpms == PWR_CR1_LPMS_STOP0)
+                                        {
+                                            RCC->CR &= ~RCC_CR_HSIKERON;
+                                        }
+                                        
+                                        if (!stm32wb_system_device.hsi16)
+                                        {
+                                            RCC->CR &= ~RCC_CR_HSION;
+                                        }
+                                        
+                                        if (!stm32wb_system_device.msi)
+                                        {
+                                            RCC->CR &= ~(RCC_CR_MSIPLLEN | RCC_CR_MSION);
+                                        }
+                                        
+                                        if (!stm32wb_system_device.hse)
+                                        {
+                                            RCC->CR &= ~RCC_CR_HSEON;
+                                        }
+                                        
+                                        stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
                                     }
 
-                                    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2 | RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) | stm32wb_system_device.c1spre[0];
+                                    SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+
+                                    __stm32wb_gpio_stop_leave();
+
+                                    armv7m_systick_enable();
+                                }
                                 
-                                    while ((RCC->CFGR & (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F)) != (RCC_CFGR_HPREF | RCC_CFGR_PPRE1F | RCC_CFGR_PPRE2F))
-                                    {
-                                    }
-
-                                    stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
-                                }
+                                stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_STOP_LEAVE);
                             }
-                            else
-                            {
-                                if (!(SCB->ICSR & SCB_ICSR_ISRPENDING_Msk))
-                                {
-                                    stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_STOP_ENTER);
-                                  
-                                    if (!(SCB->ICSR & SCB_ICSR_ISRPENDING_Msk))
-                                    {
-                                        __stm32wb_gpio_stop_enter();
-
-                                        if (!(stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_RANGE_1_2))
-                                        {
-                                            if (!(stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0] || stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1]))
-                                            {
-                                                PWR->CR1 &= ~PWR_CR1_LPR;
-                                                
-                                                while (PWR->SR2 & PWR_SR2_REGLPF)
-                                                {
-                                                }
-                                            }
-                                        }
-                                        
-                                        if (!(SCB->ICSR & SCB_ICSR_ISRPENDING_Msk))
-                                        {
-                                            armv7m_systick_disable();
-
-                                            PWR->CR1 = ((PWR->CR1 & ~PWR_CR1_LPMS) |
-                                                        (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0]
-                                                         ? PWR_CR1_LPMS_STOP0
-                                                         : ((stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1] || stm32wb_system_swd_attached()) ? PWR_CR1_LPMS_STOP1 : PWR_CR1_LPMS_STOP2)));
-
-                                            while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
-                                            {
-                                            }
-
-                                            if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
-                                            {
-                                                hsi16 = !stm32wb_hsem_trylock(STM32WB_HSEM_DEEPSLEEP, 0);
-                                            }
-                                            else
-                                            {
-                                                if (stm32wb_system_device.smps)
-                                                {
-                                                    hsi16 = true;
-                                                }
-                                                else
-                                                {
-                                                    RCC->CR = (RCC->CR & ~(RCC_CR_MSIPLLEN | RCC_CR_HSIASFS)) | (stm32wb_system_device.hsi16 ? RCC_CR_HSIASFS : 0);
-
-                                                    hsi16 = false;
-                                                }
-                                            }
-
-                                            if (hsi16)
-                                            {
-                                                if (!stm32wb_system_device.hsi16)
-                                                {
-                                                    RCC->CR |= RCC_CR_HSION;
-                                                
-                                                    while (!(RCC->CR & RCC_CR_HSIRDY))
-                                                    {
-                                                    }
-                                                }
-                                            
-                                                RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSI;
-                                                
-                                                while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSI)
-                                                {
-                                                }
-                                            
-                                                RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSI;
-                                            }
-
-                                            stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
-
-                                            SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
-                                            
-                                            __DSB();
-                                            __WFI();
-                                            __NOP();
-                                            __NOP();
-                                            __NOP();
-                                            __NOP();
-                                            
-                                            SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-
-                                            stm32wb_hsem_unlock(STM32WB_HSEM_DEEPSLEEP, 0);
-
-                                            while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
-                                            {
-                                            }
-
-                                            PWR->EXTSCR = PWR_EXTSCR_C1CSSF;
-
-                                            if (stm32wb_system_device.msi)
-                                            {
-                                                if (!(RCC->CR & RCC_CR_MSION))
-                                                {
-                                                    RCC->CR |= RCC_CR_MSION;
-                                                
-                                                    while (!(RCC->CR & RCC_CR_MSIRDY))
-                                                    {
-                                                    }
-                                            
-                                                    if (stm32wb_system_device.lseclk)
-                                                    {
-                                                        RCC->CR |= RCC_CR_MSIPLLEN;
-                                                    }
-                                                }
-                                            }
-
-                                            if (stm32wb_system_device.hse)
-                                            {
-                                                if (!(RCC->CR & RCC_CR_HSEON))
-                                                {
-                                                    RCC->CR |= RCC_CR_HSEON;
-                                                
-                                                    while (!(RCC->CR & RCC_CR_HSERDY))
-                                                    {
-                                                    }
-                                                }
-                                            }
-                                        
-                                            if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
-                                            {
-                                                RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSE;
-                                            
-                                                /* Wakeup from HSI forces C2HPRE to 0, so fix this early.
-                                                 */
-                                                RCC->EXTCFGR = (RCC->EXTCFGR & ~RCC_EXTCFGR_C2HPRE) | stm32wb_system_device.c2hpre;
-                                            }
-                                            else
-                                            {
-                                                RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_MSI;
-                                            }
-
-                                            if (stm32wb_system_device.pllsys)
-                                            {
-                                                RCC->CR |= RCC_CR_PLLON;
-                                            
-                                                while (!(RCC->CR & RCC_CR_PLLRDY))
-                                                {
-                                                }
-                                            
-                                                RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
-                                            
-                                                while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL)
-                                                {
-                                                }
-                                            }
-                                            else
-                                            {
-                                                if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_WIRELESS)
-                                                {
-                                                    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSE;
-                                                
-                                                    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSE)
-                                                    {
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_MSI;
-                                                
-                                                    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_MSI)
-                                                    {
-                                                    }
-                                                }
-                                            }
-                                        
-                                            if (!stm32wb_system_device.hsi16)
-                                            {
-                                                RCC->CR &= ~RCC_CR_HSION;
-                                            }
-                                            
-                                            if (!stm32wb_system_device.msi)
-                                            {
-                                                RCC->CR &= ~(RCC_CR_MSIPLLEN | RCC_CR_MSION);
-                                            }
-
-                                            if (!stm32wb_system_device.hse)
-                                            {
-                                                RCC->CR &= ~RCC_CR_HSEON;
-                                            }
-
-                                            stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
-
-                                            /* CLK48 can be active during USB SUSPEND, so it
-                                             * needs to be restored here. N.b. RNG uses a
-                                             * STM32WB_SYSTEM_LOCK_SLEEP.
-                                             */
-                                            if (stm32wb_system_device.clk48)
-                                            {
-                                                if (!(RCC->CRRCR & RCC_CRRCR_HSI48ON))
-                                                {
-                                                    RCC->CRRCR |= RCC_CRRCR_HSI48ON;
-                                                
-                                                    while(!(RCC->CRRCR & RCC_CRRCR_HSI48RDY))
-                                                    {
-                                                    }
-                                                }
-                                            }
-                                        
-                                            armv7m_systick_enable();
-                                        }
-
-                                        if (!(stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_RANGE_1_2))
-                                        {
-                                            if (!stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1])
-                                            {
-                                                PWR->CR1 |= PWR_CR1_LPR;
-                                            }
-                                        }
-                                        
-                                        __stm32wb_gpio_stop_leave();
-                                    }
-                                    
-                                    stm32wb_system_notify(STM32WB_SYSTEM_NOTIFY_STOP_LEAVE);
-                                }
-                            }
+                              
+                            __set_PRIMASK(primask);
                         }
-                        
-                        __set_PRIMASK(primask);
                     }
                 }
             }
-        }
             
-        if (timeout)
-        {
-            stm32wb_rtc_timer_stop(&stm32wb_system_device.timeout);
+            if (timeout != 0xffffffff)
+            {
+                stm32wb_rtc_timer_stop(&stm32wb_system_device.timeout);
+            }
         }
-    }
 
-    stm32wb_system_device.events = 0;
+        // armv7m_rtt_printf("SLEEP_LEAVE()\n");
+    }
+    
+    return armv7m_atomic_swap(&stm32wb_system_device.events, 0) & mask;
 }
 
-void stm32wb_system_wakeup(void)
+void stm32wb_system_wakeup(uint32_t mask)
 {
-    stm32wb_system_device.events = 1;
+    armv7m_atomic_or(&stm32wb_system_device.events, mask & 0x7fffffff);
+}
+
+static void stm32wb_system_timeout(void *context, uint64_t clock)
+{
+    armv7m_atomic_or(&stm32wb_system_device.events, 0x80000000);
 }
 
 void stm32wb_system_standby(uint32_t wakeup, uint32_t timeout)
 {
     uint32_t primask;
+
+    if (!timeout)
+    {
+        return;
+    }
     
     primask = __get_PRIMASK();
     
     __disable_irq();
     
-    if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_RUN] ||
-        stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_0] ||
-        stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_1] ||
+    if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_2])
@@ -2583,7 +2674,7 @@ void stm32wb_system_standby(uint32_t wakeup, uint32_t timeout)
 
     stm32wb_rtc_standby(timeout);
     
-    while (!stm32wb_hsem_trylock(STM32WB_HSEM_RCC, 0))
+    while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE))
     {
     }
 
@@ -2604,11 +2695,19 @@ void stm32wb_system_standby(uint32_t wakeup, uint32_t timeout)
     
     RCC->SMPSCR = (RCC->SMPSCR & ~RCC_SMPSCR_SMPSSEL) | RCC_SMPSCR_SMPSSEL_HSI;
 
-    stm32wb_hsem_unlock(STM32WB_HSEM_RCC, 0);
+    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_RCC, STM32WB_HSEM_PROCID_NONE);
 
     PWR->CR1 = (PWR->CR1 & ~PWR_CR1_LPMS) | PWR_CR1_LPMS_STANDBY;
     PWR->CR3 = (PWR->CR3 & ~PWR_CR3_EWUP) | (((wakeup >> 0) | (wakeup >> 8)) & PWR_CR3_EWUP) | PWR_CR3_EIWUL;
     PWR->CR4 = (PWR->CR4 & ~(PWR_CR4_WP1 | PWR_CR4_WP2 | PWR_CR4_WP3 | PWR_CR4_WP4 | PWR_CR4_WP5)) | ((wakeup >> 8) & (PWR_CR4_WP1 | PWR_CR4_WP2 | PWR_CR4_WP3 | PWR_CR4_WP4 | PWR_CR4_WP5));
+
+    if (stm32wb_system_device.reference & STM32WB_SYSTEM_REFERENCE_SWD)
+    {
+        if (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk)
+        {
+            DBGMCU->CR = DBGMCU_CR_DBG_STANDBY;
+        }
+    }
     
     SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
     __DSB();
@@ -2630,9 +2729,7 @@ void stm32wb_system_shutdown(uint32_t wakeup)
     
     __disable_irq();
     
-    if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_RUN] ||
-        stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_0] ||
-        stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP_1] ||
+    if (stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_SLEEP] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_0] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_1] ||
         stm32wb_system_device.lock[STM32WB_SYSTEM_LOCK_STOP_2] ||
@@ -2745,7 +2842,16 @@ void __stm32wb_eeprom_initialize(void) __attribute__ ((weak, alias("__empty")));
 void __stm32wb_random_initialize(void) __attribute__ ((weak, alias("__empty")));
 void __stm32wb_usbd_initialize(void) __attribute__ ((weak, alias("__empty")));
 
-static __attribute__((naked, noreturn)) void Default_IRQHandler(void)
+void  __attribute__ ((weak))USBD_DCD_HSEMHandler(void)
+{
+}
+
+void  __attribute__((weak)) RNG_HSEMHandler(void)
+{
+    USBD_DCD_HSEMHandler();
+}
+
+static __attribute__((naked)) void Default_IRQHandler(void)
 {
     __asm__(
         "    cpsid    i                                        \n"

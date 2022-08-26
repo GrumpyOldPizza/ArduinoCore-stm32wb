@@ -49,7 +49,7 @@
 #define DOSFS_CONFIG_FILE_DATA_CACHE            0
 #define DOSFS_CONFIG_CLUSTER_CACHE_ENTRIES      0
 #define DOSFS_CONFIG_META_DATA_RETRIES          3
-#define DOSFS_CONFIG_STATISTICS                 0
+#define DOSFS_CONFIG_STATISTICS                 1
 
 #define DOSFS_CONFIG_SDCARD_HIGH_SPEED          0
 #define DOSFS_CONFIG_SDCARD_CRC                 1

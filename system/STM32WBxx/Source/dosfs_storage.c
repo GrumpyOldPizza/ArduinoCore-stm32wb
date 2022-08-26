@@ -44,7 +44,7 @@ static const uint8_t dosfs_storage_inquiry_data[] = {
   /* LUN 0 */
   0x00,         
   0x80,         
-  0x02,         
+  0x06,         
   0x02,
   (STANDARD_INQUIRY_DATA_LEN - 5),
   0x00,
@@ -204,7 +204,7 @@ static bool dosfs_storage_get_changed(bool *p_changed)
     return true;
 }
 
-static bool dosfs_storage_start_stop_unit(bool start, bool loej)
+static bool dosfs_storage_start_stop_unit(bool start, bool loej, bool noflush, uint32_t *p_fault_return)
 {
     int status;
 
@@ -220,16 +220,19 @@ static bool dosfs_storage_start_stop_unit(bool start, bool loej)
 
     if (!start)
     {
-	status = (*dosfs_device.interface->sync)(dosfs_device.context);
+        if (!noflush)
+        {
+            status = (*dosfs_device.interface->sync)(dosfs_device.context, p_fault_return);
 
-	if (status != F_NO_ERROR)
-	{
-	    return false;
-	}
-	
+            if (status != F_NO_ERROR)
+            {
+                return false;
+            }
+        }
+        
 	if (loej)
 	{
-	    dosfs_device.lock &= ~(DOSFS_DEVICE_LOCK_ACCESSED | DOSFS_DEVICE_LOCK_SCSI | DOSFS_DEVICE_LOCK_MEDIUM);
+	    dosfs_device.lock &= ~(DOSFS_DEVICE_LOCK_ACCESSED | DOSFS_DEVICE_LOCK_SCSI);
 	    dosfs_device.lock |= DOSFS_DEVICE_LOCK_EJECTED;
 	}
     }
@@ -237,8 +240,10 @@ static bool dosfs_storage_start_stop_unit(bool start, bool loej)
     return true;
 }
 
-static bool dosfs_storage_prevent_allow_medium_removal(bool prevent)
+static bool dosfs_storage_prevent_allow_medium_removal(bool prevent, uint32_t *p_fault_return)
 {
+    int status;
+    
     if (!dosfs_device.interface)
     {
         return false;
@@ -249,17 +254,50 @@ static bool dosfs_storage_prevent_allow_medium_removal(bool prevent)
         return false;
     }
 
-    if (prevent)
+    if (!prevent)
     {
-        dosfs_device.lock |= DOSFS_DEVICE_LOCK_MEDIUM;
+        if (dosfs_device.lock & DOSFS_DEVICE_LOCK_MEDIUM)
+        {
+            status = (*dosfs_device.interface->sync)(dosfs_device.context, p_fault_return);
+
+            if (status != F_NO_ERROR)
+            {
+                return false;
+            }
+        }
+        
+        dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_MEDIUM;
     }
     else
     {
-        dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_MEDIUM;
+        dosfs_device.lock |= DOSFS_DEVICE_LOCK_MEDIUM;
     }
 
     return true;
+}
+
+static bool dosfs_storage_synchronize_cache(uint32_t *p_fault_return)
+{
+    int status;
     
+    if (!dosfs_device.interface)
+    {
+        return false;
+    }
+
+    if ((dosfs_device.lock & (DOSFS_DEVICE_LOCK_INIT | DOSFS_DEVICE_LOCK_SFLASH | DOSFS_DEVICE_LOCK_VOLUME | DOSFS_DEVICE_LOCK_EJECTED)) || dosfs_storage_delay())
+    {
+        return false;
+    }
+
+    status = (*dosfs_device.interface->sync)(dosfs_device.context, p_fault_return);
+
+    if (status != F_NO_ERROR)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 static bool dosfs_storage_acquire(void)
@@ -276,58 +314,46 @@ static bool dosfs_storage_acquire(void)
 
 static void dosfs_storage_release(void)
 {
-    if ((dosfs_device.lock & (DOSFS_DEVICE_LOCK_INIT | DOSFS_DEVICE_LOCK_SFLASH | DOSFS_DEVICE_LOCK_VOLUME | DOSFS_DEVICE_LOCK_EJECTED)) || dosfs_storage_delay())
-    {
-        return;
-    }
-    
-    dosfs_device.lock |= DOSFS_DEVICE_LOCK_ACCESSED;
-
-    dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_SCSI;
 }
 
-static bool dosfs_storage_read(uint8_t *data, uint32_t address, uint32_t length, bool release)
+static bool dosfs_storage_read(uint8_t *data, uint32_t address, uint32_t length, uint32_t total, uint32_t *p_fault_return)
 {
     int status;
 
-    status = (*dosfs_device.interface->read)(dosfs_device.context, address, data, length, true);
+    if (!(dosfs_device.lock & DOSFS_DEVICE_LOCK_SCSI))
+    {
+        return false;
+    }
+    
+    status = (*dosfs_device.interface->read)(dosfs_device.context, address, data, length, total, p_fault_return);
 
     if (status != F_NO_ERROR)
     {
-        dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_SCSI;
-
         return false;
     }
 
     dosfs_device.lock |= DOSFS_DEVICE_LOCK_ACCESSED;
-
-    if (release)
-    {
-        dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_SCSI;
-    }
 
     return true;
 }
 
-static bool dosfs_storage_write(const uint8_t *data, uint32_t address, uint32_t length, uint32_t total, bool release)
+static bool dosfs_storage_write(const uint8_t *data, uint32_t address, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return)
 {
     int status;
 
-    status = (*dosfs_device.interface->write)(dosfs_device.context, address, data, length, total, false);
+    if (!(dosfs_device.lock & DOSFS_DEVICE_LOCK_SCSI))
+    {
+        return false;
+    }
+
+    status = (*dosfs_device.interface->write)(dosfs_device.context, address, data, length, total, sync, p_fault_return);
 
     if (status != F_NO_ERROR)
     {
-	dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_SCSI;
-
         return false;
     }
 
     dosfs_device.lock |= DOSFS_DEVICE_LOCK_ACCESSED;
-
-    if (release)
-    {
-        dosfs_device.lock &= ~DOSFS_DEVICE_LOCK_SCSI;
-    }
 
     return true;
 }
@@ -341,6 +367,7 @@ const dosfs_storage_interface_t dosfs_storage_interface = {
     dosfs_storage_get_changed,
     dosfs_storage_start_stop_unit,
     dosfs_storage_prevent_allow_medium_removal,
+    dosfs_storage_synchronize_cache,
     dosfs_storage_acquire,
     dosfs_storage_release,
     dosfs_storage_read,

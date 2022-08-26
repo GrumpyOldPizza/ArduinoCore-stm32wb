@@ -258,7 +258,7 @@ public:
     void onWritten(Callback callback);
     void onSubscribed(void(*callback)(void));
     void onSubscribed(Callback callback);
-
+  
 protected:
     BLECharacteristic(class BLECharacteristicInstance *instance);
     class BLECharacteristicInstance *instance();
@@ -481,7 +481,7 @@ public:
 
     void onReceive(void(*callback)(void));
     void onReceive(Callback callback);
-    
+  
     using Print::write;
     
 private:

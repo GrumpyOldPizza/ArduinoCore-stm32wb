@@ -226,7 +226,7 @@ __attribute__((optimize("O3"))) void SPIClass::transfer(const void *txBuffer, vo
 }
 
 bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status) {
-    return transfer(txBuffer, rxBuffer, count, status, Callback(__wakeupCallback));
+    return transfer(txBuffer, rxBuffer, count, status, Callback());
 }
 
 bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status, void(*callback)(void)) {

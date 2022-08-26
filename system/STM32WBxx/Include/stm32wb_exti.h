@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -49,10 +49,12 @@
 typedef void (*stm32wb_exti_callback_t)(void *context);
 
 extern void __stm32wb_exti_initialize(void);
+extern void __stm32wb_exti_stop_enter(void);
+extern void __stm32wb_exti_stop_leave(void);
    
 extern bool stm32wb_exti_attach(uint16_t pin, uint32_t control, stm32wb_exti_callback_t callback, void *context);
 extern void stm32wb_exti_detach(uint16_t pin);
-extern void stm32wb_exti_raise(uint16_t pin);
+extern bool stm32wb_exti_control(uint16_t pin, uint32_t control);
 extern void stm32wb_exti_block(uint32_t mask);
 extern void stm32wb_exti_unblock(uint32_t mask, bool cancel);
 

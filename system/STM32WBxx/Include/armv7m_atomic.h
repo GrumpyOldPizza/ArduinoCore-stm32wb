@@ -693,23 +693,46 @@ static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_at
     return data_return;
 }
 
-static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_atomic_andzh(volatile uint32_t *p_data, uint32_t data, volatile uint16_t *p_zero, uint32_t bits)
+static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_atomic_andhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits)
 {
     uint32_t data_return, data_temp, success;
-    register volatile uint32_t *_p_data __asm__("r12") = p_data;
+    register volatile uint16_t *_p_data __asm__("r12") = p_data;
 
     __asm__ volatile (
-        "1: ldrex   %0, [%3]      \n"
-        "   ldrh    %1, [%5]      \n"
+        "1: ldrexh  %0, [%3]      \n"
+        "   ldr     %1, [%5]      \n"
         "   ands    %1, %6        \n"
         "   ite     eq            \n"
         "   andeq   %1, %0, %4    \n"
         "   movne   %1, %0        \n"
-        "   strex   %2, %1, [%3]  \n"
+        "   strexh  %2, %1, [%3]  \n"
 	"   cmp     %2, #0        \n"
 	"   bne.n   1b            \n"
 	: "=&r" (data_return), "=&r" (data_temp), "=&r" (success)
 	: "r" (_p_data), "r" (data), "r" (p_zero), "r" (bits)
+	: "memory"
+	);
+
+    return data_return;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_atomic_andhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero)
+{
+    uint32_t data_return, data_temp, success;
+    register volatile uint16_t *_p_data __asm__("r12") = p_data;
+
+    __asm__ volatile (
+        "1: ldrexh  %0, [%3]      \n"
+        "   ldrb    %1, [%5]      \n"
+        "   cmp     %1, #0        \n"
+        "   ite     eq            \n"
+        "   andeq   %1, %0, %4    \n"
+        "   movne   %1, %0        \n"
+        "   strexh  %2, %1, [%3]  \n"
+	"   cmp     %2, #0        \n"
+	"   bne.n   1b            \n"
+	: "=&r" (data_return), "=&r" (data_temp), "=&r" (success)
+	: "r" (_p_data), "r" (data), "r" (p_zero)
 	: "memory"
 	);
 
@@ -762,6 +785,52 @@ static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_at
     return data_return;
 }
 
+static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_atomic_orhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits)
+{
+    uint32_t data_return, data_temp, success;
+    register volatile uint16_t *_p_data __asm__("r12") = p_data;
+
+    __asm__ volatile (
+        "1: ldrexh  %0, [%3]      \n"
+        "   ldr     %1, [%5]      \n"
+        "   ands    %1, %6        \n"
+        "   ite     eq            \n"
+        "   orreq   %1, %0, %4    \n"
+        "   movne   %1, %0        \n"
+        "   strexh  %2, %1, [%3]  \n"
+	"   cmp     %2, #0        \n"
+	"   bne.n   1b            \n"
+	: "=&r" (data_return), "=&r" (data_temp), "=&r" (success)
+	: "r" (_p_data), "r" (data), "r" (p_zero), "r" (bits)
+	: "memory"
+	);
+
+    return data_return;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_atomic_orhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero)
+{
+    uint32_t data_return, data_temp, success;
+    register volatile uint16_t *_p_data __asm__("r12") = p_data;
+
+    __asm__ volatile (
+        "1: ldrexh  %0, [%3]      \n"
+        "   ldrb    %1, [%5]      \n"
+        "   cmp     %1, #0        \n"
+        "   ite     eq            \n"
+        "   orreq   %1, %0, %4    \n"
+        "   movne   %1, %0        \n"
+        "   strexh  %2, %1, [%3]  \n"
+	"   cmp     %2, #0        \n"
+	"   bne.n   1b            \n"
+	: "=&r" (data_return), "=&r" (data_temp), "=&r" (success)
+	: "r" (_p_data), "r" (data), "r" (p_zero)
+	: "memory"
+	);
+
+    return data_return;
+}
+
 extern uint32_t armv7m_atomic_add(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_sub(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_and(volatile uint32_t *p_data, uint32_t data);
@@ -802,10 +871,14 @@ extern uint32_t armv7m_atomic_modifyzb(volatile uint32_t *p_data, uint32_t mask,
 /* *p_data = (*p_zero == 0) ? (*p_data & mask) : *p_data */
 extern uint32_t armv7m_atomic_andz(volatile uint32_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits);
 extern uint32_t armv7m_atomic_andzb(volatile uint32_t *p_data, uint32_t data, volatile uint8_t *p_zero);
+extern uint32_t armv7m_atomic_andhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits);
+extern uint32_t armv7m_atomic_andhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero);
 
 /* *p_data = (*p_zero == 0) ? (*p_data | mask) : *p_data */
 extern uint32_t armv7m_atomic_orz(volatile uint32_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits);
 extern uint32_t armv7m_atomic_orzb(volatile uint32_t *p_data, uint32_t data, volatile uint8_t *p_zero);
+extern uint32_t armv7m_atomic_orhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero, uint32_t bits);
+extern uint32_t armv7m_atomic_orhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero);
 
 /* *p_data = data
  * 

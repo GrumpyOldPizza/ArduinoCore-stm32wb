@@ -95,7 +95,7 @@ static __attribute__((optimize("O3"))) void stm32wb_sai_start(stm32wb_sai_t *sai
 
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_SAI1 + sai->instance);
 
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     stm32wb_dma_enable(sai->dma, sai->priority, (stm32wb_dma_callback_t)stm32wb_sai_dma_callback, sai);
 	
@@ -128,7 +128,7 @@ static __attribute__((optimize("O3"))) void stm32wb_sai_stop(stm32wb_sai_t *sai)
 
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_SAI1 + sai->instance);
 
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
     
     sai->state = STM32WB_SAI_STATE_READY;
 }

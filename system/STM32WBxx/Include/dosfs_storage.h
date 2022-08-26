@@ -41,15 +41,16 @@ typedef struct _dosfs_storage_interface_t {
     bool (*Init)(uint8_t **p_cache_data, const uint8_t **p_inquiry_data);
     bool (*DeInit)(void);
     bool (*IsReady)(void);
-    bool (*GetCapacity)(uint32_t *pblock_count, uint32_t *p_block_size);
+    bool (*GetCapacity)(uint32_t *p_block_count, uint32_t *p_block_size);
     bool (*GetWriteProtected)(bool *p_write_protected);
     bool (*GetChanged)(bool *p_changed);
-    bool (*StartStopUnit)(bool start, bool loej);
-    bool (*PreventAllowMediumRemoval)(bool prevent);
+    bool (*StartStopUnit)(bool start, bool loej, bool noflush, uint32_t *p_fault_return);
+    bool (*PreventAllowMediumRemoval)(bool prevent, uint32_t *p_fault_return);
+    bool (*SynchronizeCache)(uint32_t *p_fault_return);
     bool (*Acquire)(void);
     void (*Release)(void);
-    bool (*Read)(uint8_t *data, uint32_t address, uint32_t length, bool release);
-    bool (*Write)(const uint8_t *data, uint32_t address, uint32_t length, uint32_t total, bool release);
+    bool (*Read)(uint8_t *data, uint32_t address, uint32_t length, uint32_t total, uint32_t *p_fault_return);
+    bool (*Write)(const uint8_t *data, uint32_t address, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return);
 } dosfs_storage_interface_t;
 
 extern const dosfs_storage_interface_t dosfs_storage_interface;

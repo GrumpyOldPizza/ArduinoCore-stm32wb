@@ -60,13 +60,6 @@ extern "C" {
 
 extern void dosfs_sflash_initialize();
   
-#define SWD_STATUS_UNDEFINED 0
-#define SWD_STATUS_ENABLED   1
-#define SWD_STATUS_DISABLED  2
-#define SWD_STATUS_GPIO      3
-  
-extern uint8_t g_swdStatus;
-
 #define PIN_BUTTON_DATA_MASK    0x01
 #define PIN_BUTTON_DATA_SHIFT   0
 #define PIN_BUTTON_MODE_MASK    0x0e
@@ -80,10 +73,6 @@ extern void (*g_serialEventRun)(void);
 
 extern uint32_t __analogReadInternal(uint32_t channel, uint32_t smp);
 extern void __analogWriteDisable(uint32_t pin);
-
-extern void __wakeupCallback(void);
-extern void __emptyCallback(void);
-  
 
 /*
  * TIM1   PWM

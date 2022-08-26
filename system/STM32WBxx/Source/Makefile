@@ -1,6 +1,6 @@
-TOOLS    = ~/.arduino15/packages/arduino/tools/arm-none-eabi-gcc/7-2017q4/
+#TOOLS    = ~/.arduino15/packages/arduino/tools/arm-none-eabi-gcc/7-2017q4/
 #TOOLS    = ~/.arduino15/packages/arduino/tools/arm-none-eabi-gcc/4.8.3-2014q1/
-#TOOLS    = /opt/gcc-arm-none-eabi-9-2020-q2-update/
+TOOLS    = /opt/arm-none-eabi-gcc/10.3-2021.10
 CPP      = $(TOOLS)/bin/arm-none-eabi-cpp
 CC       = $(TOOLS)/bin/arm-none-eabi-gcc
 CXX      = $(TOOLS)/bin/arm-none-eabi-g++
@@ -31,6 +31,7 @@ SRCS = \
 	armv7m_pendsv.c \
 	armv7m_rtlib.S \
 	armv7m_rtos.c \
+	armv7m_rtt.c \
 	armv7m_svcall.c \
 	armv7m_systick.c \
 	dosfs_core.c \

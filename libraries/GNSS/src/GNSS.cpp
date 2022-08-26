@@ -321,8 +321,8 @@ bool GNSSSatellites::navigating(unsigned int index) const
 
 GNSSClass::GNSSClass()
 {
-    _locationCallback = Callback(__wakeupCallback);
-    _satellitesCallback = Callback(__wakeupCallback);
+    _locationCallback = Callback();
+    _satellitesCallback = Callback();
 
     k_work_create(&_receiveWork, (k_work_routine_t)GNSSClass::uartReceiveRoutine, (void*)this);
     k_work_create(&_transmitWork, (k_work_routine_t)GNSSClass::uartTransmitRoutine, (void*)this);
@@ -479,12 +479,12 @@ bool GNSSClass::satellites(GNSSSatellites &satellites)
 
 void GNSSClass::onLocation(Callback callback)
 {
-    _locationCallback = callback ? callback : Callback(__wakeupCallback);
+    _locationCallback = callback;
 }
 
 void GNSSClass::onSatellites(Callback callback)
 {
-    _satellitesCallback = callback ? callback : Callback(__wakeupCallback);
+    _satellitesCallback = callback;
 }
 
 void GNSSClass::uartBegin(GNSSmode mode, GNSSrate rate, struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *params, uint16_t pps, uint16_t enable, uint16_t backup, bool internal)
@@ -664,7 +664,7 @@ void GNSSClass::locationCallback(class GNSSClass *self, const gnss_location_t *l
 {
     self->_location_data = *location;
     self->_location_pending = true;
-
+    
     self->_locationCallback();
 }
 

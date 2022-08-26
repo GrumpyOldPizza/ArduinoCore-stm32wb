@@ -104,7 +104,7 @@ TimerMillisRTC::TimerMillisRTC() {
 
     m_active = 0;
 
-    m_callback = Callback(__emptyCallback);
+    m_callback = Callback();
 }
 
 TimerMillisRTC::~TimerMillisRTC() {
@@ -141,7 +141,7 @@ bool TimerMillisRTC::start(Callback callback, uint32_t delay, uint32_t period) {
     m_clock = stm32wb_rtc_clock_read() + (seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
     m_delay = delay - (seconds * 1000);
     m_period = period;
-    m_callback = callback ? callback : Callback(__wakeupCallback);
+    m_callback = callback;
 
     if (armv7m_atomic_swapb(&m_active, true) == false) {
         reference();

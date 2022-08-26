@@ -57,7 +57,7 @@ public:
     
     void onReceive(Callback callback);
     void onReceive(void(*callback)(void)) { onReceive(Callback(callback)); }
-    
+
 private:
     struct _stm32wb_sai_t *m_sai;
     volatile uint8_t m_state;

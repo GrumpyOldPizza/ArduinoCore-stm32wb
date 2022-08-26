@@ -29,22 +29,19 @@
 
 #include "armv7m.h"
 #include "stm32wb_system.h"
-#include "stm32wb_lptim.h"
 #include "stm32wb_usbd.h"
+#include "stm32wb_usbd_dcd.h"
 #include "stm32wb_usbd_dfu.h"
 
-typedef struct _stm32wb_usbd_dfu_runtime_class_t {
-    uint16_t                 interface;  
-    stm32wb_lptim_timeout_t  timeout;
-} stm32wb_usbd_dfu_runtime_class_t;
+typedef struct _stm32wb_usbd_dfu_runtime_control_t {
+    uint8_t                 interface;  
+} stm32wb_usbd_dfu_runtime_control_t;
 
-static stm32wb_usbd_dfu_runtime_class_t stm32wb_usbd_dfu_runtime_class;
+static stm32wb_usbd_dfu_runtime_control_t stm32wb_usbd_dfu_runtime_control;
 
-static void stm32wb_usbd_dfu_runtime_configure(void *context, uint16_t interface, uint16_t options)
+static void stm32wb_usbd_dfu_runtime_configure(void *context, uint8_t interface)
 {
-    stm32wb_usbd_dfu_runtime_class.interface = interface;
-
-    stm32wb_lptim_timeout_create(&stm32wb_usbd_dfu_runtime_class.timeout);
+    stm32wb_usbd_dfu_runtime_control.interface = interface;
 }
 
 static void stm32wb_usbd_dfu_runtime_start(void *context)
@@ -55,26 +52,33 @@ static void stm32wb_usbd_dfu_runtime_stop(void *context)
 {
 }
 
-static bool stm32wb_usbd_dfu_runtime_request(void *context, int state, const stm32wb_usbd_request_t *request, uint8_t *data, const uint8_t **p_data_return, uint32_t *p_length_return)
+static void stm32wb_usbd_dfu_runtime_detach()
+{
+    stm32wb_usbd_disable();
+    
+    stm32wb_system_dfu();
+}
+
+static int stm32wb_usbd_dfu_runtime_request(void *context, int state, const stm32wb_usbd_request_t *request, uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return, stm32wb_usbd_status_routine_t *p_status_routine_return)
 {
     uint16_t interface;
-    bool success;
-    
-    success = false;
+    int status;
+
+    status = STM32WB_USBD_REQUEST_STATUS_UNHANDLED;
     
     switch (request->bmRequestType & USB_REQ_RECIPIENT_MASK) {
     case USB_REQ_RECIPIENT_INTERFACE: {
 	interface = request->wIndex;
 	
-	if (interface == stm32wb_usbd_dfu_runtime_class.interface)
+	if (interface == stm32wb_usbd_dfu_runtime_control.interface)
 	{
 	    switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
 	    case USB_REQ_TYPE_CLASS: {
 		switch (request->bRequest) {
 		case USB_REQ_DFU_DETACH: {
-		    stm32wb_lptim_timeout_start(&stm32wb_usbd_dfu_runtime_class.timeout, stm32wb_lptim_timeout_millis_to_ticks(100), (stm32wb_lptim_timeout_callback_t)stm32wb_system_dfu);
-		    
-		    success = true;
+                    *p_status_routine_return = stm32wb_usbd_dfu_runtime_detach;
+
+                    status = STM32WB_USBD_REQUEST_STATUS_SUCCESS;
 		    break;
 		}
 
@@ -95,7 +99,7 @@ static bool stm32wb_usbd_dfu_runtime_request(void *context, int state, const stm
 	break;
     }
 
-    return success;
+    return status;
 }
 
 static void stm32wb_usbd_dfu_runtime_suspend(void *context)
@@ -106,16 +110,14 @@ static void stm32wb_usbd_dfu_runtime_resume(void *context)
 {
 }
 
-static void stm32wb_usbd_dfu_runtime_sof(void *context)
-{
-}
-
-const stm32wb_usbd_class_interface_t stm32wb_usbd_dfu_runtime_interface = {
+const stm32wb_usbd_class_t stm32wb_usbd_dfu_runtime_class = {
     stm32wb_usbd_dfu_runtime_configure,
     stm32wb_usbd_dfu_runtime_start,
     stm32wb_usbd_dfu_runtime_stop,
     stm32wb_usbd_dfu_runtime_request,
     stm32wb_usbd_dfu_runtime_suspend,
     stm32wb_usbd_dfu_runtime_resume,
-    stm32wb_usbd_dfu_runtime_sof,
+    NULL,
+    STM32WB_USBD_DFU_INTERFACE_COUNT,
+    0,
 };

@@ -37,31 +37,58 @@ extern "C" {
   
 #define HSEM_R_COREID_CPU1   (4 << HSEM_R_COREID_Pos)
 #define HSEM_RLR_COREID_CPU1 (4 << HSEM_R_COREID_Pos)
+
+#define STM32WB_HSEM_INDEX_RNG         0
+#define STM32WB_HSEM_INDEX_PKA         1
+#define STM32WB_HSEM_INDEX_FLASH       2
+#define STM32WB_HSEM_INDEX_RCC         3
+#define STM32WB_HSEM_INDEX_DEEPSLEEP   4
+#define STM32WB_HSEM_INDEX_CLK48       5
+#define STM32WB_HSEM_INDEX_FLASH_CPU1  6
+#define STM32WB_HSEM_INDEX_FLASH_CPU2  7
+
+#define STM32WB_HSEM_PROCID_NONE       0
+#define STM32WB_HSEM_PROCID_RANDOM     1
+#define STM32WB_HSEM_PROCID_USBD_DCD   2
   
 extern void __stm32wb_hsem_initialize(void);
 extern bool __stm32wb_hsem_lock(uint32_t index, uint32_t procid);
 
 static inline bool stm32wb_hsem_trylock(uint32_t index, uint32_t procid)
 {
-    if (__builtin_constant_p(procid) && (procid == 0))
+    if (__builtin_constant_p(procid) && (procid == STM32WB_HSEM_PROCID_NONE))
     {
-	return (HSEM->RLR[index] == (HSEM_RLR_LOCK | HSEM_RLR_COREID_CPU1));
+        if (HSEM->RLR[index] == (HSEM_RLR_LOCK | HSEM_RLR_COREID_CPU1))
+        {
+            // armv7m_rtt_printf("HSEM_TRYLOCK(%d [%d])\n", index, procid);
+
+            return true;
+        }
     }
     else
     {
 	HSEM->R[index] = (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid);
 
-	return (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid));
+	if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
+        {
+            // armv7m_rtt_printf("HSEM_TRYLOCK(%d [%d])\n", index, procid);
+
+            return true;
+        }
     }
+
+    return false;
 }
 
 static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
 {
-    if (__builtin_constant_p(procid) && (procid == 0))
+    if (__builtin_constant_p(procid) && (procid == STM32WB_HSEM_PROCID_NONE))
     {
 	if (HSEM->RLR[index] == (HSEM_RLR_LOCK | HSEM_RLR_COREID_CPU1))
 	{
-	    return true;
+            // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
+
+            return true;
 	}
     }
     else
@@ -70,7 +97,9 @@ static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
 
 	if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
 	{
-	    return true;
+            // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
+
+          return true;
 	}
     }
 
@@ -79,9 +108,16 @@ static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
     
 static inline void stm32wb_hsem_unlock(uint32_t index, uint32_t procid)
 {
+    // armv7m_rtt_printf("HSEM_UNLOCK(%d [%d])\n", index, procid);
+    
     HSEM->R[index] = (HSEM_R_COREID_CPU1 | procid);
 }
-    
+
+static inline bool stm32wb_hsem_is_locked(uint32_t index, uint32_t procid)
+{
+    return (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid));
+}
+  
 extern void HSEM0_HSEMHandler(void);
 extern void HSEM1_HSEMHandler(void);
 extern void HSEM2_HSEMHandler(void);
@@ -114,20 +150,10 @@ extern void HSEM28_HSEMHandler(void);
 extern void HSEM29_HSEMHandler(void);
 extern void HSEM30_HSEMHandler(void);
 extern void HSEM31_HSEMHandler(void);
-
-#define STM32WB_HSEM_RNG         0
-#define STM32WB_HSEM_PKA         1
-#define STM32WB_HSEM_FLASH       2
-#define STM32WB_HSEM_RCC         3
-#define STM32WB_HSEM_DEEPSLEEP   4
-#define STM32WB_HSEM_CLK48       5
-#define STM32WB_HSEM_FLASH_CPU1  6
-#define STM32WB_HSEM_FLASH_CPU2  7
-
-#define RNG_HSEMHandler          HSEM0_HSEMHandler
-#define PKA_HSEMHandler          HSEM1_HSEMHandler
-#define CLK48_HSEMHandler        HSEM5_HSEMHandler
-#define FLASH_CPU2_HSEMHandler   HSEM7_HSEMHandler    
+    
+#define RNG_HSEMHandler                HSEM0_HSEMHandler
+#define PKA_HSEMHandler                HSEM1_HSEMHandler
+#define FLASH_CPU2_HSEMHandler         HSEM7_HSEMHandler    
     
 #ifdef __cplusplus
 }

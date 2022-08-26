@@ -68,11 +68,11 @@ static const stm32wb_usbd_params_t g_USBParams =
 #endif
 
 USBDeviceClass::USBDeviceClass() {
-    m_attach_callback = Callback(__wakeupCallback);
-    m_detach_callback = Callback(__wakeupCallback);
-    m_connect_callback = Callback(__wakeupCallback);
-    m_suspend_callback = Callback(__wakeupCallback);
-    m_resume_callback = Callback(__wakeupCallback);
+    m_attach_callback = Callback();
+    m_detach_callback = Callback();
+    m_connect_callback = Callback();
+    m_suspend_callback = Callback();
+    m_resume_callback = Callback();
 
     Callback work_callback = Callback(&USBDeviceClass::workRoutine, this);
 
@@ -91,108 +91,98 @@ USBDeviceClass::USBDeviceClass() {
 
 bool USBDeviceClass::begin() {
 #if (USB_TYPE != 0)
-    if (!m_enabled) {
-	m_enabled = true;
-
-	stm32wb_usbd_enable((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)this);
-    }
-    
-    return true;
-#else
-    return false;
+    return stm32wb_usbd_enable((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)this);
 #endif
+
+    return false;
 }
 
 void USBDeviceClass::end() {
 #if (USB_TYPE != 0)
-    if (m_enabled) {
-        stm32wb_usbd_disable();
-
-        m_enabled = false;
-	m_attached = false;
-	m_connected = false;
-	m_suspended = false;
-    }
+    stm32wb_usbd_disable();
 #endif    
 }
 
-void USBDeviceClass::attach() {
+void USBDeviceClass::start() {
 #if (USB_TYPE != 0)
-    if (m_enabled) {
-        stm32wb_usbd_attach();
-    }
+    stm32wb_usbd_start();
 #endif
 }
 
-void USBDeviceClass::detach() {
+void USBDeviceClass::stop() {
 #if (USB_TYPE != 0)
-    if (m_enabled) {
-        stm32wb_usbd_detach();
-
-	m_connected = false;
-	m_suspended = false;
-    }
+    stm32wb_usbd_stop();
 #endif
 }
 
 void USBDeviceClass::wakeup() {
 #if (USB_TYPE != 0)
-    if (m_enabled) {
-        stm32wb_usbd_wakeup();
-    }
+    stm32wb_usbd_wakeup();
 #endif
 }
     
 bool USBDeviceClass::attached() {
-    return m_attached;
+#if (USB_TYPE != 0)
+    return (stm32wb_usbd_state() >= USB_STATE_ATTACHED);
+#endif
+
+    return false;
 }
 
 bool USBDeviceClass::connected() {
-    return m_connected;
+#if (USB_TYPE != 0)
+    return (stm32wb_usbd_state() >= USB_STATE_DEFAULT);
+#endif
+
+    return false;
 }
 
 bool USBDeviceClass::suspended() {
-    return m_suspended;
+#if (USB_TYPE != 0)
+    return stm32wb_usbd_is_suspended();
+#endif
+
+    return false;
 }
 
 void USBDeviceClass::onAttach(void(*callback)(void)) {
-    onAttach(Callback(callback));
+    m_attach_callback = Callback(callback);
 }
 
 void USBDeviceClass::onAttach(Callback callback) {
-    m_attach_callback = callback ? callback : Callback(__wakeupCallback);
+    m_attach_callback = callback;
 }
 
 void USBDeviceClass::onDetach(void(*callback)(void)) {
-    onDetach(Callback(callback));
+    m_detach_callback = Callback(callback);
 }
 
 void USBDeviceClass::onDetach(Callback callback) {
-    m_detach_callback = callback ? callback : Callback(__wakeupCallback);
+    m_detach_callback = callback;
 }
 
 void USBDeviceClass::onConnect(void(*callback)(void)) {
-    onConnect(Callback(callback));
+    m_connect_callback = Callback(callback);
 }
 
 void USBDeviceClass::onConnect(Callback callback) {
-    m_connect_callback = callback ? callback : Callback(__wakeupCallback);
+    m_connect_callback = callback;
 }
 
 void USBDeviceClass::onSuspend(void(*callback)(void)) {
-    onSuspend(Callback(callback));
+    m_suspend_callback = Callback(callback);
 }
 
 void USBDeviceClass::onSuspend(Callback callback) {
-    m_suspend_callback = callback ? callback : Callback(__wakeupCallback);
+    m_suspend_callback = callback;
 }
 
 void USBDeviceClass::onResume(void(*callback)(void)) {
-    onResume(Callback(callback));
+    m_resume_callback = Callback(callback);
 }
 
 void USBDeviceClass::onResume(Callback callback) {
-    m_resume_callback = callback ? callback : Callback(__wakeupCallback);
+    m_resume_callback = callback;
 }
 
 void USBDeviceClass::workRoutine() {
@@ -201,34 +191,22 @@ void USBDeviceClass::workRoutine() {
     events = armv7m_atomic_swap(&m_events, 0);
 
     if (events & STM32WB_USBD_EVENT_ATTACH) {
-	m_attached = true;
-
         m_attach_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_DETACH) {
-	m_attached = false;
-	m_connected = false;
-	m_suspended = false;
-
         m_attach_callback();
     }
     
     if (events & STM32WB_USBD_EVENT_CONNECT) {
-	m_connected = true;
-
         m_connect_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_SUSPEND) {
-	m_suspended = true;
-
         m_suspend_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_RESUME) {
-	m_suspended = false;
-
         m_resume_callback();
     }
 }

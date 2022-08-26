@@ -106,6 +106,8 @@ __attribute__((optimize("O3"))) void armv7m_pendsv_hook(armv7m_pendsv_callback_t
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
 }
 
+
+
 static __attribute__((optimize("O3"), used)) void armv7m_pendsv_process(uint32_t mask)
 {
     uint32_t index;

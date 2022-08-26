@@ -38,14 +38,14 @@ public:
     // USB Device API
     bool begin();
     void end();
-    void attach();
-    void detach();
+    void start();
+    void stop();
     void wakeup();
 
     bool attached();
     bool connected();
     bool suspended();
-    
+
     void onAttach(void(*callback)(void));
     void onAttach(Callback callback);
     void onDetach(void(*callback)(void));
@@ -58,10 +58,6 @@ public:
     void onResume(Callback callback);
     
 private:
-    bool m_enabled;
-    bool m_attached;
-    bool m_connected;
-    bool m_suspended;
     volatile uint32_t m_events;
     
     Callback m_attach_callback;
@@ -139,7 +135,7 @@ public:
     // STM32WB EXTENSTION: receive callback
     void onReceive(Callback callback);
     void onReceive(void(*callback)(void)) { onReceive(Callback(callback)); }
-    
+  
 private:
     uint8_t m_rx_data[CDC_RX_BUFFER_SIZE];
     uint8_t m_tx_data[CDC_TX_BUFFER_SIZE];

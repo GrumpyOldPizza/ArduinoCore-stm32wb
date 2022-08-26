@@ -39,7 +39,7 @@ PDMClass::PDMClass(struct _stm32wb_sai_t *sai, const struct _stm32wb_sai_params_
 
     stm32wb_sai_create(sai, params);
 
-    m_receive_callback = Callback(__wakeupCallback);
+    m_receive_callback = Callback();
 
     Callback work_callback = Callback(&PDMClass::workCallback, this);
 
@@ -291,7 +291,7 @@ __attribute__((optimize("O3"))) int PDMClass::read(void* buffer, size_t size)
 
 void PDMClass::onReceive(Callback callback)
 {
-    m_receive_callback = callback ? callback : Callback(__wakeupCallback);
+    m_receive_callback = callback;
 }
 
 void PDMClass::workCallback()
@@ -345,7 +345,7 @@ void PDMClass::workCallback()
                 armv7m_atomic_incb(&m_pdm_count);
             
                 m_pdm_head = (pdm_head +1) & (PDM_BUFFER_COUNT -1);
-            
+                    
                 m_receive_callback();
             } else {
                 m_pdm_write = pdm_write;
@@ -390,7 +390,7 @@ void PDMClass::eventCallback(class PDMClass *self, uint32_t events)
 extern const stm32wb_sai_params_t g_PDMParams;
 
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_PDM_Data[PDM_BUFFER_COUNT * PDM_BUFFER_SIZE];
-static __attribute__((aligned(4), section(".noinit"))) uint8_t g_CIC_Data[CIC_BUFFER_COUNT * CIC_BUFFER_SIZE];
+static __attribute__((aligned(4), section(".dma"))) uint8_t g_CIC_Data[CIC_BUFFER_COUNT * CIC_BUFFER_SIZE];
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_HBF_Data[HBF_BUFFER_SIZE];
 static __attribute__((aligned(4), section(".noinit"))) uint8_t g_FIR_Data[FIR_BUFFER_SIZE * 2];
 

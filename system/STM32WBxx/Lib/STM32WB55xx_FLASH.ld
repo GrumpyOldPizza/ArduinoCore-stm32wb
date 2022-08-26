@@ -61,10 +61,11 @@ MEMORY
 {
    FLASH  (rx)  : ORIGIN = 0x08000000, LENGTH = 0x000c0000 /* 768k (BLE starts @ 0x000cb000)  */
    EEPROM (r)   : ORIGIN = 0x080c0000, LENGTH = 0x00008000 /* 32k  (BLE starts @ 0x000cb000)  */
-   RAM    (rw)  : ORIGIN = 0x20000000, LENGTH = 0x00030000 /* 192k                            */
-   IPCRAM (rw)  : ORIGIN = 0x20030000, LENGTH = 0x00001800 /* 6k                              */
-   RETRAM (rw)  : ORIGIN = 0x20031800, LENGTH = 0x00001000 /* 4k                              */
-   CCMRAM (rx)  : ORIGIN = 0x20038000, LENGTH = 0x00002000 /* 8k                              */
+   CCRAM  (rx)  : ORIGIN = 0x10008000, LENGTH = 0x00001000 /* 4k                              */
+   SRAM1  (rw)  : ORIGIN = 0x20000000, LENGTH = 0x00030000 /* 192k                            */
+   IPCC   (rw)  : ORIGIN = 0x20030000, LENGTH = 0x00001000 /* 4k                              */
+   SRAM2a (rw)  : ORIGIN = 0x20031000, LENGTH = 0x00001800 /* 6k                              */
+   RTT    (rw)  : ORIGIN = 0x20039000, LENGTH = 0x00002800 /* 10k                             */
 }
 
 GROUP(libgcc.a libc.a libm.a libnosys.a)
@@ -136,9 +137,9 @@ SECTIONS
        LONG (LOADADDR(.data))
        LONG (__data_start__)
        LONG (__data_end__ - __data_start__)
-       LONG (LOADADDR(.ccmram))
-       LONG (__ccmram_start__)
-       LONG (__ccmram_end__ - __ccmram_start__)
+       LONG (LOADADDR(.ccram))
+       LONG (__ccram_start__)
+       LONG (__ccram_end__ - __ccram_start__)
      __copy_table_end__ = .;
      __zero_table_start__ = .;
        LONG (__bss_start__)
@@ -147,15 +148,6 @@ SECTIONS
        . = ALIGN(8);
    } > FLASH
 
-   .stack (NOLOAD) :
-   {
-     __StackLimit = .;
-       KEEP(*(.stack .stack.*))
-     . = ALIGN(1024);
-     __StackTop = .;
-     PROVIDE(__stack = __StackTop);
-   } > RAM
-
    .data :
    {
      __data_start__ = .;
@@ -163,7 +155,7 @@ SECTIONS
        *(.data .data.* .gnu.linkonce.d.*)
        . = ALIGN(8);
      __data_end__ = .;
-   } > RAM AT >FLASH
+   } > SRAM1 AT >FLASH
 
    .bss (NOLOAD) :
    {
@@ -172,7 +164,7 @@ SECTIONS
        *(COMMON)
        . = ALIGN(8);
      __bss_end__ = .;
-   } > RAM
+   } > SRAM1
 
    .noinit (NOLOAD) :
    {
@@ -180,42 +172,92 @@ SECTIONS
        *(.noinit .noinit.*)
        . = ALIGN(8);
      __noinit_end__ = .;
-   } > RAM
+   } > SRAM1
+
+   .dma (NOLOAD) :
+   {
+     __dma_start__ = .;
+       *(.dma .dma.*)
+       . = ALIGN(8);
+     __dma_end__ = .;
+   } > SRAM1
 
    __end__ = .;
    PROVIDE(end = .);
 
-   .ipcram (NOLOAD) :
+   /* Set stack top to end of RAM, and stack limit move down by
+    * size of stack_dummy section */
+   .stack_dummy (NOLOAD):
    {
-     __ipcram_start__ = .;
-       KEEP(*(.ipcram.ref_table))
-       KEEP(*(.ipcram.sys_state))
-       KEEP(*(.ipcram.info_table))
-       KEEP(*(.ipcram.ble_table))
-       KEEP(*(.ipcram.sys_table))
-       KEEP(*(.ipcram.mm_table))
-       *(.ipcram .ipcram.*)
+       *(.stack .stack.*)
        . = ALIGN(8);
-     __ipcram_end__ = .;
-   } >IPCRAM
+   } > SRAM1
 
-   .retram :
+   __StackTop = ORIGIN(SRAM1) + LENGTH(SRAM1);
+   __StackLimit = __StackTop - SIZEOF(.stack_dummy);
+   PROVIDE(__HeapLimit = __StackLimit);
+   PROVIDE(__stack = __StackTop);
+
+   .ipcc (NOLOAD) :
    {
-     __retram_start__ = .;
-       *(.retram .retram.*)
+     __ipcc_start__ = .;
+       KEEP(*(.ipcc.ref_table))
+       KEEP(*(.ipcc.sys_state))
+       KEEP(*(.ipcc.info_table))
+       KEEP(*(.ipcc.ble_table))
+       KEEP(*(.ipcc.sys_table))
+       KEEP(*(.ipcc.mm_table))
+       *(.ipcc .ipcc.*)
        . = ALIGN(8);
-     __retram_end__ = .;
-   } > RETRAM AT >FLASH
+     __ipcc_end__ = .;
+       KEEP(*(.rtt_control))
+   } >IPCC
 
-   __retram_flash__ = LOADADDR(.retram);
-
-   .ccmram :
+   .data2a :
    {
-     __ccmram_start__ = .;
-       *(.ccmram .ccmram.*)
+     __data2a_start__ = .;
+       *(.data2a .data2a.*)
        . = ALIGN(8);
-     __ccmram_end__ = .;
-   } >CCMRAM AT >FLASH
+     __data2a_end__ = .;
+   } > SRAM2a AT >FLASH
+
+   __data2a_flash__ = LOADADDR(.data2a);
+
+   .bss2a (NOLOAD) :
+   {
+     __bss2a_start__ = .;
+       *(.bss2a .bss2a.*)
+       . = ALIGN(8);
+     __bss2a_end__ = .;
+   } > SRAM2a
+
+   .noinit2a (NOLOAD) :
+   {
+     __noinit2a_start__ = .;
+       *(.noinit2a .noinit2a.*)
+       . = ALIGN(8);
+     __noinit2a_end__ = .;
+   } > SRAM2a
+
+   .rtt_data (NOLOAD) :
+   {
+       KEEP(*(.rtt_data .rtt_data.*))
+       . = ALIGN(8);
+   } > SRAM2a
+
+   .ccram :
+   {
+     __ccram_start__ = .;
+       *(.ccram .ccram.*)
+       . = ALIGN(8);
+     __ccram_end__ = .;
+   } >CCRAM AT >FLASH
+
+   .rtt_data (NOLOAD) :
+   {
+       KEEP(*(.rtt_data .rtt_data.*))
+       . = ALIGN(8);
+   } > RTT
 
    .ARM.extab :
    {
@@ -238,7 +280,6 @@ SECTIONS
        LONG (0x94448A29)
    } > FLASH
 
-   __HeapLimit = ORIGIN(RAM) + LENGTH(RAM);
    __FlashBase = ALIGN(LOADADDR(.ota_signature) + SIZEOF(.ota_signature), 4096);
    __FlashLimit = ORIGIN(FLASH) + LENGTH(FLASH);
 

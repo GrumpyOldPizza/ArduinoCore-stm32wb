@@ -1,20 +1,19 @@
-/******************************************************************************
+/*****************************************************************************
  * @file    ble_types.h
- * @author  MCD
+ * @author  MDG
  * @brief   STM32WB BLE command/event types
  *          Auto-generated file: do not edit!
- ******************************************************************************
+ *****************************************************************************
  * @attention
  *
- * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
- * All rights reserved.</center></h2>
+ * Copyright (c) 2018-2022 STMicroelectronics.
+ * All rights reserved.
  *
- * This software component is licensed by ST under Ultimate Liberty license
- * SLA0044, the "License"; You may not use this file except in compliance with
- * the License. You may obtain a copy of the License at:
- *                             www.st.com/SLA0044
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
  *
- ******************************************************************************
+ *****************************************************************************
  */
 
 #ifndef BLE_TYPES_H__
@@ -45,6 +44,128 @@ typedef PACKED(struct)
    */
   uint16_t Host_Num_Of_Completed_Packets;
 } Host_Nb_Of_Completed_Pkt_Pair_t;
+
+/* Definition of Adv_Set_t */
+typedef PACKED(struct)
+{
+  /**
+   * Used to identify an advertising set.
+   * Values:
+   * - 0x00 ... 0xEF
+   */
+  uint8_t Advertising_Handle;
+  /**
+   * Duration of advertising set.
+   * Time = N * 10 ms.
+   * Values:
+   * - 0x0000 (0 ms) : No advertising duration.
+   * - 0x0001 (10 ms)  ... 0xFFFF (655350 ms) : Advertising duration
+   */
+  uint16_t Duration;
+  /**
+   * Maximum number of advertising events.
+   * Values:
+   * - 0x00: No maximum number of advertising events
+   * - 0x01 ... 0xFF: Maximum number of extended advertising events the
+   *   Controller shall attempt to send prior to terminating the extended
+   *   advertising
+   */
+  uint8_t Max_Extended_Advertising_Events;
+} Adv_Set_t;
+
+/* Definition of Scan_Param_Phy_t */
+typedef PACKED(struct)
+{
+  /**
+   * Passive or active scanning. With passive scanning, no scan request PDUs
+   * are sent.
+   * Values:
+   * - 0x00: Passive scanning
+   * - 0x01: Active scanning
+   */
+  uint8_t Scan_Type;
+  /**
+   * Time interval from when the Controller started its last scan until it
+   * begins the subsequent scan on the primary advertising physical channel.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0004 (2.500 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Scan_Interval;
+  /**
+   * Duration of the scan on the primary advertising physical channel.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0004 (2.500 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Scan_Window;
+} Scan_Param_Phy_t;
+
+/* Definition of Init_Param_Phy_t */
+typedef PACKED(struct)
+{
+  /**
+   * Time interval from when the Controller started its last scan until it
+   * begins the subsequent scan on the primary advertising physical channel.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0004 (2.500 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Scan_Interval;
+  /**
+   * Duration of the scan on the primary advertising physical channel.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0004 (2.500 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Scan_Window;
+  /**
+   * Minimum value for the connection event interval.
+   * Time = N * 1.25 ms.
+   * Values:
+   * - 0x0006 (7.50 ms)  ... 0x0C80 (4000.00 ms)
+   */
+  uint16_t Conn_Interval_Min;
+  /**
+   * Maximum value for the connection event interval.
+   * Time = N * 1.25 ms.
+   * Values:
+   * - 0x0006 (7.50 ms)  ... 0x0C80 (4000.00 ms)
+   */
+  uint16_t Conn_Interval_Max;
+  /**
+   * Maximum Peripheral latency for the connection in number of connection
+   * events.
+   * Values:
+   * - 0x0000 ... 0x01F3
+   */
+  uint16_t Conn_Latency;
+  /**
+   * Supervision timeout for the LE Link.
+   * It shall be a multiple of 10 ms and larger than (1 + connSlaveLatency) *
+   * connInterval * 2.
+   * Time = N * 10 ms.
+   * Values:
+   * - 0x000A (100 ms)  ... 0x0C80 (32000 ms)
+   */
+  uint16_t Supervision_Timeout;
+  /**
+   * Information parameter about the minimum length of connection needed for
+   * this LE connection.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0000 (0.000 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Min_CE_Length;
+  /**
+   * Information parameter about the maximum length of connection needed for
+   * this LE connection.
+   * Time = N * 0.625 ms.
+   * Values:
+   * - 0x0000 (0.000 ms)  ... 0xFFFF (40959.375 ms)
+   */
+  uint16_t Max_CE_Length;
+} Init_Param_Phy_t;
 
 /* Definition of Whitelist_Entry_t */
 typedef PACKED(struct)
@@ -93,6 +214,22 @@ typedef PACKED(struct)
    */
   uint8_t Peer_Identity_Address[6];
 } Whitelist_Identity_Entry_t;
+
+/* Definition of List_Entry_t */
+typedef PACKED(struct)
+{
+  /**
+   * Address type.
+   * Values:
+   * - 0x00: Public Device Address
+   * - 0x01: Random Device Address
+   */
+  uint8_t Address_Type;
+  /**
+   * Public Device Address or Random Device Address.
+   */
+  uint8_t Address[6];
+} List_Entry_t;
 
 /* Definition of Service_UUID_t */
 typedef PACKED(union)
@@ -221,19 +358,19 @@ typedef PACKED(struct)
    */
   uint8_t Address[6];
   /**
-   * Length of the Data[i] field for each device which responded.
+   * Length of the Data field for each device which responded.
    * Values:
    * - 0 ... 31
    */
   uint8_t Length_Data;
   /**
-   * Length_Data[i] octets of advertising or scan response data formatted
-   * as defined in [Vol 3] Part C, Section 8.
+   * Octets of advertising or scan response data formatted as defined in
+   * Bluetooth spec. v.5.3 [Vol 3, Part C, 11].
    */
   const uint8_t* Data;
   /**
-   * N Size: 1 Octet (signed integer)
-   * Units: dBm
+   * RSSI (signed integer).
+   * Units: dBm.
    * Values:
    * - 127: RSSI not available
    * - -127 ... 20
@@ -280,8 +417,8 @@ typedef PACKED(struct)
    */
   uint8_t Direct_Address[6];
   /**
-   * N Size: 1 Octet (signed integer)
-   * Units: dBm
+   * RSSI (signed integer).
+   * Units: dBm.
    * Values:
    * - 127: RSSI not available
    * - -127 ... 20
@@ -487,7 +624,7 @@ typedef PACKED(struct)
 {
   uint8_t Status;
   uint8_t Transmit_Power_Level;
-} hci_le_read_advertising_channel_tx_power_rp0;
+} hci_le_read_advertising_physical_channel_tx_power_rp0;
 
 typedef PACKED(struct)
 {
@@ -514,12 +651,12 @@ typedef PACKED(struct)
 typedef PACKED(struct)
 {
   uint8_t Advertising_Enable;
-} hci_le_set_advertise_enable_cp0;
+} hci_le_set_advertising_enable_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_set_advertise_enable_rp0;
+} hci_le_set_advertising_enable_rp0;
 
 typedef PACKED(struct)
 {
@@ -576,34 +713,34 @@ typedef PACKED(struct)
 {
   uint8_t Status;
   uint8_t White_List_Size;
-} hci_le_read_white_list_size_rp0;
+} hci_le_read_filter_accept_list_size_rp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_clear_white_list_rp0;
+} hci_le_clear_filter_accept_list_rp0;
 
 typedef PACKED(struct)
 {
   uint8_t Address_Type;
   uint8_t Address[6];
-} hci_le_add_device_to_white_list_cp0;
+} hci_le_add_device_to_filter_accept_list_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_add_device_to_white_list_rp0;
+} hci_le_add_device_to_filter_accept_list_rp0;
 
 typedef PACKED(struct)
 {
   uint8_t Address_Type;
   uint8_t Address[6];
-} hci_le_remove_device_from_white_list_cp0;
+} hci_le_remove_device_from_filter_accept_list_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_remove_device_from_white_list_rp0;
+} hci_le_remove_device_from_filter_accept_list_rp0;
 
 typedef PACKED(struct)
 {
@@ -677,12 +814,12 @@ typedef PACKED(struct)
   uint8_t Random_Number[8];
   uint16_t Encrypted_Diversifier;
   uint8_t Long_Term_Key[16];
-} hci_le_start_encryption_cp0;
+} hci_le_enable_encryption_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_start_encryption_rp0;
+} hci_le_enable_encryption_rp0;
 
 typedef PACKED(struct)
 {
@@ -699,13 +836,13 @@ typedef PACKED(struct)
 typedef PACKED(struct)
 {
   uint16_t Connection_Handle;
-} hci_le_long_term_key_requested_negative_reply_cp0;
+} hci_le_long_term_key_request_negative_reply_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
   uint16_t Connection_Handle;
-} hci_le_long_term_key_requested_negative_reply_rp0;
+} hci_le_long_term_key_request_negative_reply_rp0;
 
 typedef PACKED(struct)
 {
@@ -919,12 +1056,12 @@ typedef PACKED(struct)
   uint8_t RX_Frequency;
   uint8_t PHY;
   uint8_t Modulation_Index;
-} hci_le_enhanced_receiver_test_cp0;
+} hci_le_receiver_test_v2_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_enhanced_receiver_test_rp0;
+} hci_le_receiver_test_v2_rp0;
 
 typedef PACKED(struct)
 {
@@ -932,12 +1069,181 @@ typedef PACKED(struct)
   uint8_t Length_Of_Test_Data;
   uint8_t Packet_Payload;
   uint8_t PHY;
-} hci_le_enhanced_transmitter_test_cp0;
+} hci_le_transmitter_test_v2_cp0;
 
 typedef PACKED(struct)
 {
   uint8_t Status;
-} hci_le_enhanced_transmitter_test_rp0;
+} hci_le_transmitter_test_v2_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Random_Address[6];
+} hci_le_set_advertising_set_random_address_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_advertising_set_random_address_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint16_t Adv_Event_Properties;
+  uint8_t Primary_Adv_Interval_Min[3];
+  uint8_t Primary_Adv_Interval_Max[3];
+  uint8_t Primary_Adv_Channel_Map;
+  uint8_t Own_Address_Type;
+  uint8_t Peer_Address_Type;
+  uint8_t Peer_Address[6];
+  uint8_t Adv_Filter_Policy;
+  uint8_t Adv_TX_Power;
+  uint8_t Primary_Adv_PHY;
+  uint8_t Secondary_Adv_Max_Skip;
+  uint8_t Secondary_Adv_PHY;
+  uint8_t Adv_SID;
+  uint8_t Scan_Req_Notification_Enable;
+} hci_le_set_extended_advertising_parameters_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint8_t Selected_TX_Power;
+} hci_le_set_extended_advertising_parameters_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Operation;
+  uint8_t Fragment_Preference;
+  uint8_t Advertising_Data_Length;
+  uint8_t Advertising_Data[BLE_CMD_MAX_PARAM_LEN - 4];
+} hci_le_set_extended_advertising_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_extended_advertising_data_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Operation;
+  uint8_t Fragment_Preference;
+  uint8_t Scan_Response_Data_Length;
+  uint8_t Scan_Response_Data[BLE_CMD_MAX_PARAM_LEN - 4];
+} hci_le_set_extended_scan_response_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_extended_scan_response_data_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Enable;
+  uint8_t Num_Sets;
+  Adv_Set_t Adv_Set[(BLE_CMD_MAX_PARAM_LEN - 2)/sizeof(Adv_Set_t)];
+} hci_le_set_extended_advertising_enable_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_extended_advertising_enable_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint16_t Max_Advertising_Data_Length;
+} hci_le_read_maximum_advertising_data_length_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint8_t Num_Supported_Advertising_Sets;
+} hci_le_read_number_of_supported_advertising_sets_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+} hci_le_remove_advertising_set_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_remove_advertising_set_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_clear_advertising_sets_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Own_Address_Type;
+  uint8_t Scanning_Filter_Policy;
+  uint8_t Scanning_PHYs;
+  Scan_Param_Phy_t Scan_Param_Phy[2];
+} hci_le_set_extended_scan_parameters_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_extended_scan_parameters_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Enable;
+  uint8_t Filter_Duplicates;
+  uint16_t Duration;
+  uint16_t Period;
+} hci_le_set_extended_scan_enable_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_set_extended_scan_enable_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Initiator_Filter_Policy;
+  uint8_t Own_Address_Type;
+  uint8_t Peer_Address_Type;
+  uint8_t Peer_Address[6];
+  uint8_t Initiating_PHYs;
+  Init_Param_Phy_t Init_Param_Phy[3];
+} hci_le_extended_create_connection_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_extended_create_connection_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint8_t Min_TX_Power;
+  uint8_t Max_TX_Power;
+} hci_le_read_transmit_power_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint16_t RF_TX_Path_Compensation;
+  uint16_t RF_RX_Path_Compensation;
+} hci_le_read_rf_path_compensation_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t RF_TX_Path_Compensation;
+  uint16_t RF_RX_Path_Compensation;
+} hci_le_write_rf_path_compensation_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} hci_le_write_rf_path_compensation_rp0;
 
 typedef PACKED(struct)
 {
@@ -1050,21 +1356,21 @@ typedef PACKED(struct)
 
 typedef PACKED(struct)
 {
-  uint32_t SMP_Config;
-} aci_hal_set_smp_eng_config_cp0;
-
-typedef PACKED(struct)
-{
-  uint8_t Status;
-} aci_hal_set_smp_eng_config_rp0;
-
-typedef PACKED(struct)
-{
   uint8_t Status;
   uint8_t Allocated_For_TX;
   uint8_t Allocated_For_RX;
   uint8_t Allocated_MBlocks;
 } aci_hal_get_pm_debug_info_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Enable;
+} aci_hal_set_slave_latency_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_hal_set_slave_latency_rp0;
 
 typedef PACKED(struct)
 {
@@ -1404,26 +1710,6 @@ typedef PACKED(struct)
 {
   uint16_t LE_Scan_Interval;
   uint16_t LE_Scan_Window;
-  uint8_t Peer_Address_Type;
-  uint8_t Peer_Address[6];
-  uint8_t Own_Address_Type;
-  uint16_t Conn_Interval_Min;
-  uint16_t Conn_Interval_Max;
-  uint16_t Conn_Latency;
-  uint16_t Supervision_Timeout;
-  uint16_t Minimum_CE_Length;
-  uint16_t Maximum_CE_Length;
-} aci_gap_start_name_discovery_proc_cp0;
-
-typedef PACKED(struct)
-{
-  uint8_t Status;
-} aci_gap_start_name_discovery_proc_rp0;
-
-typedef PACKED(struct)
-{
-  uint16_t LE_Scan_Interval;
-  uint16_t LE_Scan_Window;
   uint8_t Own_Address_Type;
   uint16_t Conn_Interval_Min;
   uint16_t Conn_Interval_Max;
@@ -1672,6 +1958,143 @@ typedef PACKED(struct)
 {
   uint8_t Status;
 } aci_gap_remove_bonded_device_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Num_of_List_Entries;
+  List_Entry_t List_Entry[(BLE_CMD_MAX_PARAM_LEN - 2)/sizeof(List_Entry_t)];
+} aci_gap_add_devices_to_list_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Mode;
+} aci_gap_add_devices_to_list_cp1;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_add_devices_to_list_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Adv_Interval_Min;
+  uint16_t Adv_Interval_Max;
+  uint8_t Adv_Channel_Map;
+  uint8_t Own_Address_Type;
+  uint8_t Own_Address[6];
+  uint8_t PA_Level;
+} aci_gap_additional_beacon_start_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_additional_beacon_start_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_additional_beacon_stop_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Adv_Data_Length;
+  uint8_t Adv_Data[BLE_CMD_MAX_PARAM_LEN - 1];
+} aci_gap_additional_beacon_set_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_additional_beacon_set_data_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Adv_Mode;
+  uint8_t Advertising_Handle;
+  uint16_t Adv_Event_Properties;
+  uint32_t Primary_Adv_Interval_Min;
+  uint32_t Primary_Adv_Interval_Max;
+  uint8_t Primary_Adv_Channel_Map;
+  uint8_t Own_Address_Type;
+  uint8_t Peer_Address_Type;
+  uint8_t Peer_Address[6];
+  uint8_t Adv_Filter_Policy;
+  uint8_t Adv_TX_Power;
+  uint8_t Secondary_Adv_Max_Skip;
+  uint8_t Secondary_Adv_PHY;
+  uint8_t Adv_SID;
+  uint8_t Scan_Req_Notification_Enable;
+} aci_gap_adv_set_configuration_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_set_configuration_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Enable;
+  uint8_t Num_Sets;
+  Adv_Set_t Adv_Set[(BLE_CMD_MAX_PARAM_LEN - 2)/sizeof(Adv_Set_t)];
+} aci_gap_adv_set_enable_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_set_enable_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Operation;
+  uint8_t Fragment_Preference;
+  uint8_t Advertising_Data_Length;
+  uint8_t Advertising_Data[BLE_CMD_MAX_PARAM_LEN - 4];
+} aci_gap_adv_set_adv_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_set_adv_data_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Operation;
+  uint8_t Fragment_Preference;
+  uint8_t Scan_Response_Data_Length;
+  uint8_t Scan_Response_Data[BLE_CMD_MAX_PARAM_LEN - 4];
+} aci_gap_adv_set_scan_resp_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_set_scan_resp_data_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+} aci_gap_adv_remove_set_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_remove_set_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_clear_sets_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Random_Address[6];
+} aci_gap_adv_set_random_address_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_gap_adv_set_random_address_rp0;
 
 typedef PACKED(struct)
 {
@@ -2299,6 +2722,95 @@ typedef PACKED(struct)
 
 typedef PACKED(struct)
 {
+  uint16_t Connection_Handle;
+  uint16_t SPSM;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint16_t Initial_Credits;
+  uint8_t Channel_Number;
+} aci_l2cap_coc_connect_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_connect_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint16_t Initial_Credits;
+  uint16_t Result;
+} aci_l2cap_coc_connect_confirm_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint8_t Channel_Number;
+  uint8_t Channel_Index_List[(BLE_EVT_MAX_PARAM_LEN - 3) - 2];
+} aci_l2cap_coc_connect_confirm_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint8_t Channel_Number;
+  uint8_t Channel_Index_List[BLE_CMD_MAX_PARAM_LEN - 7];
+} aci_l2cap_coc_reconf_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_reconf_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t Result;
+} aci_l2cap_coc_reconf_confirm_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_reconf_confirm_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+} aci_l2cap_coc_disconnect_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_disconnect_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+  uint16_t Credits;
+} aci_l2cap_coc_flow_control_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_flow_control_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+  uint16_t Length;
+  uint8_t Data[BLE_CMD_MAX_PARAM_LEN - 3];
+} aci_l2cap_coc_tx_data_cp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+} aci_l2cap_coc_tx_data_rp0;
+
+typedef PACKED(struct)
+{
   uint8_t Status;
   uint16_t Connection_Handle;
   uint8_t Reason;
@@ -2431,6 +2943,45 @@ typedef PACKED(struct)
 
 typedef PACKED(struct)
 {
+  uint8_t Num_Reports;
+  uint16_t Event_Type;
+  uint8_t Address_Type;
+  uint8_t Address[6];
+  uint8_t Primary_PHY;
+  uint8_t Secondary_PHY;
+  uint8_t Advertising_SID;
+  uint8_t TX_Power;
+  uint8_t RSSI;
+  uint16_t Periodic_Adv_Interval;
+  uint8_t Direct_Address_Type;
+  uint8_t Direct_Address[6];
+  uint8_t Data_Length;
+  uint8_t Data[(BLE_EVT_MAX_PARAM_LEN - 1) - 25];
+} hci_le_extended_advertising_report_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Status;
+  uint8_t Advertising_Handle;
+  uint16_t Connection_Handle;
+  uint8_t Num_Completed_Ext_Adv_Events;
+} hci_le_advertising_set_terminated_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Advertising_Handle;
+  uint8_t Scanner_Address_Type;
+  uint8_t Scanner_Address[6];
+} hci_le_scan_request_received_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint8_t Channel_Selection_Algorithm;
+} hci_le_channel_selection_algorithm_event_rp0;
+
+typedef PACKED(struct)
+{
   uint8_t Last_State;
   uint8_t Next_State;
   uint32_t Next_State_SysTime;
@@ -2524,6 +3075,60 @@ typedef PACKED(struct)
   uint8_t Data_Length;
   uint8_t Data[(BLE_EVT_MAX_PARAM_LEN - 2) - 6];
 } aci_l2cap_command_reject_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t SPSM;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint16_t Initial_Credits;
+  uint8_t Channel_Number;
+} aci_l2cap_coc_connect_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint16_t Initial_Credits;
+  uint16_t Result;
+  uint8_t Channel_Number;
+  uint8_t Channel_Index_List[(BLE_EVT_MAX_PARAM_LEN - 2) - 11];
+} aci_l2cap_coc_connect_confirm_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t MTU;
+  uint16_t MPS;
+  uint8_t Channel_Number;
+  uint8_t Channel_Index_List[(BLE_EVT_MAX_PARAM_LEN - 2) - 7];
+} aci_l2cap_coc_reconf_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint16_t Connection_Handle;
+  uint16_t Result;
+} aci_l2cap_coc_reconf_confirm_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+} aci_l2cap_coc_disconnect_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+  uint16_t Credits;
+} aci_l2cap_coc_flow_control_event_rp0;
+
+typedef PACKED(struct)
+{
+  uint8_t Channel_Index;
+  uint16_t Length;
+  uint8_t Data[(BLE_EVT_MAX_PARAM_LEN - 2) - 3];
+} aci_l2cap_coc_rx_data_event_rp0;
 
 typedef PACKED(struct)
 {

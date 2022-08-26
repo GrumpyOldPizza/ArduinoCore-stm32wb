@@ -57,20 +57,11 @@ extern const stm32wb_sfspi_params_t g_SFSPIParams;
 extern const stm32wb_sdspi_params_t g_SDSPIParams;
 #endif
 
-uint8_t g_swdStatus = 0;
-
 volatile uint32_t g_pinButton = 0;
 
-void __emptyCallback(void) {
-}
-
-void __wakeupCallback(void) {
-    stm32wb_system_wakeup();
-}
-  
 void init( void )
 {
-    stm32wb_system_initialize(__SYSTEM_CORE_CLOCK__, 0, 0, STM32WB_CONFIG_LSECLK, STM32WB_CONFIG_HSECLK, STM32WB_CONFIG_SYSOPT);
+    stm32wb_system_initialize(0, __SYSTEM_CORE_CLOCK__, 0, 0, STM32WB_CONFIG_LSECLK, STM32WB_CONFIG_HSECLK, STM32WB_CONFIG_SYSOPT);
 
 #if (STORAGE_TYPE == 1)
     if (g_SPI.state == STM32WB_SPI_STATE_NONE) {

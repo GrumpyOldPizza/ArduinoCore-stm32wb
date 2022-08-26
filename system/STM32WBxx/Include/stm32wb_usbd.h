@@ -32,12 +32,19 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define USB_STATE_POWERED                              0
-#define USB_STATE_DEFAULT                              1
-#define USB_STATE_ADDRESSED                            2
-#define USB_STATE_CONFIGURED                           3
   
+#define USB_STATE_NONE                                 0
+#define USB_STATE_ATTACHED                             1
+#define USB_STATE_POWERED                              2
+#define USB_STATE_DEFAULT                              3
+#define USB_STATE_ADDRESSED                            4
+#define USB_STATE_CONFIGURED                           5
+
+#define USB_LPM_STATE_L0                               0        /* ON                          */  
+#define USB_LPM_STATE_L1                               1        /* SLEEP                       */  
+#define USB_LPM_STATE_L2                               2        /* SUSPENDED                   */  
+#define USB_LPM_STATE_L3                               3        /* OFF                         */  
+
 #define USB_REQ_RECIPIENT_MASK                         0x1f    /* 0x04..0x1f are illegal */
 #define USB_REQ_RECIPIENT_DEVICE                       0x00
 #define USB_REQ_RECIPIENT_INTERFACE                    0x01
@@ -112,30 +119,23 @@ typedef struct _stm32wb_usbd_request_t {
     uint16_t  wIndex;
     uint16_t  wLength;
 } stm32wb_usbd_request_t;
+
   
 #define STM32WB_USBD_EVENT_ATTACH                 0x00000001
 #define STM32WB_USBD_EVENT_DETACH                 0x00000002
-#define STM32WB_USBD_EVENT_DETECT                 0x00000004
-#define STM32WB_USBD_EVENT_CONNECT                0x00000008 // initial reset
-#define STM32WB_USBD_EVENT_SUSPEND                0x00000010
-#define STM32WB_USBD_EVENT_RESUME                 0x00000020
-
-#define STM32WB_USBD_VBUS_STATUS_NOT_PRESENT      0
-#define STM32WB_USBD_VBUS_STATUS_PRESENT          1
-
-#define STM32WB_USBD_BCD_STATUS_UNKNOWN           0          /* UNKNOWN                     */
-#define STM32WB_USBD_BCD_STATUS_PORT              1          /* USB PORT, 100mA/500mA       */
-#define STM32WB_USBD_BCD_STATUS_CHARGER           2          /* CHARGER, 1500mA             */
-#define STM32WB_USBD_BCD_STATUS_PORT_AND_CHARGER  3          /* USB PORT + CHARGER, 1500mA  */
-  
-#define STM32WB_USBD_EP_TYPE_CONTROL              0
-#define STM32WB_USBD_EP_TYPE_ISO                  1
-#define STM32WB_USBD_EP_TYPE_BULK                 2
-#define STM32WB_USBD_EP_TYPE_INTERRUPT            3
+#define STM32WB_USBD_EVENT_CONNECT                0x00000004 // initial reset
+#define STM32WB_USBD_EVENT_SUSPEND                0x00000008
+#define STM32WB_USBD_EVENT_RESUME                 0x00000010
 
 #define STM32WB_USBD_EP_MASK(_ep_addr)            ((((_ep_addr) & 0x80) ? 0x00000001 : 0x00010000) << ((_ep_addr) & 0x0f))
+
+#define STM32WB_USBD_REQUEST_STATUS_FAILURE       0
+#define STM32WB_USBD_REQUEST_STATUS_SUCCESS       1
+#define STM32WB_USBD_REQUEST_STATUS_UNHANDLED     255
   
 typedef void (*stm32wb_usbd_event_callback_t)(void *context, uint32_t events);
+
+typedef void (*stm32wb_usbd_status_routine_t)(void);
   
 typedef struct _stm32wb_usbd_device_t {
     uint16_t                             vid;
@@ -145,42 +145,35 @@ typedef struct _stm32wb_usbd_device_t {
     const char                           *product;
 } stm32wb_usbd_device_t;
     
-typedef void (*stm32wb_usbd_configure_routine_t)(void *context, uint16_t if_base, uint16_t options);
+typedef void (*stm32wb_usbd_configure_routine_t)(void *context, uint8_t if_base);
 typedef void (*stm32wb_usbd_start_routine_t)(void *context);
 typedef void (*stm32wb_usbd_stop_routine_t)(void *context);
-typedef bool (*stm32wb_usbd_request_routine_t)(void *context, int state, const stm32wb_usbd_request_t *request, uint8_t *data, const uint8_t **p_data_return, uint32_t *p_length_return);
+typedef int  (*stm32wb_usbd_request_routine_t)(void *context, int state, const stm32wb_usbd_request_t *request, uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return, stm32wb_usbd_status_routine_t *p_status_routine_return);
 typedef void (*stm32wb_usbd_suspend_routine_t)(void *context);
 typedef void (*stm32wb_usbd_resume_routine_t)(void *context);
-typedef void (*stm32wb_usbd_sof_routine_t)(void *context);
 
-typedef struct _stm32wb_usbd_class_interface_t {
+typedef struct _stm32wb_usbd_class_t {
     stm32wb_usbd_configure_routine_t     configure;
     stm32wb_usbd_start_routine_t         start;
     stm32wb_usbd_stop_routine_t          stop;
     stm32wb_usbd_request_routine_t       request;
     stm32wb_usbd_suspend_routine_t       suspend;
     stm32wb_usbd_resume_routine_t        resume;
-    stm32wb_usbd_sof_routine_t           sof;
-} stm32wb_usbd_class_interface_t;
-
-typedef struct _stm32wb_usbd_function_t {
-    const stm32wb_usbd_class_interface_t *interface;
     void                                 *context;
-    uint16_t                             options;
-    uint16_t                             if_count;
+    uint8_t                              if_count;
     uint32_t                             ep_mask;
-} stm32wb_usbd_function_t;
+} stm32wb_usbd_class_t;
 
 typedef struct _stm32wb_usbd_info_t {
     uint8_t                              *ep0_data;
     uint16_t                             ep0_size;
     uint8_t                              string_count;
-    uint8_t                              function_count;
+    uint8_t                              class_count;
     const uint8_t                        *configuration;
     const uint8_t                        *bos;
     const uint8_t                        *msos20;
     const char * const                   *string_table;
-    const stm32wb_usbd_function_t        *function_table;
+    const stm32wb_usbd_class_t * const   *class_table;
 } stm32wb_usbd_info_t;
 
 typedef struct _stm32wb_usbd_params_t {
@@ -191,12 +184,12 @@ typedef struct _stm32wb_usbd_params_t {
 extern bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_usbd_info_t *info, const stm32wb_usbd_params_t *params);
 extern bool stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context);
 extern bool stm32wb_usbd_disable(void);
-extern bool stm32wb_usbd_attach(void);
-extern bool stm32wb_usbd_detach(void);
+extern bool stm32wb_usbd_start(void);
+extern bool stm32wb_usbd_stop(void);
 extern bool stm32wb_usbd_wakeup(void);
-
-extern uint32_t stm32wb_usbd_vbus_status(void);
-extern uint32_t stm32wb_usbd_bcd_status(void);
+extern void stm32wb_usbd_self_powered(bool onoff);
+extern uint32_t stm32wb_usbd_state(void);
+extern bool stm32wb_usbd_is_suspended(void);
   
 #ifdef __cplusplus
 }

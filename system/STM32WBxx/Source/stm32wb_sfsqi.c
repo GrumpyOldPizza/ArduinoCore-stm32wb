@@ -249,7 +249,7 @@ static inline void stm32wb_sfsqi_start(void)
     QUADSPI_TypeDef *QSPI = stm32wb_sfsqi_device.QSPI;
     uint32_t hclk, presc;
     
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
 
     hclk = stm32wb_system_hclk();
 
@@ -287,7 +287,7 @@ static inline void stm32wb_sfsqi_stop(void)
     
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_QSPI);
 
-    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP_0);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 }
 
 static inline __attribute__((optimize("O3"),always_inline)) void stm32wb_sfsqi_command(uint8_t insn)
@@ -1398,15 +1398,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 
 		if (!(config2 & STM32WB_SFSQI_CONF2_HPM))
 		{
-		    status = stm32wb_sfsqi_write_enable();
-		    
-		    stm32wb_sfsqi_command_write_3(STM32WB_SFSQI_INSN_WRSR, status, config1, config2 | STM32WB_SFSQI_CONF2_HPM);
-		    
-		    do
-		    {
-			status = stm32wb_sfsqi_command_read_1(STM32WB_SFSQI_INSN_RDSR);
-		    } 
-		    while (status & (STM32WB_SFSQI_SR_WEL | STM32WB_SFSQI_SR_WIP));
+		    stm32wb_sfsqi_device.clock = 8000000;
 		}
 	    }
 	}
@@ -1460,7 +1452,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 	stm32wb_sfsqi_device.hclk = 0;
 	stm32wb_sfsqi_device.sclk = 0;
 
-	stm32wb_system_register(&stm32wb_sfsqi_device.notify, (stm32wb_system_callback_t)stm32wb_sfsqi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_SLEEP);
+	stm32wb_system_register(&stm32wb_sfsqi_device.notify, (stm32wb_system_callback_t)stm32wb_sfsqi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_STOP_PREPARE);
 	
 	__stm32wb_sflash_initialize(&stm32wb_sfsqi_interface, &stm32wb_sfsqi_device.info);
     }

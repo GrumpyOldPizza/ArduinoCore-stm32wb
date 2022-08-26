@@ -137,6 +137,8 @@
 #define STM32WB_GPIO_PIN_PH0			0x70
 #define STM32WB_GPIO_PIN_PH1			0x71
 #define STM32WB_GPIO_PIN_PH3			0x73
+
+#define STM32WB_GPIO_PIN_PVM1			0xfe
 #define STM32WB_GPIO_PIN_NONE			0xff
 
 #endif /* STM32WB55xx */

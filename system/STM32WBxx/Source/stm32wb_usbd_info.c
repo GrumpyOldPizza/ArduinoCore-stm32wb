@@ -28,26 +28,13 @@
 
 #include "armv7m.h"
 #include "stm32wb_usbd.h"
+#include "stm32wb_usbd_dcd.h"
 #include "stm32wb_usbd_info.h"
 #include "stm32wb_usbd_cdc.h"
 #include "stm32wb_usbd_dfu.h"
 #include "stm32wb_usbd_msc.h"
 
-#define STM32WB_USBD_DFU_INTERFACE_COUNT        1
-#define STM32WB_USBD_CDC_INTERFACE_COUNT        2
-#define STM32WB_USBD_MSC_INTERFACE_COUNT        1
-
-#define STM32WB_USBD_CONFIGURATION_SIZE         (9)
-#define STM32WB_USBD_CDC_CONFIGURATION_SIZE     (STM32WB_USBD_CONFIGURATION_SIZE + (8+(9+5+5+4+5+7)+(9+7+7)))
-#define STM32WB_USBD_CDC_MSC_CONFIGURATION_SIZE (STM32WB_USBD_CDC_CONFIGURATION_SIZE + (9+7+7))
-
-#define STM32WB_USBD_CDC_STRING_COUNT           3
-#define STM32WB_USBD_CDC_MSC_STRING_COUNT       4
-
-#define STM32WB_USBD_CDC_FUNCTION_COUNT         1
-#define STM32WB_USBD_CDC_MSC_FUNCTION_COUNT     2
-
-
+#define STM32WB_USBD_CONFIGURATION_SIZE             (9)
 #define STM32WB_USBD_DFU_CONFIGURATION_SIZE         (STM32WB_USBD_CONFIGURATION_SIZE + (9+9))
 #define STM32WB_USBD_DFU_CDC_CONFIGURATION_SIZE     (STM32WB_USBD_DFU_CONFIGURATION_SIZE + (8+(9+5+5+4+5+7)+(9+7+7)))
 #define STM32WB_USBD_DFU_CDC_MSC_CONFIGURATION_SIZE (STM32WB_USBD_DFU_CDC_CONFIGURATION_SIZE + (9+7+7))
@@ -55,320 +42,13 @@
 #define STM32WB_USBD_DFU_CDC_STRING_COUNT           4
 #define STM32WB_USBD_DFU_CDC_MSC_STRING_COUNT       5
 
-#define STM32WB_USBD_DFU_CDC_FUNCTION_COUNT         2
-#define STM32WB_USBD_DFU_CDC_MSC_FUNCTION_COUNT     3
+#define STM32WB_USBD_DFU_CDC_CLASS_COUNT            2
+#define STM32WB_USBD_DFU_CDC_MSC_CLASS_COUNT        3
 
 #define STM32WB_USBD_DFU_CDC_INTERFACE_COUNT        3
 #define STM32WB_USBD_DFU_CDC_MSC_INTERFACE_COUNT    4
 
-static const uint8_t stm32wb_usbd_cdc_configuration[STM32WB_USBD_CDC_CONFIGURATION_SIZE] =
-{
-    /**** Configuration Descriptor ****/
-    9,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_CONFIGURATION,                           /* bDescriptorType */
-    STM32WB_USBD_CDC_CONFIGURATION_SIZE & 255,                   /* wTotalLength */
-    STM32WB_USBD_CDC_CONFIGURATION_SIZE >> 8,
-    0x02,                                                        /* bNumInterfaces */
-    0x01,                                                        /* bConfigurationValue */
-    0x00,                                                        /* iConfiguration */
-    0xa0,                                                        /* bmAttributes */
-    0xfa,                                                        /* bMaxPower */
-
-    /**** IAD to associate the two CDC interfaces ****/
-    8,                                                           /* bLength */
-    0x0b,                                                        /* bDescriptorType */
-    0x00,                                                        /* bFirstInterface */
-    0x02,                                                        /* bInterfaceCount */
-    0x02,                                                        /* bFunctionClass */
-    0x02,                                                        /* bFunctionSubClass */
-    0x01,                                                        /* bFunctionProtocol */
-    0x04,                                                        /* iFunction */
-
-    /**** CDC Control Interface ****/
-    9,                                                           /* bLength */
-    0x04,                                                        /* bDescriptorType */
-    0x00,                                                        /* bInterfaceNumber */
-    0x00,                                                        /* bAlternateSetting */
-    0x01,                                                        /* bNumEndpoints */
-    0x02,                                                        /* bInterfaceClass */
-    0x02,                                                        /* bInterfaceSubClass */
-    0x01,                                                        /* bInterfaceProtocol */
-    0x05,                                                        /* iInterface */
-  
-    /**** CDC Header ****/
-    5,                                                           /* bLength */
-    0x24,                                                        /* bDescriptorType */
-    0x00,                                                        /* bDescriptorSubtype */
-    0x10,                                                        /* bcdCDC */
-    0x01,
-  
-    /**** CDC Call Management ****/
-    5,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x01,                                                        /* bDescriptorSubtype */
-    0x00,                                                        /* bmCapabilities */
-    0x01,                                                        /* bDataInterface */
-  
-    /**** CDC ACM ****/
-    4,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x02,                                                        /* bDescriptorSubtype */
-    0x06,                                                        /* bmCapabilities */
-  
-    /**** CDC Union ****/
-    5,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x06,                                                        /* bDescriptorSubtype */
-    0x00,                                                        /* bMasterInterface */
-    0x01,                                                        /* bSlaveInterface0 */
-  
-    /**** CDC Control Endpoint ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_CONTROL_EP_ADDR,                            /* bEndpointAddress */
-    USB_EP_TYPE_INTERRUPT,                                       /* bmAttributes */
-    STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE & 255,              /* wMaxPacketSize */
-    STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE >> 8,
-    STM32WB_USBD_CDC_CONTROL_INTERVAL,                           /* bInterval */ 
-
-    /**** CDC Data Interface ****/
-    9,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_INTERFACE,                               /* bDescriptorType */
-    0x01,                                                        /* bInterfaceNumber */
-    0x00,                                                        /* bAlternateSetting */
-    0x02,                                                        /* bNumEndpoints */
-    0x0a,                                                        /* bInterfaceClass */
-    0x00,                                                        /* bInterfaceSubClass */
-    0x00,                                                        /* bInterfaceProtocol */
-    0x06,                                                        /* iInterface */
-
-    /**** CDC Data Endpoint IN ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_DATA_IN_EP_ADDR,                            /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-
-    /**** CDC Data Endpoint OUT ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_DATA_OUT_EP_ADDR,                           /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-};
-
-static const char * const stm32wb_usbd_cdc_strings[STM32WB_USBD_CDC_STRING_COUNT] =
-{
-    "Serial",                                 // 4
-    "CDC Control",                            // 5
-    "CDC Data",                               // 6
-};
-
-static const stm32wb_usbd_function_t stm32wb_usbd_cdc_functions[STM32WB_USBD_CDC_FUNCTION_COUNT] =
-{
-    {
-	&stm32wb_usbd_cdc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_CDC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_CONTROL_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR)),
-    },
-};
-
-static uint8_t stm32wb_usbd_cdc_ep0_data[64];
-
-const stm32wb_usbd_info_t stm32wb_usbd_cdc_info =
-{
-    stm32wb_usbd_cdc_ep0_data,
-    sizeof(stm32wb_usbd_cdc_ep0_data),
-    STM32WB_USBD_CDC_STRING_COUNT,
-    STM32WB_USBD_CDC_FUNCTION_COUNT,
-    stm32wb_usbd_cdc_configuration,
-    NULL,
-    NULL,
-    stm32wb_usbd_cdc_strings,
-    stm32wb_usbd_cdc_functions,
-};
-
-/********************************************************************************************************************************************/
-
-
-static const uint8_t stm32wb_usbd_cdc_msc_configuration[STM32WB_USBD_CDC_MSC_CONFIGURATION_SIZE] =
-{
-    /**** Configuration Descriptor ****/
-    9,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_CONFIGURATION,                           /* bDescriptorType */
-    STM32WB_USBD_CDC_MSC_CONFIGURATION_SIZE & 255,               /* wTotalLength */
-    STM32WB_USBD_CDC_MSC_CONFIGURATION_SIZE >> 8,
-    0x03,                                                        /* bNumInterfaces */
-    0x01,                                                        /* bConfigurationValue */
-    0x00,                                                        /* iConfiguration */
-    0xa0,                                                        /* bmAttributes */
-    0xfa,                                                        /* bMaxPower */
-
-    /**** IAD to associate the two CDC interfaces ****/
-    8,                                                           /* bLength */
-    0x0b,                                                        /* bDescriptorType */
-    0x00,                                                        /* bFirstInterface */
-    0x02,                                                        /* bInterfaceCount */
-    0x02,                                                        /* bFunctionClass */
-    0x02,                                                        /* bFunctionSubClass */
-    0x01,                                                        /* bFunctionProtocol */
-    0x04,                                                        /* iFunction */
-
-    /**** CDC Control Interface ****/
-    9,                                                           /* bLength */
-    0x04,                                                        /* bDescriptorType */
-    0x00,                                                        /* bInterfaceNumber */
-    0x00,                                                        /* bAlternateSetting */
-    0x01,                                                        /* bNumEndpoints */
-    0x02,                                                        /* bInterfaceClass */
-    0x02,                                                        /* bInterfaceSubClass */
-    0x01,                                                        /* bInterfaceProtocol */
-    0x05,                                                        /* iInterface */
-  
-    /**** CDC Header ****/
-    5,                                                           /* bLength */
-    0x24,                                                        /* bDescriptorType */
-    0x00,                                                        /* bDescriptorSubtype */
-    0x10,                                                        /* bcdCDC */
-    0x01,
-  
-    /**** CDC Call Management ****/
-    5,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x01,                                                        /* bDescriptorSubtype */
-    0x00,                                                        /* bmCapabilities */
-    0x01,                                                        /* bDataInterface */
-  
-    /**** CDC ACM ****/
-    4,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x02,                                                        /* bDescriptorSubtype */
-    0x06,                                                        /* bmCapabilities */
-  
-    /**** CDC Union ****/
-    5,                                                           /* bFunctionLength */
-    0x24,                                                        /* bDescriptorType */
-    0x06,                                                        /* bDescriptorSubtype */
-    0x00,                                                        /* bMasterInterface */
-    0x01,                                                        /* bSlaveInterface0 */
-  
-    /**** CDC Control Endpoint ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_CONTROL_EP_ADDR,                            /* bEndpointAddress */
-    USB_EP_TYPE_INTERRUPT,                                       /* bmAttributes */
-    STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE & 255,              /* wMaxPacketSize */
-    STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE >> 8,
-    STM32WB_USBD_CDC_CONTROL_INTERVAL,                           /* bInterval */ 
-
-    /**** CDC Data Interface ****/
-    9,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_INTERFACE,                               /* bDescriptorType */
-    0x01,                                                        /* bInterfaceNumber */
-    0x00,                                                        /* bAlternateSetting */
-    0x02,                                                        /* bNumEndpoints */
-    0x0a,                                                        /* bInterfaceClass */
-    0x00,                                                        /* bInterfaceSubClass */
-    0x00,                                                        /* bInterfaceProtocol */
-    0x06,                                                        /* iInterface */
-
-    /**** CDC Data Endpoint IN ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_DATA_IN_EP_ADDR,                            /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-
-    /**** CDC Data Endpoint OUT ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_CDC_DATA_OUT_EP_ADDR,                           /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-
-    /**** MSC Interface ****/
-    9,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_INTERFACE,                               /* bDescriptorType */
-    0x02,                                                        /* bInterfaceNumber */
-    0x00,                                                        /* bAlternateSetting */
-    0x02,                                                        /* bNumEndpoints */
-    0x08,                                                        /* bInterfaceClass */
-    0x06,                                                        /* bInterfaceSubClass */
-    0x50,                                                        /* nInterfaceProtocol */
-    0x07,                                                        /* iInterface */
-
-    /**** MSC Endpoint IN ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_MSC_DATA_IN_EP_ADDR,                            /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-
-    /**** MSC Endpoint OUT ****/
-    7,                                                           /* bLength */
-    USB_DESCRIPTOR_TYPE_ENDPOINT,                                /* bDescriptorType */
-    STM32WB_USBD_MSC_DATA_OUT_EP_ADDR,                           /* bEndpointAddress */
-    USB_EP_TYPE_BULK,                                            /* bmAttributes */
-    STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE & 255,                 /* wMaxPacketSize */
-    STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE >> 8,
-    0,                                                           /* bInterval */
-};
-
-static const char * const stm32wb_usbd_cdc_msc_strings[STM32WB_USBD_CDC_MSC_STRING_COUNT] =
-{
-    "Serial",                                 // 4
-    "CDC Control",                            // 5
-    "CDC Data",                               // 6
-    "Mass Storage",                           // 7
-};
-
-static const stm32wb_usbd_function_t stm32wb_usbd_cdc_msc_functions[STM32WB_USBD_CDC_MSC_FUNCTION_COUNT] =
-{
-    {
-	&stm32wb_usbd_cdc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_CDC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_CONTROL_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR)),
-    },
-    {
-	&stm32wb_usbd_msc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_MSC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR)),
-    },
-};
-
-static uint8_t stm32wb_usbd_cdc_msc_ep0_data[64];
-
-const stm32wb_usbd_info_t stm32wb_usbd_cdc_msc_info =
-{
-    stm32wb_usbd_cdc_msc_ep0_data,
-    sizeof(stm32wb_usbd_cdc_msc_ep0_data),
-    STM32WB_USBD_CDC_MSC_STRING_COUNT,
-    STM32WB_USBD_CDC_MSC_FUNCTION_COUNT,
-    stm32wb_usbd_cdc_msc_configuration,
-    NULL,
-    NULL,
-    stm32wb_usbd_cdc_msc_strings,
-    stm32wb_usbd_cdc_msc_functions,
-};
-
 /*********************************************************************************************************************************/
-
 
 static const uint8_t stm32wb_usbd_dfu_cdc_configuration[STM32WB_USBD_DFU_CDC_CONFIGURATION_SIZE] =
 {
@@ -380,7 +60,11 @@ static const uint8_t stm32wb_usbd_dfu_cdc_configuration[STM32WB_USBD_DFU_CDC_CON
     STM32WB_USBD_DFU_CDC_INTERFACE_COUNT,                        /* bNumInterfaces */
     0x01,                                                        /* bConfigurationValue */
     0x00,                                                        /* iConfiguration */
+#if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
     0xa0,                                                        /* bmAttributes */
+#else /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
+    0x80,                                                        /* bmAttributes */
+#endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
     0xfa,                                                        /* bMaxPower */
 
     /**** DFU Interface ****/
@@ -497,38 +181,26 @@ static const char * const stm32wb_usbd_dfu_cdc_strings[STM32WB_USBD_DFU_CDC_STRI
     "CDC Data",                               // 7
 };
 
-static const stm32wb_usbd_function_t stm32wb_usbd_dfu_cdc_functions[STM32WB_USBD_DFU_CDC_FUNCTION_COUNT] =
+static const stm32wb_usbd_class_t * const stm32wb_usbd_dfu_cdc_classes[STM32WB_USBD_DFU_CDC_CLASS_COUNT] =
 {
-    {
-	&stm32wb_usbd_dfu_runtime_interface,
-	NULL,
-	0,
-	STM32WB_USBD_DFU_INTERFACE_COUNT,
-	0,
-    },
-    {
-	&stm32wb_usbd_cdc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_CDC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_CONTROL_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR)),
-    },
+    &stm32wb_usbd_dfu_runtime_class,
+    &stm32wb_usbd_cdc_class,
 };
 
-#if 0
+#if (STM32WB_USBD_DCD_LPM_SUPPORTED == 1)
 
-static const uint8_t stm32wb_usbd_dfu_cdc_bos[0x28] = {
+static const uint8_t stm32wb_usbd_dfu_cdc_bos[] = {
     // BOS
     0x05,                                            // bLength
     USB_DESCRIPTOR_TYPE_BOS,                         // bDescriptorType
     0x28, 0x00,                                      // wTotalLength
     0x02,                                            // bNumDeviceCaps
 
-    // USB 2.0 Extensions
+    // USB 2.0 Extension Device Capability
     0x07,                                            // bLength
     USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY,           // bDescriptorType
     USB_DEVICE_CAPABILITY_TYPE_USB20_EXTENSION,      // bDevCapabilityType
-    0x00, 0x00, 0x00, 0x00,                          // bmAttributes
+    0x06, 0x00, 0x00, 0x00,                          // bmAttributes
 
     // Microsoft OS 2.0 platform capability
     0x1c,                                            // bLength
@@ -536,13 +208,14 @@ static const uint8_t stm32wb_usbd_dfu_cdc_bos[0x28] = {
     USB_DEVICE_CAPABILITY_TYPE_PLATFORM,             // bDevCapabilityType
     0x00,                                            // bReserved
     0xdf, 0x60, 0xdd, 0xd8, 0x89, 0x45, 0xc7, 0x4c,  // platformCapabilityUUID[16]     
+    0x9c, 0xd2, 0x65, 0x9d, 0x9e, 0x64, 0x8a, 0x9f,  // platformCapabilityUUID[16]     
     0x00, 0x00, 0x03, 0x06,                          // dwWindowsVersion (Windows 8.1)
-    0xae, 0x00,                                      // wLength (MSOS20)
+    0xb2, 0x00,                                      // wLength (MSOS20)
     USB_REQ_MS_VENDOR_CODE,                          // bMS_VendorCode
     0x00,                                            // bAltEnumCode
 };
 
-#endif
+#else /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
 
 static const uint8_t stm32wb_usbd_dfu_cdc_bos[] = {
     // BOS
@@ -563,6 +236,8 @@ static const uint8_t stm32wb_usbd_dfu_cdc_bos[] = {
     USB_REQ_MS_VENDOR_CODE,                          // bMS_VendorCode
     0x00,                                            // bAltEnumCode
 };
+
+#endif /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
 
 static const uint8_t stm32wb_usbd_dfu_cdc_msos20[] = {
     // Microsoft OS 2.0 descriptor set header
@@ -623,12 +298,12 @@ const stm32wb_usbd_info_t stm32wb_usbd_dfu_cdc_info =
     stm32wb_usbd_dfu_cdc_ep0_data,
     sizeof(stm32wb_usbd_dfu_cdc_ep0_data),
     STM32WB_USBD_DFU_CDC_STRING_COUNT,
-    STM32WB_USBD_DFU_CDC_FUNCTION_COUNT,
+    STM32WB_USBD_DFU_CDC_CLASS_COUNT,
     stm32wb_usbd_dfu_cdc_configuration,
     stm32wb_usbd_dfu_cdc_bos,
     stm32wb_usbd_dfu_cdc_msos20,
     stm32wb_usbd_dfu_cdc_strings,
-    stm32wb_usbd_dfu_cdc_functions,
+    stm32wb_usbd_dfu_cdc_classes,
 };
 
 /********************************************************************************************************************************************/
@@ -644,7 +319,11 @@ static const uint8_t stm32wb_usbd_dfu_cdc_msc_configuration[STM32WB_USBD_DFU_CDC
     STM32WB_USBD_DFU_CDC_MSC_INTERFACE_COUNT,                    /* bNumInterfaces */
     0x01,                                                        /* bConfigurationValue */
     0x00,                                                        /* iConfiguration */
+#if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
     0xa0,                                                        /* bmAttributes */
+#else /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
+    0x80,                                                        /* bmAttributes */
+#endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
     0xfa,                                                        /* bMaxPower */
 
     /**** DFU Interface ****/
@@ -791,38 +470,28 @@ static const char * const stm32wb_usbd_dfu_cdc_msc_strings[STM32WB_USBD_DFU_CDC_
     "Mass Storage",                           // 8
 };
 
-static const stm32wb_usbd_function_t stm32wb_usbd_dfu_cdc_msc_functions[STM32WB_USBD_DFU_CDC_MSC_FUNCTION_COUNT] =
+static const stm32wb_usbd_class_t * const stm32wb_usbd_dfu_cdc_msc_classes[STM32WB_USBD_DFU_CDC_MSC_CLASS_COUNT] =
 {
-    {
-	&stm32wb_usbd_dfu_runtime_interface,
-	NULL,
-	0,
-	STM32WB_USBD_DFU_INTERFACE_COUNT,
-	0,
-    },
-    {
-	&stm32wb_usbd_cdc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_CDC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_CONTROL_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR)),
-    },
-    {
-	&stm32wb_usbd_msc_interface,
-	NULL,
-	0,
-	STM32WB_USBD_MSC_INTERFACE_COUNT,
-	(STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR)),
-    },
+    &stm32wb_usbd_dfu_runtime_class,
+    &stm32wb_usbd_cdc_class,
+    &stm32wb_usbd_msc_class,
 };
+
+#if (STM32WB_USBD_DCD_LPM_SUPPORTED == 1)
 
 static const uint8_t stm32wb_usbd_dfu_cdc_msc_bos[] = {
     // BOS
     0x05,                                            // bLength
     USB_DESCRIPTOR_TYPE_BOS,                         // bDescriptorType
-    0x21, 0x00,                                      // wTotalLength
-    0x01,                                            // bNumDeviceCaps
+    0x28, 0x00,                                      // wTotalLength
+    0x02,                                            // bNumDeviceCaps
 
+    // USB 2.0 Extension Device Capability
+    0x07,                                            // bLength
+    USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY,           // bDescriptorType
+    USB_DEVICE_CAPABILITY_TYPE_USB20_EXTENSION,      // bDevCapabilityType
+    0x06, 0x00, 0x00, 0x00,                          // bmAttributes
+    
     // Microsoft OS 2.0 platform capability
     0x1c,                                            // bLength
     USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY,           // bDescriptorType
@@ -835,6 +504,30 @@ static const uint8_t stm32wb_usbd_dfu_cdc_msc_bos[] = {
     USB_REQ_MS_VENDOR_CODE,                          // bMS_VendorCode
     0x00,                                            // bAltEnumCode
 };
+
+#else /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
+
+static const uint8_t stm32wb_usbd_dfu_cdc_msc_bos[] = {
+    // BOS
+    0x05,                                            // bLength
+    USB_DESCRIPTOR_TYPE_BOS,                         // bDescriptorType
+    0x21, 0x00,                                      // wTotalLength
+    0x01,                                            // bNumDeviceCaps
+    
+    // Microsoft OS 2.0 platform capability
+    0x1c,                                            // bLength
+    USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY,           // bDescriptorType
+    USB_DEVICE_CAPABILITY_TYPE_PLATFORM,             // bDevCapabilityType
+    0x00,                                            // bReserved
+    0xdf, 0x60, 0xdd, 0xd8, 0x89, 0x45, 0xc7, 0x4c,  // platformCapabilityUUID[16]     
+    0x9c, 0xd2, 0x65, 0x9d, 0x9e, 0x64, 0x8a, 0x9f,  // platformCapabilityUUID[16]     
+    0x00, 0x00, 0x03, 0x06,                          // dwWindowsVersion (Windows 8.1)
+    0xb2, 0x00,                                      // wLength (MSOS20)
+    USB_REQ_MS_VENDOR_CODE,                          // bMS_VendorCode
+    0x00,                                            // bAltEnumCode
+};
+
+#endif /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
 
 static const uint8_t stm32wb_usbd_dfu_cdc_msc_msos20[] = {
     // Microsoft OS 2.0 descriptor set header
@@ -893,12 +586,12 @@ static uint8_t stm32wb_usbd_dfu_cdc_msc_ep0_data[64];
 const stm32wb_usbd_info_t stm32wb_usbd_dfu_cdc_msc_info =
 {
     stm32wb_usbd_dfu_cdc_msc_ep0_data,
-    sizeof(stm32wb_usbd_cdc_msc_ep0_data),
+    sizeof(stm32wb_usbd_dfu_cdc_msc_ep0_data),
     STM32WB_USBD_DFU_CDC_MSC_STRING_COUNT,
-    STM32WB_USBD_DFU_CDC_MSC_FUNCTION_COUNT,
+    STM32WB_USBD_DFU_CDC_MSC_CLASS_COUNT,
     stm32wb_usbd_dfu_cdc_msc_configuration,
     stm32wb_usbd_dfu_cdc_msc_bos,
     stm32wb_usbd_dfu_cdc_msc_msos20,
     stm32wb_usbd_dfu_cdc_msc_strings,
-    stm32wb_usbd_dfu_cdc_msc_functions,
+    stm32wb_usbd_dfu_cdc_msc_classes,
 };

@@ -802,7 +802,7 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
     
 	stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_READY;
 
-	stm32wb_system_register(&stm32wb_sfspi_device.notify, (stm32wb_system_callback_t)stm32wb_sfspi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_SLEEP);
+	stm32wb_system_register(&stm32wb_sfspi_device.notify, (stm32wb_system_callback_t)stm32wb_sfspi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_STOP_PREPARE);
 	
 	__stm32wb_sflash_initialize(&stm32wb_sfspi_interface, &stm32wb_sfspi_device.info);
     }

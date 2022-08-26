@@ -82,15 +82,17 @@ extern void SWI31_SWIHandler(void);
 #define ARMV7M_PENDSV_SWI_RTC_MODIFY        4
 #define ARMV7M_PENDSV_SWI_RTC_ALARM         5
 #define ARMV7M_PENDSV_SWI_RTC_TIMER         6
-#define ARMV7M_PENDSV_SWI_USBD_PVM1         7
-#define ARMV7M_PENDSV_SWI_USBD_DCD          8
-#define ARMV7M_PENDSV_SWI_RNG               9
-#define ARMV7M_PENDSV_SWI_EEPROM            10
-#define ARMV7M_PENDSV_SWI_FLASH             11
-#define ARMV7M_PENDSV_SWI_WORK_SCHEDULE     12
+#define ARMV7M_PENDSV_SWI_RTC_WAKEUP        7
+#define ARMV7M_PENDSV_SWI_USBD_PVM1         8
+#define ARMV7M_PENDSV_SWI_USBD_DCD          9
+#define ARMV7M_PENDSV_SWI_RNG               10
+#define ARMV7M_PENDSV_SWI_EEPROM            11
+#define ARMV7M_PENDSV_SWI_FLASH             12
+#define ARMV7M_PENDSV_SWI_RTT               13
 
-#define ARMV7M_PENDSV_SWI_RTOS_WORK_SCHEDULE 13
-#define ARMV7M_PENDSV_SWI_RTOS_TASK_SCHEDULE 14
+#define ARMV7M_PENDSV_SWI_RTOS_WORK_SCHEDULE 14
+#define ARMV7M_PENDSV_SWI_RTOS_TASK_SCHEDULE 15
+
 
 #define RADIO_SWIHandler                    SWI0_SWIHandler
 #define EXTI_SWIHandler                     SWI1_SWIHandler
@@ -99,15 +101,16 @@ extern void SWI31_SWIHandler(void);
 #define RTC_MODIFY_SWIHandler               SWI4_SWIHandler
 #define RTC_ALARM_SWIHandler                SWI5_SWIHandler
 #define RTC_TIMER_SWIHandler                SWI6_SWIHandler
-#define USBD_PVM1_SWIHandler                SWI7_SWIHandler
-#define USBD_DCD_SWIHandler                 SWI8_SWIHandler
-#define RNG_SWIHandler                      SWI9_SWIHandler
-#define EEPROM_SWIHandler                   SWI10_SWIHandler
-#define FLASH_SWIHandler                    SWI11_SWIHandler
-#define WORK_SCHEDULE_SWIHandler            SWI12_SWIHandler
+#define RTC_WAKEUP_SWIHandler               SWI7_SWIHandler
+#define USBD_PVM1_SWIHandler                SWI8_SWIHandler
+#define USBD_DCD_SWIHandler                 SWI9_SWIHandler
+#define RNG_SWIHandler                      SWI10_SWIHandler
+#define EEPROM_SWIHandler                   SWI11_SWIHandler
+#define FLASH_SWIHandler                    SWI12_SWIHandler
+#define RTT_SWIHandler                      SWI13_SWIHandler
 
-#define RTOS_WORK_SCHEDULE_SWIHandler       SWI13_SWIHandler
-#define RTOS_TASK_SCHEDULE_SWIHandler       SWI14_SWIHandler
+#define RTOS_WORK_SCHEDULE_SWIHandler       SWI14_SWIHandler
+#define RTOS_TASK_SCHEDULE_SWIHandler       SWI15_SWIHandler
 
 #ifdef __cplusplus
 }

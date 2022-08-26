@@ -75,11 +75,7 @@ void pinMode(uint32_t pin, uint32_t mode)
 #endif /* defined(STM32WB_CONFIG_PIN_BUTTON) */
     } else {
         if (g_APinDescription[pin].attr & PIN_ATTR_SWD) {
-            if (g_swdStatus != SWD_STATUS_GPIO) {
-                g_swdStatus = SWD_STATUS_GPIO;
-
-                stm32wb_system_swd_disable();
-            }
+            stm32wb_system_swd_disable();
         }
         
         if (g_APinDescription[pin].pwm_instance != PWM_INSTANCE_NONE) {

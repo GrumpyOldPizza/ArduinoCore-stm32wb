@@ -58,9 +58,9 @@ typedef struct _dosfs_device_interface_t {
     int                     (*format)(void *context, uint32_t size);
     int                     (*erase)(void *context, uint32_t address, uint32_t length);
     int                     (*discard)(void *context, uint32_t address, uint32_t length);
-    int                     (*read)(void *context, uint32_t address, uint8_t *data, uint32_t length, bool prefetch);
-    int                     (*write)(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool wait);
-    int                     (*sync)(void *context);
+    int                     (*read)(void *context, uint32_t address, uint8_t *data, uint32_t length, uint32_t total, uint32_t *p_fault_return);
+    int                     (*write)(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return);
+    int                     (*sync)(void *context, uint32_t *p_fault_return);
 } dosfs_device_interface_t;
 
 #define DOSFS_DEVICE_LOCK_INIT               0x00000001 /* device lock during init */

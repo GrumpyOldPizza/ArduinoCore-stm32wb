@@ -1,19 +1,18 @@
 /*****************************************************************************
  * @file    ble_const.h
- * @author  MCD
+ * @author  MDG
  * @brief   This file contains the definitions which are compiler dependent.
  *****************************************************************************
  * @attention
  *
- * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
- * All rights reserved.</center></h2>
+ * Copyright (c) 2018-2022 STMicroelectronics.
+ * All rights reserved.
  *
- * This software component is licensed by ST under Ultimate Liberty license
- * SLA0044, the "License"; You may not use this file except in compliance with
- * the License. You may obtain a copy of the License at:
- *                             www.st.com/SLA0044
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
  *
- ******************************************************************************
+ *****************************************************************************
  */
 
 #ifndef BLE_CONST_H__
@@ -29,15 +28,22 @@
 #include "stm32wb_ipcc.h"
 
 /* Default BLE variant */
-#ifndef LL_ONLY
-#define LL_ONLY 0
+#ifndef BASIC_FEATURES
+#define BASIC_FEATURES 0
 #endif
 #ifndef SLAVE_ONLY
 #define SLAVE_ONLY 0
 #endif
+#ifndef LL_ONLY
+#define LL_ONLY 0
+#endif
+#ifndef LL_ONLY_BASIC
+#define LL_ONLY_BASIC 0
+#endif
 #ifndef BEACON_ONLY
 #define BEACON_ONLY 0
 #endif
+
 
 
 /* Size of command/events buffers:
@@ -89,7 +95,6 @@
 /* Maximum parameter size of BLE responses/events.
  * Change this value if needed. */
 #define BLE_EVT_MAX_PARAM_LEN          HCI_EVENT_MAX_PARAM_LEN
-
 
 /* Callback function to send command and receive response */
 #define hci_request _stm32wb_ipcc_ble_command_t 
@@ -153,6 +158,7 @@ extern int hci_send_req( struct hci_request* req, bool async );
 #ifndef DIVC
 #define DIVC( x, y )           (((x)+(y)-1)/(y))
 #endif
+
 
 #ifndef __WEAK
 #define __WEAK __attribute__((weak))

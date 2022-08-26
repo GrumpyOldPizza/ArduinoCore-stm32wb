@@ -40,8 +40,8 @@ I2SClass::I2SClass(struct _stm32wb_sai_t *sai, const struct _stm32wb_sai_params_
 
     stm32wb_sai_create(sai, params);
 
-    m_receive_callback = Callback(__wakeupCallback);
-    m_transmit_callback = Callback(__wakeupCallback);
+    m_receive_callback = Callback();
+    m_transmit_callback = Callback();
 
     Callback work_callback = Callback(&I2SClass::workCallback, this);
 
@@ -326,19 +326,19 @@ __attribute__((optimize("O3"))) size_t I2SClass::write(const void *buffer, size_
 }
 
 void I2SClass::onReceive(void(*callback)(void)) {
-    onReceive(Callback(callback));
+    m_receive_callback = Callback(callback);
 }
 
 void I2SClass::onReceive(Callback callback) {
-    m_receive_callback = callback ? callback : Callback(__wakeupCallback);
+    m_receive_callback = callback;
 }
 
 void I2SClass::onTransmit(void(*callback)(void)) {
-    onTransmit(Callback(callback));
+    m_transmit_callback = Callback(callback);
 }
 
 void I2SClass::onTransmit(Callback callback) {
-    m_transmit_callback = callback ? callback : Callback(__wakeupCallback);
+    m_transmit_callback = callback;
 }
 
 void I2SClass::workCallback() {
@@ -383,7 +383,7 @@ void I2SClass::eventCallback(class I2SClass *self, uint32_t events) {
 
 extern const stm32wb_sai_params_t g_I2SParams;
 
-static __attribute__((aligned(4), section(".noinit"))) uint8_t g_I2S_Data[I2S_BUFFER_COUNT * I2S_BUFFER_SIZE];
+static __attribute__((aligned(4), section(".dma"))) uint8_t g_I2S_Data[I2S_BUFFER_COUNT * I2S_BUFFER_SIZE];
 
 static stm32wb_sai_t g_I2S;
 

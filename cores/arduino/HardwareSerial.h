@@ -24,18 +24,17 @@
 #include "Stream.h"
 
 #define SERIAL_STOP_BIT_1    0x0000
-#define SERIAL_STOP_BIT_1_5  0x0001
-#define SERIAL_STOP_BIT_2    0x0002
-#define SERIAL_STOP_BIT_MASK 0x0003
+#define SERIAL_STOP_BIT_2    0x0001
+#define SERIAL_STOP_BIT_MASK 0x0001
 
 #define SERIAL_PARITY_NONE   0x0000
-#define SERIAL_PARITY_ODD    0x0004
-#define SERIAL_PARITY_EVEN   0x0008
-#define SERIAL_PARITY_MASK   0x000c
+#define SERIAL_PARITY_ODD    0x0002
+#define SERIAL_PARITY_EVEN   0x0004
+#define SERIAL_PARITY_MASK   0x0006
 
 #define SERIAL_DATA_7        0x0000
-#define SERIAL_DATA_8        0x0010
-#define SERIAL_DATA_MASK     0x0010
+#define SERIAL_DATA_8        0x0008
+#define SERIAL_DATA_MASK     0x0008
 
 #define SERIAL_RTS           0x0020
 #define SERIAL_CTS           0x0040

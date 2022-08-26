@@ -33,6 +33,8 @@
  extern "C" {
 #endif
 
+#define STM32WB_USBD_MSC_INTERFACE_COUNT        1
+   
 #define STM32WB_USBD_MSC_DATA_IN_EP_ADDR         0x83
 #define STM32WB_USBD_MSC_DATA_OUT_EP_ADDR        0x03
 
@@ -42,7 +44,7 @@
 
 extern void MSC_BOT_Notify(uint8_t lun, int acquire);
 
-extern const stm32wb_usbd_class_interface_t stm32wb_usbd_msc_interface;
+extern const stm32wb_usbd_class_t stm32wb_usbd_msc_class;
    
 #ifdef __cplusplus
 }

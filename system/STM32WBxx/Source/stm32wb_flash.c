@@ -71,7 +71,7 @@ static bool __svc_stm32wb_flash_suspend(void)
 {
     if (!stm32wb_flash_device.suspended)
     {
-	if (!stm32wb_hsem_trylock(STM32WB_HSEM_FLASH_CPU1, 0))
+	if (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH_CPU1, STM32WB_HSEM_PROCID_NONE))
 	{
 	    return false;
 	}
@@ -86,7 +86,7 @@ static bool __svc_stm32wb_flash_resume(void)
 {
     if (stm32wb_flash_device.suspended)
     {
-	stm32wb_hsem_unlock(STM32WB_HSEM_FLASH_CPU1, 0);
+	stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH_CPU1, STM32WB_HSEM_PROCID_NONE);
 
 	stm32wb_flash_device.suspended = false;
 
@@ -190,7 +190,7 @@ static void stm32wb_flash_routine(void)
 
 	stm32wb_system_hsi16_enable();
 	    
-	while (!stm32wb_hsem_trylock(STM32WB_HSEM_FLASH, 0))
+	while (!stm32wb_hsem_trylock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE))
 	{
 	}
 
@@ -211,7 +211,7 @@ static void stm32wb_flash_routine(void)
 	    stm32wb_flash_device.activity = true;
 	}
 
-	if (!stm32wb_hsem_lock(STM32WB_HSEM_FLASH_CPU2, 0))
+	if (!stm32wb_hsem_lock(STM32WB_HSEM_INDEX_FLASH_CPU2, STM32WB_HSEM_PROCID_NONE))
 	{
 	    return;
 	}
@@ -240,7 +240,7 @@ static void stm32wb_flash_routine(void)
 	    success = false;
 	}
 
-	stm32wb_hsem_unlock(STM32WB_HSEM_FLASH_CPU2, 0);
+	stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH_CPU2, STM32WB_HSEM_PROCID_NONE);
 	    
 	if (stm32wb_flash_device.wireless && stm32wb_flash_device.activity)
 	{
@@ -260,7 +260,7 @@ static void stm32wb_flash_routine(void)
 
 	do
 	{
-	    if (!stm32wb_hsem_lock(STM32WB_HSEM_FLASH_CPU2, 0))
+	    if (!stm32wb_hsem_lock(STM32WB_HSEM_INDEX_FLASH_CPU2, STM32WB_HSEM_PROCID_NONE))
 	    {
 		stm32wb_flash_device.address = address;
 		stm32wb_flash_device.count = count;
@@ -304,7 +304,7 @@ static void stm32wb_flash_routine(void)
 		success = false;
 	    }
 
-	    stm32wb_hsem_unlock(STM32WB_HSEM_FLASH_CPU2, 0);
+	    stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH_CPU2, STM32WB_HSEM_PROCID_NONE);
 	}
 	while (!done && (address & 0x0000007f));
 
@@ -326,7 +326,7 @@ static void stm32wb_flash_routine(void)
 	    FLASH->ACR = flash_acr;
 	}
 
-	stm32wb_hsem_unlock(STM32WB_HSEM_FLASH, 0);
+	stm32wb_hsem_unlock(STM32WB_HSEM_INDEX_FLASH, STM32WB_HSEM_PROCID_NONE);
 
 	stm32wb_system_hsi16_disable();
 

@@ -73,6 +73,7 @@ typedef struct _stm32wb_sdspi_t {
     uint32_t                     erase_offset;
     uint32_t                     address;
     uint32_t                     count;
+    uint32_t                     total;
     uint32_t                     OCR;
     uint8_t                      CID[16];
     uint8_t                      CSD[16];

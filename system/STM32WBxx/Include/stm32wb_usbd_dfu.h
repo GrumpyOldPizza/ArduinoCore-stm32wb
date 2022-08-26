@@ -32,7 +32,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-   
+
+#define STM32WB_USBD_DFU_INTERFACE_COUNT        1
+  
 #define USB_REQ_DFU_DETACH                       0x00
 #define USB_REQ_DFU_DNLOAD                       0x01
 #define USB_REQ_DFU_UPLOAD                       0x02
@@ -41,7 +43,7 @@ extern "C" {
 #define USB_REQ_DFU_GETSTATE                     0x05
 #define USB_REQ_DFU_ABORT                        0x06
 
-extern const stm32wb_usbd_class_interface_t stm32wb_usbd_dfu_runtime_interface;
+extern const stm32wb_usbd_class_t stm32wb_usbd_dfu_runtime_class;
   
 #ifdef __cplusplus
 }

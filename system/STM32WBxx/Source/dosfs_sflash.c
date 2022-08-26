@@ -1475,7 +1475,7 @@ static int dosfs_sflash_discard(void *context, uint32_t address, uint32_t length
     return status;
 }
 
-static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uint32_t length, bool prefetch)
+static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uint32_t length, uint32_t total, uint32_t *p_fault_return)
 {
     int status = F_NO_ERROR;
     uint32_t entry;
@@ -1512,7 +1512,7 @@ static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uin
     return status;
 }
 
-static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool wait)
+static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_address)
 {
     int status = F_NO_ERROR;
     uint32_t entry;
@@ -1547,7 +1547,7 @@ static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *da
     return status;
 }
 
-static int dosfs_sflash_sync(void *context)
+static int dosfs_sflash_sync(void *context, uint32_t *p_fault_address)
 {
     int status = F_NO_ERROR;
 

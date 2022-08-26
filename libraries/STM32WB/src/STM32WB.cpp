@@ -146,13 +146,19 @@ uint32_t STM32WBClass::wakeupReason()
     return stm32wb_system_wakeup_reason();
 }
 
-bool STM32WBClass::setClocks(uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
+bool STM32WBClass::setClocks(uint32_t hclk)
 {
-    return stm32wb_system_sysclk_configure(hclk, pclk1, pclk2);
+    return stm32wb_system_sysclk_configure(0, hclk, 0, 0);
 }
 
-void STM32WBClass::setClocks(uint32_t &hclk, uint32_t &pclk1, uint32_t &pclk2)
+bool STM32WBClass::setClocks(uint32_t sysclk, uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
 {
+    return stm32wb_system_sysclk_configure(sysclk, hclk, pclk1, pclk2);
+}
+
+void STM32WBClass::getClocks(uint32_t &sysclk, uint32_t &hclk, uint32_t &pclk1, uint32_t &pclk2)
+{
+    sysclk = stm32wb_system_sysclk();
     hclk = stm32wb_system_hclk();
     pclk1 = stm32wb_system_pclk1();
     pclk2 = stm32wb_system_pclk2();
@@ -160,40 +166,54 @@ void STM32WBClass::setClocks(uint32_t &hclk, uint32_t &pclk1, uint32_t &pclk2)
 
 void STM32WBClass::wakeup()
 {
-    stm32wb_system_wakeup();
+    stm32wb_system_wakeup(1);
 }
 
-void STM32WBClass::sleep(uint32_t timeout)
+bool STM32WBClass::sleep()
 {
-    if ((g_swdStatus == SWD_STATUS_UNDEFINED) && !stm32wb_system_swd_attached()) {
-	g_swdStatus = SWD_STATUS_DISABLED;
-	    
-	stm32wb_system_swd_disable();
-    }
-    
-    stm32wb_system_sleep(STM32WB_SYSTEM_POLICY_SLEEP, timeout);
+    return sleep(POLICY_SLEEP, TIMEOUT_FOREVER);
 }
 
-void STM32WBClass::stop(uint32_t timeout)
+bool STM32WBClass::sleep(uint32_t timeout)
 {
-    if ((g_swdStatus == SWD_STATUS_UNDEFINED) && !stm32wb_system_swd_attached()) {
-        g_swdStatus = SWD_STATUS_DISABLED;
+    return sleep(POLICY_SLEEP, timeout);
+}
 
-        stm32wb_system_swd_disable();
+bool STM32WBClass::sleep(uint32_t policy, uint32_t timeout)
+{
+    return stm32wb_system_sleep(((policy <= POLICY_STOP) ? policy : STM32WB_SYSTEM_POLICY_STOP), 1, timeout);
+}
+
+bool STM32WBClass::stop()
+{
+    return sleep(POLICY_STOP, TIMEOUT_FOREVER);
+}
+
+bool STM32WBClass::stop(uint32_t timeout)
+{
+    return sleep(POLICY_STOP, timeout);
+}
+
+void STM32WBClass::delay(uint32_t policy, uint32_t delay)
+{
+    if (delay) {
+        stm32wb_system_sleep(((policy <= POLICY_STOP) ? policy : STM32WB_SYSTEM_POLICY_STOP), 0, delay);
     }
-    
-    stm32wb_system_sleep(STM32WB_SYSTEM_POLICY_DEEPSLEEP, timeout);
+}
+
+void STM32WBClass::standby()
+{
+    standby(TIMEOUT_FOREVER);
 }
 
 void STM32WBClass::standby(uint32_t timeout)
 {
-    if ((g_swdStatus == SWD_STATUS_UNDEFINED) && !stm32wb_system_swd_attached()) {
-        g_swdStatus = SWD_STATUS_DISABLED;
-
-        stm32wb_system_swd_disable();
-    }
-    
     stm32wb_system_standby(0, timeout);
+}
+
+void STM32WBClass::standby(uint32_t pin, uint32_t mode)
+{
+    standby(pin, mode, TIMEOUT_FOREVER);
 }
 
 void STM32WBClass::standby(uint32_t pin, uint32_t mode, uint32_t timeout)
@@ -216,23 +236,12 @@ void STM32WBClass::standby(uint32_t pin, uint32_t mode, uint32_t timeout)
 
     wakeup <<= ((g_APinDescription[pin].attr & PIN_ATTR_WKUP) - PIN_ATTR_WKUP1);
     
-    if (g_swdStatus == SWD_STATUS_UNDEFINED) {
-        g_swdStatus = SWD_STATUS_DISABLED;
-
-        stm32wb_system_swd_disable();
-    }
-
     stm32wb_system_standby(wakeup, timeout);
 }
 
 void STM32WBClass::shutdown()
 {
-    if (g_swdStatus == SWD_STATUS_UNDEFINED) {
-        g_swdStatus = SWD_STATUS_DISABLED;
-
-        stm32wb_system_swd_disable();
-    }
-
+    
     stm32wb_system_shutdown(0);
 }
 
@@ -256,12 +265,6 @@ void STM32WBClass::shutdown(uint32_t pin, uint32_t mode)
 
     wakeup <<= ((g_APinDescription[pin].attr & PIN_ATTR_WKUP) - PIN_ATTR_WKUP1);
     
-    if (g_swdStatus == SWD_STATUS_UNDEFINED) {
-        g_swdStatus = SWD_STATUS_DISABLED;
-
-        stm32wb_system_swd_disable();
-    }
-
     stm32wb_system_shutdown(wakeup);
 }
 
@@ -277,20 +280,12 @@ void STM32WBClass::dfu()
 
 void STM32WBClass::swdEnable()
 {
-    if (g_swdStatus != SWD_STATUS_GPIO) {
-        g_swdStatus = SWD_STATUS_ENABLED;
-
-        stm32wb_system_swd_enable();
-    }
+    stm32wb_system_swd_enable();
 }
 
 void STM32WBClass::swdDisable()
 {
-    if (g_swdStatus != SWD_STATUS_GPIO) {
-        g_swdStatus = SWD_STATUS_DISABLED;
-
-        stm32wb_system_swd_disable();
-    }
+    stm32wb_system_swd_disable();
 }
 
 void STM32WBClass::wdtEnable(uint32_t timeout)

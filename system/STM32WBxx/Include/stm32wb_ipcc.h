@@ -121,7 +121,7 @@ extern void stm32wb_ipcc_sys_disable(void);
 extern uint32_t stm32wb_ipcc_sys_state(void);
 extern bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return);
 extern bool stm32wb_ipcc_sys_command(uint16_t opcode, const void *cparam, uint8_t clen, void *rparam, uint8_t rsize);
-extern bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus_1_0_2, const uint8_t *fus_1_1_0, uint32_t *p_code_return);
+extern bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return);
   
 typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
     uint8_t *pBleBufferAddress;   /**< NOT USED CURRENTLY */
@@ -142,8 +142,16 @@ typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
     uint8_t  ViterbiEnable;
     uint8_t  Options;
     uint8_t  HwVersion;
+    uint8_t  MaxCOCInitiatorNbr;
+    int8_t   MinTxPower;
+    int8_t   MaxTxPower;
+    uint8_t  RxModel;
+    uint8_t  MaxAdvSetNbr;
+    uint16_t MaxAdvDataLen;
+    int16_t  TxPathCompensation;
+    int16_t  RxPathCompensation;
 } stm32wb_ipcc_ble_init_params_t;
-
+  
 typedef void (*stm32wb_ipcc_ble_event_callback_t)(void *context);
 typedef void (*stm32wb_ipcc_ble_command_callback_t)(void *context);
 typedef void (*stm32wb_ipcc_ble_acldata_callback_t)(void *context);
