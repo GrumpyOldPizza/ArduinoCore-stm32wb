@@ -92,6 +92,36 @@
               "version": "7-2017q4"
             }
           ]
+        },
+
+        {
+          "name": "Tlera Corp STM32WB Boards",
+          "architecture": "stm32wb",
+          "version": "0.1.3",
+          "category": "Contributed",
+          "url": "https://github.com/GrumpyOldPizza/ArduinoCore-stm32wb/archive/0.1.3.tar.gz",
+          "archiveFileName": "ArduinoCore-stm32wb-0.1.3.tar.gz",
+          "checksum": "SHA-256:9188d3b0ce6a72f399bd35f1f96bb29113c8d81b",
+          "size": "10457654",
+          "boards": [
+            { "name": "Firefly-WB55CG" },
+            { "name": "Katydid-WB55CG" },
+            { "name": "Mothra-WB5MMG"  },
+            { "name": "NUCLEO-WB55RG"  },
+            { "name": "Snoopy6-WB55RG" }
+          ],
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.10.0-arduino13"
+            },
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            }
+          ]
         }
       ],
       "tools": [
