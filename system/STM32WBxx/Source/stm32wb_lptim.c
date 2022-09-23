@@ -451,7 +451,7 @@ static __attribute__((optimize("O3"))) void stm32wb_lptim_timeout_routine(void)
 
 	    armv7m_atomic_load_2((volatile uint32_t*)&timeout->clock, (uint32_t*)&clock, (uint32_t*)&ticks);
 
-	    compare = (clock + ticks);
+	    compare = ((clock + ticks) & 0xffff) | (reference << 16);
 	    
 	    if (!timeout->modify)
 	    {
@@ -602,33 +602,26 @@ bool stm32wb_lptim_timeout_done(stm32wb_lptim_timeout_t *timeout)
 
 __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
 {
-    uint32_t lptim_isr, compare;
+  uint32_t lptim_isr, count, compare, clock, reference;
 
     lptim_isr = LPTIM1->ISR;
 
     if (lptim_isr & LPTIM_ISR_ARRM)
     {
 	LPTIM1->ICR = LPTIM_ICR_ARRMCF;
-	
-	stm32wb_lptim_device.timeout_epoch += 0x00010000;
 
-	if (stm32wb_lptim_device.timeout_compare[1] == 0xffff)
-	{
-	    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
-	}
+	stm32wb_lptim_device.timeout_epoch += 0x00010000;
     }
     
     if (lptim_isr & LPTIM_ISR_CMPM)
     {
 	LPTIM1->ICR = LPTIM_ICR_CMPMCF;
-
-	armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
     }
     
     if (lptim_isr & LPTIM_ISR_CMPOK)
     {
 	LPTIM1->ICR = LPTIM_ICR_CMPOKCF;
-	
+
 	compare = stm32wb_lptim_device.timeout_compare[1];
 	
 	if (compare != stm32wb_lptim_device.timeout_compare[0])
@@ -643,6 +636,21 @@ __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
 	    
 	    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
 	}
+    }
+
+    if (!stm32wb_lptim_device.timeout_sync)
+    {
+	compare = stm32wb_lptim_device.timeout_compare[0];
+
+        reference = compare >> 16;
+        clock = compare & 0xffff;
+
+        count = LPTIM1->CNT & 0xffff;
+
+        if ((count - reference) >= (clock - reference))
+        {
+            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
+        }
     }
     
     __DSB();
