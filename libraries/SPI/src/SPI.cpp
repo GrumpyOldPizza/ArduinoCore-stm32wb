@@ -33,8 +33,8 @@
 struct SPIInterface {
     bool     (*enable)(stm32wb_spi_t *spi);
     bool     (*disable)(stm32wb_spi_t *spi);
-    bool     (*block)(stm32wb_spi_t *spi, uint16_t pin);
-    bool     (*unblock)(stm32wb_spi_t *spi, uint16_t pin);
+    bool     (*block)(stm32wb_spi_t *spi, uint32_t mask);
+    bool     (*unblock)(stm32wb_spi_t *spi, uint32_t mask);
     bool     (*acquire)(stm32wb_spi_t *spi, uint32_t clock, uint32_t control);
     bool     (*release)(stm32wb_spi_t *spi);
     uint8_t  (*data)(stm32wb_spi_t *spi, uint8_t data);
@@ -43,9 +43,9 @@ struct SPIInterface {
     void     (*data_receive)(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count);
     void     (*data_transmit)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count);
     void     (*data_transfer)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count);
-    bool     (*data_dma_receive)(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-    bool     (*data_dma_transmit)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-    bool     (*data_dma_transfer)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_receive)(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transmit)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transfer)(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, stm32wb_spi_done_callback_t callback, void *context);
     uint32_t (*data_dma_cancel)(stm32wb_spi_t *spi);
     bool     (*data_dma_busy)(stm32wb_spi_t *spi);
 };
@@ -74,8 +74,8 @@ static const struct SPIInterface stm32wb_spi_interface =
 struct UARTInterface {
     bool     (*enable)(stm32wb_uart_t *uart);
     bool     (*disable)(stm32wb_uart_t *uart);
-    bool     (*block)(stm32wb_uart_t *uart, uint16_t pin);
-    bool     (*unblock)(stm32wb_uart_t *uart, uint16_t pin);
+    bool     (*block)(stm32wb_uart_t *uart, uint32_t mask);
+    bool     (*unblock)(stm32wb_uart_t *uart, uint32_t mask);
     bool     (*acquire)(stm32wb_uart_t *uart, uint32_t clock, uint32_t control);
     bool     (*release)(stm32wb_uart_t *uart);
     uint8_t  (*data)(stm32wb_uart_t *uart, uint8_t data);
@@ -84,9 +84,9 @@ struct UARTInterface {
     void     (*data_receive)(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_count);
     void     (*data_transmit)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count);
     void     (*data_transfer)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count);
-    bool     (*data_dma_receive)(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
-    bool     (*data_dma_transmit)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
-    bool     (*data_dma_transfer)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_uart_done_callback_t callback, void *context);
+    bool     (*data_dma_receive)(stm32wb_uart_t *uart, uint8_t *rx_data, uint32_t rx_count, stm32wb_uart_done_callback_t callback, void *context);
+    bool     (*data_dma_transmit)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint32_t tx_count, stm32wb_uart_done_callback_t callback, void *context);
+    bool     (*data_dma_transfer)(stm32wb_uart_t *uart, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, stm32wb_uart_done_callback_t callback, void *context);
     uint32_t (*data_dma_cancel)(stm32wb_uart_t *uart);
     bool     (*data_dma_busy)(stm32wb_uart_t *uart);
 };
@@ -119,11 +119,13 @@ SPIClass::SPIClass(struct _stm32wb_spi_t *spi, const struct _stm32wb_spi_params_
     stm32wb_spi_create(spi, params);
 
     m_transaction = false;
+    m_busy = 0;
     
     m_data_8 = null_data_8;
     m_data_16 = null_data_16;
 
-    k_work_create(&m_work, (k_work_routine_t)SPIClass::workCallback, (void*)this);
+    m_callback = Callback();
+    m_work = K_WORK_INIT(SPIClass::notify, (void*)this);
 }
 
 SPIClass::SPIClass(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *params) :
@@ -133,11 +135,13 @@ SPIClass::SPIClass(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_para
     stm32wb_uart_create(uart, params);
 
     m_transaction = false;
+    m_busy = 0;
     
     m_data_8 = null_data_8;
     m_data_16 = null_data_16;
 
-    k_work_create(&m_work, (k_work_routine_t)SPIClass::workCallback, (void*)this);
+    m_callback = Callback();
+    m_work = K_WORK_INIT(SPIClass::notify, (void*)this);
 }
 
 __attribute__((optimize("O3"))) uint8_t SPIClass::transfer(uint8_t data) {
@@ -155,11 +159,17 @@ __attribute__((optimize("O3"))) void SPIClass::transfer(void *buffer, size_t cou
 }
 
 void SPIClass::usingInterrupt(int interruptNumber) {
-    if ((interruptNumber < 0) || (interruptNumber >= (int)PINS_COUNT) || !(g_APinDescription[interruptNumber].attr & PIN_ATTR_EXTI)) {
+    if ((interruptNumber < 0) || (interruptNumber >= (int)PINS_COUNT)) {
         return;
     }
 
-    m_interface->block(m_spi, g_APinDescription[interruptNumber].pin);
+    if (g_APinDescription[interruptNumber].attr & PIN_ATTR_EXTI) {
+        m_interface->block(m_spi, g_APinDescription[interruptNumber].pin & STM32WB_GPIO_PIN_INDEX_MASK);
+    }
+
+    if (g_APinDescription[interruptNumber].attr & PIN_ATTR_TAMP) {
+        m_interface->block(m_spi, STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP2); // ###
+    }
 }
 
 void SPIClass::notUsingInterrupt(int interruptNumber) {
@@ -167,7 +177,13 @@ void SPIClass::notUsingInterrupt(int interruptNumber) {
         return;
     }
 
-    m_interface->unblock(m_spi, g_APinDescription[interruptNumber].pin);
+    if (g_APinDescription[interruptNumber].attr & PIN_ATTR_EXTI) {
+        m_interface->unblock(m_spi, g_APinDescription[interruptNumber].pin & STM32WB_GPIO_PIN_INDEX_MASK);
+    }
+
+    if (g_APinDescription[interruptNumber].attr & PIN_ATTR_TAMP) {
+      m_interface->unblock(m_spi, STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP2); // ###
+    }
 }
 
 __attribute__((optimize("O3"))) void SPIClass::beginTransaction(SPISettings settings) {
@@ -225,35 +241,35 @@ __attribute__((optimize("O3"))) void SPIClass::transfer(const void *txBuffer, vo
     }
 }
 
-bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status) {
-    return transfer(txBuffer, rxBuffer, count, status, Callback());
+__attribute__((optimize("O3"))) bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, void(*callback)(void)) {
+    return transfer(txBuffer, rxBuffer, count, Callback(callback));
 }
 
-bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status, void(*callback)(void)) {
-    return transfer(txBuffer, rxBuffer, count, status, Callback(callback));
-}
-
-bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status, Callback callback) {
+__attribute__((optimize("O3"))) bool SPIClass::transfer(const void *txBuffer, void *rxBuffer, size_t count, Callback callback) {
     if (!m_transaction) {
         return false;
     }
 
-    m_done_callback = callback;
+    if (armv7m_atomic_casb(&m_busy, 0, 1) != 0) {
+        return false;
+    }
+    
+    m_callback = callback;
 
     if (txBuffer) {
         if (rxBuffer) {
-            if (!m_interface->data_dma_transfer(m_spi, (const uint8_t*)txBuffer, (uint8_t*)rxBuffer, count, &status, (stm32wb_spi_done_callback_t)SPIClass::doneCallback, (void*)this)) {
+            if (!m_interface->data_dma_transfer(m_spi, (const uint8_t*)txBuffer, (uint8_t*)rxBuffer, count, (stm32wb_spi_done_callback_t)SPIClass::done, (void*)this)) {
                 return false;
             }
         } else {
-            if (!m_interface->data_dma_transmit(m_spi, (const uint8_t*)txBuffer, count, &status, (stm32wb_spi_done_callback_t)SPIClass::doneCallback, (void*)this)) {
+            if (!m_interface->data_dma_transmit(m_spi, (const uint8_t*)txBuffer, count, (stm32wb_spi_done_callback_t)SPIClass::done, (void*)this)) {
                 return false;
             }
         }
     }
     else
     {
-        if (!m_interface->data_dma_receive(m_spi, (uint8_t*)rxBuffer, count, &status, (stm32wb_spi_done_callback_t)SPIClass::doneCallback, (void*)this)) {
+        if (!m_interface->data_dma_receive(m_spi, (uint8_t*)rxBuffer, count, (stm32wb_spi_done_callback_t)SPIClass::done, (void*)this)) {
             return false;
         }
     }
@@ -265,6 +281,10 @@ size_t SPIClass::cancel(void) {
     return m_interface->data_dma_cancel(m_spi);
 }
 
+bool SPIClass::busy(void) {
+    return m_busy;
+}
+
 uint8_t SPIClass::null_data_8(stm32wb_spi_t *spi __attribute__((unused)), uint8_t data __attribute__((unused))) {
     return 0xff;
 }
@@ -273,14 +293,18 @@ uint16_t SPIClass::null_data_16(stm32wb_spi_t *spi __attribute__((unused)), uint
     return 0xffff;
 }
 
-void SPIClass::workCallback(SPIClass *self) {
-    if (self->m_done_callback) {
-        self->m_done_callback();
-    }
+void SPIClass::done(SPIClass *self) {
+    k_work_submit(&self->m_work);
 }
 
-void SPIClass::doneCallback(SPIClass *self) {
-    k_work_submit(&self->m_work);
+void SPIClass::notify(SPIClass *self) {
+    Callback callback;
+    
+    callback = self->m_callback;
+            
+    self->m_busy = 0;
+            
+    callback();
 }
 
 #if SPI_INTERFACES_COUNT > 0

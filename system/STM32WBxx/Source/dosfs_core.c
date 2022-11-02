@@ -185,15 +185,15 @@ static void stm32wb_rtc_timedate(uint16_t *p_time, uint16_t *p_date)
 {
     stm32wb_rtc_tod_t tod;
     uint32_t seconds, ticks;
-    int32_t utc_offset;
+    int32_t leap_seconds;
 
     stm32wb_rtc_time_read(&seconds, &ticks);
 
-    utc_offset = stm32wb_rtc_time_to_utc_offset(seconds);
+    leap_seconds = stm32wb_rtc_time_to_leap_seconds(seconds);
 
     seconds -= Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_to_tod(seconds - utc_offset, ticks, &tod);
+    stm32wb_rtc_time_to_tod(seconds - leap_seconds, ticks, &tod);
     
     *p_time = ((tod.seconds >> 1) | (tod.minutes << 5) | (tod.hours << 11));
     *p_date = ((tod.day << 0) | (tod.month << 5) | ((tod.year + 20) << 9));

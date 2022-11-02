@@ -324,8 +324,8 @@ GNSSClass::GNSSClass()
     _locationCallback = Callback();
     _satellitesCallback = Callback();
 
-    k_work_create(&_receiveWork, (k_work_routine_t)GNSSClass::uartReceiveRoutine, (void*)this);
-    k_work_create(&_transmitWork, (k_work_routine_t)GNSSClass::uartTransmitRoutine, (void*)this);
+    k_work_init(&_receiveWork, (k_work_routine_t)GNSSClass::uartReceiveRoutine, (void*)this);
+    k_work_init(&_transmitWork, (k_work_routine_t)GNSSClass::uartTransmitRoutine, (void*)this);
 }
 
 void GNSSClass::begin(GNSSmode mode, GNSSrate rate, Uart &uart, uint32_t pinPPS, uint32_t pinENABLE, uint32_t pinBACKUP)
@@ -414,7 +414,7 @@ bool GNSSClass::suspend()
 
     if (_pins.pps != STM32WB_GPIO_PIN_NONE)
     {
-        stm32wb_exti_detach(_pins.pps);
+        stm32wb_exti_catch(_pins.pps, 0, NULL, NULL);
         stm32wb_gpio_pin_configure(_pins.pps, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_MODE_ANALOG));
     }
 
@@ -431,7 +431,7 @@ bool GNSSClass::resume()
     if (_pins.pps != STM32WB_GPIO_PIN_NONE)
     {
         stm32wb_gpio_pin_configure(_pins.pps, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
-        stm32wb_exti_attach(_pins.pps, STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_PRIORITY_CRITICAL, (stm32wb_exti_callback_t)&gnss_pps_callback, (void*)NULL);
+        stm32wb_exti_catch(_pins.pps, STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_PRIORITY_CRITICAL, (stm32wb_exti_callback_t)&gnss_pps_callback, (void*)NULL);
     }
     
     return true;
@@ -542,13 +542,13 @@ void GNSSClass::uartBegin(GNSSmode mode, GNSSrate rate, struct _stm32wb_uart_t *
     if (_pins.pps != STM32WB_GPIO_PIN_NONE)
     {
         stm32wb_gpio_pin_configure(_pins.pps, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
-        stm32wb_exti_attach(_pins.pps, STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_PRIORITY_CRITICAL, (stm32wb_exti_callback_t)&gnss_pps_callback, (void*)NULL);
+        stm32wb_exti_catch(_pins.pps, STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_PRIORITY_CRITICAL, (stm32wb_exti_callback_t)&gnss_pps_callback, (void*)NULL);
     }
 
     _enabled = stm32wb_uart_enable(_uart,
                                    9600,
                                    (STM32WB_UART_OPTION_DATA_SIZE_8 | STM32WB_UART_OPTION_PARITY_NONE | STM32WB_UART_OPTION_STOP_1),
-                                   &_rx_data[0], sizeof(_rx_data), NULL,
+                                   &_rx_data[0], sizeof(_rx_data), ~0ul,
                                    (stm32wb_uart_event_callback_t)&GNSSClass::uartEventCallback, (void*)this);
 
     if (_enabled)
@@ -579,7 +579,7 @@ void GNSSClass::uartEnd()
 
     if (_pins.pps != STM32WB_GPIO_PIN_NONE)
     {
-        stm32wb_exti_detach(_pins.pps);
+        stm32wb_exti_catch(_pins.pps, 0, NULL, NULL);
         stm32wb_gpio_pin_configure(_pins.pps, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_MODE_ANALOG));
     }
 
@@ -631,14 +631,14 @@ void GNSSClass::uartDoneCallback(class GNSSClass *self)
         stm32wb_uart_configure(self->_uart,
                                self->_baudrate,
                                (STM32WB_UART_OPTION_DATA_SIZE_8 | STM32WB_UART_OPTION_PARITY_NONE | STM32WB_UART_OPTION_STOP_1) | ((self->_baudrate <= 38400) ? STM32WB_UART_OPTION_WAKEUP : 0),
-                               NULL);
+                               ~0ul);
     }
 }
 
 void GNSSClass::uartSendRoutine(class GNSSClass *self, const uint8_t *data, uint32_t count, gnss_send_callback_t callback)
 {
     self->_doneCallback = callback;
-    stm32wb_uart_transmit(self->_uart, data, count, &self->_status, (stm32wb_uart_done_callback_t)&GNSSClass::uartDoneCallback, (void*)self);
+    stm32wb_uart_transmit(self->_uart, data, count, (stm32wb_uart_done_callback_t)&GNSSClass::uartDoneCallback, (void*)self);
 }
 
 void GNSSClass::enableCallback(class GNSSClass *self)
@@ -646,7 +646,7 @@ void GNSSClass::enableCallback(class GNSSClass *self)
     stm32wb_uart_enable(self->_uart,
                         self->_baudrate,
                         (STM32WB_UART_OPTION_DATA_SIZE_8 | STM32WB_UART_OPTION_PARITY_NONE | STM32WB_UART_OPTION_STOP_1) | ((self->_baudrate <= 38400) ? STM32WB_UART_OPTION_WAKEUP : 0),
-                        &self->_rx_data[0], sizeof(self->_rx_data), NULL,
+                        &self->_rx_data[0], sizeof(self->_rx_data), ~0ul,
                         (stm32wb_uart_event_callback_t)&GNSSClass::uartEventCallback, (void*)self);
 
     stm32wb_gpio_pin_configure(self->_pins.enable, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_LOW | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));

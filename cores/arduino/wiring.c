@@ -35,6 +35,10 @@
 extern "C" {
 #endif
 
+#undef ARDUINO_RV2
+
+k_event_t g_wakeup_event = K_EVENT_INIT();
+  
 #if defined(USBCON)
 stm32wb_uart_t g_Serial1;
 extern const stm32wb_uart_params_t g_Serial1Params;
@@ -57,12 +61,29 @@ extern const stm32wb_sfspi_params_t g_SFSPIParams;
 extern const stm32wb_sdspi_params_t g_SDSPIParams;
 #endif
 
-volatile uint32_t g_pinButton = 0;
+extern void __libc_init_array(void);
+#if defined(ARDUINO_RV2)
+extern void cmsis_rv2(void);
+#endif
 
-void init( void )
+void __runtime_start(void)
 {
     stm32wb_system_initialize(0, __SYSTEM_CORE_CLOCK__, 0, 0, STM32WB_CONFIG_LSECLK, STM32WB_CONFIG_HSECLK, STM32WB_CONFIG_SYSOPT);
 
+#if defined(ARDUINO_RV2)
+    cmsis_rv2();
+#endif
+
+    // k_system_initialize(&armv7m_rtt_hook_table);
+    k_system_initialize(NULL);
+    
+    __libc_init_array();
+
+    k_system_start((k_task_routine_t)main, NULL); 
+}
+  
+void init(void)
+{
 #if (STORAGE_TYPE == 1)
     if (g_SPI.state == STM32WB_SPI_STATE_NONE) {
         stm32wb_spi_create(&g_SPI, &g_SPIParams);
@@ -79,10 +100,6 @@ void init( void )
 
     stm32wb_sdspi_initialize(&g_SPI, &g_SDSPIParams);
 #endif
-
-    /* This is here to work around a linker issue in avr/fdevopen.c */
-    asm(".global stm32wb_stdio_put");
-    asm(".global stm32wb_stdio_get");
 }
 
 #ifdef __cplusplus

@@ -36,7 +36,7 @@
 extern "C" {
 #endif
 
-#define STM32WB_LPTIM1_IRQ_PRIORITY   ARMV7M_IRQ_PRIORITY_MEDIUM
+#define STM32WB_LPTIM1_IRQ_PRIORITY   ARMV7M_IRQ_PRIORITY_LPTIM
 
 #define STM32WB_LPTIM_EVENT_COMPARE                           0x00000001
 #define STM32WB_LPTIM_EVENT_PERIOD                            0x00000002
@@ -56,31 +56,6 @@ extern "C" {
   
   
 typedef void (*stm32wb_lptim_event_callback_t)(void *context, uint32_t events);
-  
-typedef struct _stm32wb_lptim_timeout_t stm32wb_lptim_timeout_t;
-
-typedef void (*stm32wb_lptim_timeout_callback_t)(stm32wb_lptim_timeout_t *timeout);
-
-struct _stm32wb_lptim_timeout_t {
-    stm32wb_lptim_timeout_t                   *next;
-    stm32wb_lptim_timeout_t                   *previous;
-    stm32wb_lptim_timeout_t * volatile        modify;
-    volatile uint32_t                         clock;
-    volatile uint32_t                         ticks;
-    volatile stm32wb_lptim_timeout_callback_t callback;
-};
-
-#define STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND 32768
-
-#define STM32WB_LPTIM_TIMEOUT_INIT(_timeout)         \
-{                                                    \
-    (_timeout).next = NULL;                          \
-    (_timeout).previous = NULL;                      \
-    (_timeout).modify = NULL;                        \
-    (_timeout).clock = 0;                            \
-    (_timeout).ticks = 0;                            \
-    (_timeout).callback = NULL;                      \
-}
 
 extern void __stm32wb_lptim_initialize(void);
 
@@ -90,77 +65,50 @@ extern bool stm32wb_lptim_event_start(uint32_t compare, uint32_t period, uint32_
 extern bool stm32wb_lptim_event_stop(void);
 extern bool stm32wb_lptim_event_restart(uint32_t period);
 extern bool stm32wb_lptim_event_compare(uint32_t compare);
+
+typedef void (*stm32wb_lptim_timeout_callback_t)(void *context);
+
+typedef struct _stm32wb_lptim_timeout_t {
+    struct _stm32wb_lptim_timeout_t            *next;
+    struct _stm32wb_lptim_timeout_t            *previous;
+    struct _stm32wb_lptim_timeout_t * volatile modify;
+    volatile uint32_t                          clock_l;
+    volatile uint32_t                          clock_h;
+    volatile stm32wb_lptim_timeout_callback_t  callback;
+    void * volatile                            context;
+} stm32wb_lptim_timeout_t;
   
-extern void stm32wb_lptim_timeout_create(stm32wb_lptim_timeout_t *timeout);
-extern void stm32wb_lptim_timeout_destroy(stm32wb_lptim_timeout_t *timeout);
-extern void stm32wb_lptim_timeout_start(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback);
-extern void stm32wb_lptim_timeout_restart(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback);
-extern void stm32wb_lptim_timeout_stop(stm32wb_lptim_timeout_t *timeout);
-extern bool stm32wb_lptim_timeout_done(stm32wb_lptim_timeout_t *timeout);
+extern void __stm32wb_lptim_timeout_initialize(void);
+extern void __stm32wb_lptim_timeout_stop_leave(void);
 
-static inline uint32_t stm32wb_lptim_timeout_micros_to_ticks(uint32_t micros)
-{
-    if (micros < 1000000)
-    {
-        return ((micros * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999999) / 1000000);
-    }
-    else
-    {   
-        uint32_t seconds;
-
-        seconds = (micros / 1000000);
-        micros = micros - seconds * 1000000;
-
-        return (seconds * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND) + ((micros * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999999) / 1000000);
-    }
+extern uint64_t stm32wb_lptim_timeout_clock(void);
+extern void stm32wb_lptim_timeout_absolute(stm32wb_lptim_timeout_t *timeout, uint64_t clock, stm32wb_lptim_timeout_callback_t callback, void *context);
+extern void stm32wb_lptim_timeout_relative(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context);
+extern void stm32wb_lptim_timeout_cancel(stm32wb_lptim_timeout_t *timeout);
+extern bool stm32wb_lptim_timeout_is_active(stm32wb_lptim_timeout_t *timeout);
+  
+#define STM32WB_LPTIM_TIMEOUT_INIT()            \
+(stm32wb_lptim_timeout_t)                       \
+{                                               \
+    .next = NULL,                               \
+    .previous = NULL,                           \
+    .modify = NULL,                             \
+    .clock_l = 0,                               \
+    .clock_h = 0,                               \
+    .callback = NULL,                           \
+    .context = NULL,                            \
 }
+  
+#define STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND 32768
 
-static inline uint32_t stm32wb_lptim_timeout_millis_to_ticks(uint32_t millis)
-{
-    if (millis < 60000)
-    {
-        return ((millis * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999) / 1000);
-    }
-    else
-    {
-        uint32_t seconds;
+#define STM32WB_LPTIM_TIMEOUT_MICROS_TO_TICKS(_micros) \
+  ((uint32_t)(((uint64_t)(_micros) * (uint64_t)STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999999ull) / 1000000ull))
 
-        seconds = (millis / 1000);
-        millis = millis - seconds * 1000;
+#define STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(_millis) \
+  ((uint32_t)(((uint64_t)(_millis) * (uint64_t)STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999ull) / 1000ull))
 
-        return (seconds * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND) + ((millis * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND + 999) / 1000);
-    }
-}
-
-static inline uint32_t stm32wb_lptim_timeout_seconds_to_ticks(uint32_t seconds)
-{
-    return (seconds * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND);
-}
-
-static inline uint32_t stm32wb_lptim_timeout_ticks_to_micros(uint32_t ticks)
-{
-    uint32_t seconds;
-
-    seconds = ticks / STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND;
-    ticks = ticks & (STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND -1);
-
-    return (seconds * 1000000) + ((ticks * 10000000) / STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND);
-}
-
-static inline uint32_t stm32wb_lptim_timeout_ticks_to_millis(uint32_t ticks)
-{
-    uint32_t seconds;
-
-    seconds = ticks / STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND;
-    ticks = ticks & (STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND -1);
-
-    return (seconds * 1000) + ((ticks * 1000) / STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND);
-}
-
-static inline uint32_t stm32wb_lptim_timeout_ticks_to_seconds(uint32_t ticks)
-{
-    return ticks / STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND;
-}
+#define STM32WB_LPTIM_TIMEOUT_SECONDS_TO_TICKS(_seconds) \
+  ((uint32_t)((_seconds) * STM32WB_LPTIM_TIMEOUT_TICKS_PER_SECOND))
 
 #ifdef __cplusplus
 }

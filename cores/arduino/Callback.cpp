@@ -33,7 +33,8 @@ Callback &Callback::operator=(const Callback &other) {
     void (*callback)(void*);
     void *context;
 
-    armv7m_atomic_load_2((volatile uint32_t*)&other.m_callback, (uint32_t*)&callback, (uint32_t*)&context);
+    callback = other.m_callback;
+    context = other.m_context;
 
     m_callback = nullptr;
 
@@ -49,7 +50,8 @@ void Callback::operator ()(void) {
     void (*callback)(void*);
     void *context;
 
-    armv7m_atomic_load_2((volatile uint32_t*)&m_callback, (uint32_t*)&callback, (uint32_t*)&context);
+    callback = m_callback;
+    context = m_context;
 
     if (callback) {
         (*callback)(context);

@@ -35,28 +35,37 @@
  extern "C" {
 #endif
 
-#define STM32WB_EXTI_CHANNEL_COUNT              16
+#define STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP1    16
+#define STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP2    17
+#define STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP3    18
+#define STM32WB_EXTI_CHANNEL_INDEX_COMP1        19
+#define STM32WB_EXTI_CHANNEL_INDEX_COMP2        20
+#define STM32WB_EXTI_CHANNEL_COUNT              21
 
-#define STM32WB_EXTI_CONTROL_EDGE_FALLING       0x00000001
-#define STM32WB_EXTI_CONTROL_EDGE_RISING        0x00000002
-#define STM32WB_EXTI_CONTROL_PRIORITY_SHIFT     2
-#define STM32WB_EXTI_CONTROL_PRIORITY_MASK      0x0000000c
+#define STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP1     (1u << STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP1)
+#define STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP2     (1u << STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP2)
+#define STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP3     (1u << STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP3)
+#define STM32WB_EXTI_CHANNEL_MASK_COMP1         (1u << STM32WB_EXTI_CHANNEL_INDEX_COMP1)
+#define STM32WB_EXTI_CHANNEL_MASK_COMP2         (1u << STM32WB_EXTI_CHANNEL_INDEX_COMP2)
+
+#define STM32WB_EXTI_CONTROL_PRIORITY_SHIFT     0
+#define STM32WB_EXTI_CONTROL_PRIORITY_MASK      0x00000003
 #define STM32WB_EXTI_CONTROL_PRIORITY_CRITICAL  0x00000000
-#define STM32WB_EXTI_CONTROL_PRIORITY_HIGH      0x00000004
-#define STM32WB_EXTI_CONTROL_PRIORITY_MEDIUM    0x00000008
-#define STM32WB_EXTI_CONTROL_PRIORITY_LOW       0x0000000c
+#define STM32WB_EXTI_CONTROL_PRIORITY_HIGH      0x00000001
+#define STM32WB_EXTI_CONTROL_PRIORITY_MEDIUM    0x00000002
+#define STM32WB_EXTI_CONTROL_PRIORITY_LOW       0x00000003
+#define STM32WB_EXTI_CONTROL_EDGE_FALLING       0x00000004
+#define STM32WB_EXTI_CONTROL_EDGE_RISING        0x00000008
 
 typedef void (*stm32wb_exti_callback_t)(void *context);
 
 extern void __stm32wb_exti_initialize(void);
-extern void __stm32wb_exti_stop_enter(void);
-extern void __stm32wb_exti_stop_leave(void);
+extern void __stm32wb_exti_catch(uint32_t index, uint32_t priority, stm32wb_exti_callback_t callback, void *context);
+extern void __stm32wb_exti_interrupt(uint32_t mask);
    
-extern bool stm32wb_exti_attach(uint16_t pin, uint32_t control, stm32wb_exti_callback_t callback, void *context);
-extern void stm32wb_exti_detach(uint16_t pin);
-extern bool stm32wb_exti_control(uint16_t pin, uint32_t control);
+extern bool stm32wb_exti_catch(uint16_t pin, uint32_t control, stm32wb_exti_callback_t callback, void *context);
 extern void stm32wb_exti_block(uint32_t mask);
-extern void stm32wb_exti_unblock(uint32_t mask, bool cancel);
+extern void stm32wb_exti_unblock(uint32_t mask);
 
 #ifdef __cplusplus
 }

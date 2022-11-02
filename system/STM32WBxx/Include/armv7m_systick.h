@@ -34,12 +34,16 @@ extern "C" {
 #endif
 
 extern void __armv7m_systick_initialize(void);
+extern void __armv7m_systick_calibrate(void);
 
-extern void armv7m_systick_configure(void);
+extern void armv7m_systick_configure(uint32_t clock);
 extern void armv7m_systick_enable(void);
 extern void armv7m_systick_disable(void);
-extern uint64_t armv7m_systick_micros(void);
-extern uint64_t armv7m_systick_millis(void);
+extern uint64_t armv7m_systick_clock(void);
+extern uint32_t armv7m_systick_micros(void);
+extern uint32_t armv7m_systick_millis(void);
+
+extern void armv7m_systick_udelay(uint32_t udelay);
 
 #ifdef __cplusplus
 }

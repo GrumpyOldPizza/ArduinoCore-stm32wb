@@ -195,7 +195,6 @@ private:
     } _pins;
     bool _enabled;
     bool _internal;
-    volatile uint8_t _status;
     uint32_t _baudrate;
     uint8_t _rx_data[GNSS_RX_BUFFER_SIZE];
     gnss_location_t _location_data;

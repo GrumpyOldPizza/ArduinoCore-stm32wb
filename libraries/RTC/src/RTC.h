@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -30,6 +30,7 @@
 #define _RTC_H
 
 #include "Arduino.h"
+#include "stm32wb_rtc.h"
 
 enum RTCAlarmMatch {
     RTC_MATCH_OFF          = 0,      // Never
@@ -37,11 +38,15 @@ enum RTCAlarmMatch {
     RTC_MATCH_SS           = 2,      // Every Minute
     RTC_MATCH_MMSS         = 3,      // Every Hour
     RTC_MATCH_HHMMSS       = 4,      // Every Day
-    RTC_MATCH_DDHHMMSS     = 5,      // Every Month
-    RTC_MATCH_MMDDHHMMSS   = 6,      // Every Year
-    RTC_MATCH_YYMMDDHHMMSS = 7,      // Once, on a specific date and a specific time
+    RTC_MATCH_YYMMDDHHMMSS = 5,      // Once, on a specific date and a specific time
 };
 
+enum RTCStatus {
+    RTC_STATUS_TIME_WRITTEN = 1,
+    RTC_STATUS_ZONE_WRITTEN = 2,
+    RTC_STATUS_DST_WRITTEN = 4,
+    RTC_STATUS_LEAP_SECONDS_WRITTEN = 8,
+};
 
 class RTCClass {
 public:
@@ -62,7 +67,9 @@ public:
     void getTime(uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds);
     void getDate(uint8_t &day, uint8_t &month, uint8_t &year);
     void getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds);
+    void getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, int32_t &zone, uint32_t &dst);
     void getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds);
+    void getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds, int32_t &zone, uint32_t &dst);
 
     void setSeconds(uint8_t seconds);
     void setMinutes(uint8_t minutes);
@@ -76,13 +83,16 @@ public:
 
     uint32_t getEpoch();
     uint64_t getEpochMilliSeconds();
-    void setEpoch(uint32_t seconds);
+    bool setEpoch(uint32_t epoch);
+
+    bool convertEpoch(uint32_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds);
+    bool convertEpoch(uint32_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, int32_t &zone, uint32_t &dst);
+    bool convertEpochMilliSeconds(uint64_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds);
+    bool convertEpochMilliSeconds(uint64_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds, int32_t &zone, uint32_t &dst);
+  
     uint32_t getY2kEpoch();
-    void getY2kEpoch(uint32_t &seconds, uint16_t &milliSeconds);
-    void setY2kEpoch(uint32_t seconds);
-    uint32_t getGpsEpoch();
-    void getGpsEpoch(uint32_t &seconds, uint16_t &milliSeconds);
-    void setGpsEpoch(uint32_t seconds);
+    uint64_t getY2kEpochMilliSeconds();
+    void setY2kEpoch(uint32_t epoch);
     
     uint8_t getAlarmSeconds();
     uint8_t getAlarmMinutes();
@@ -108,40 +118,46 @@ public:
     void enableAlarm(RTCAlarmMatch match);
     void disableAlarm();
 
-    void attachInterrupt(void(*callback)(void));
-    void attachInterrupt(Callback callback);
-    void detachInterrupt();
+    void onAlarm(void(*callback)(void) = nullptr);
+    void onAlarm(Callback callback);
 
     int32_t getZone();
     void setZone(int32_t seconds);
-    int32_t getDst();
-    void setDst(int32_t seconds);
 
-    int32_t getUtcOffset();
-    void setUtcOffset(int32_t seconds);
+    uint32_t getDst();
+    void setDst(uint32_t seconds);
+
+    int32_t getLeapSeconds();
+    void setLeapSeconds(int32_t leapSeconds);
 
     uint32_t status();
 
+     __attribute__((deprecated("Use RTC.onAlarm(callback) instead."))) void attachInterrupt(void(*callback)(void)) { onAlarm(callback); };
+     __attribute__((deprecated("Use RTC.onAlarm() instead."))) void detachInterrupt() { onAlarm(); };
+  
 private:
-    int32_t m_zone;
-    int32_t m_dst;
-    uint8_t m_alarm_match;
-    uint8_t m_alarm_seconds;
-    uint8_t m_alarm_minutes;
-    uint8_t m_alarm_hours;
-    uint8_t m_alarm_day;
-    uint8_t m_alarm_month;
-    uint8_t m_alarm_year;
-    uint32_t m_alarm_timeout;
+    static struct RTCAlarm {
+        uint8_t match;
+        uint8_t seconds;
+        uint8_t minutes;
+        uint8_t hours;
+        uint8_t day;
+        uint8_t month;
+        uint8_t year;
+        stm32wb_rtc_tod_t tod;
+        Callback callback;
+        k_work_t work;
+    } m_alarm;
 
-    Callback m_alarm_callback;
-    
-    void getTod(struct _stm32wb_rtc_tod_t *tod);
-    void setTod(const struct _stm32wb_rtc_tod_t *tod);
+    static void getTod(stm32wb_rtc_tod_t *tod);
+    static void setTod(const stm32wb_rtc_tod_t *tod);
 
-    void syncAlarm();
-
-    void alarmCallback();
+    static void alarmSync();
+    static void alarmStart();
+    static void alarmStop();
+    static void alarmCallback(void *context);
+    static void alarmNotify(void *context);
+    static void alarmEvent(void *context, uint32_t events);
 };
 
 extern RTCClass RTC;

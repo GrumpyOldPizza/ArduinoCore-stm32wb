@@ -353,6 +353,10 @@ const stm32wb_hci_event_table_t hci_vs_event_table[] = {
 #define SYS_RESPONSE_PACKET            0x11
 #define SYS_EVENT_PACKET               0x12
 
+#define STM32WB_IPCC_SYS_COMMAND_SENTINEL ((stm32wb_ipcc_sys_command_t*)0x00000001)
+#define STM32WB_IPCC_BLE_COMMAND_SENTINEL ((stm32wb_ipcc_ble_command_t*)0x00000001)
+#define STM32WB_IPCC_BLE_ACLDATA_SENTINEL ((stm32wb_ipcc_ble_acldata_t*)0x00000001)
+
 /*
  * IPCC Channels:
  *
@@ -385,7 +389,6 @@ typedef struct _MB_SysCommand_t {
 
 typedef struct _MB_SysEvent_t {
     MB_Node_t                     node;
-  //    uint8_t                       data[24]; /* type (1), evtcode (1), length(1), payload(20), pad(1) */
     uint8_t                       data[260]; /* type (1), evtcode (1), length(1), payload(255), pad(1) */
 } MB_SysEvent_t;
 
@@ -580,9 +583,12 @@ static void MB_QueueCopy(MB_Queue_t *destination, MB_Queue_t *source)
 
 typedef struct _stm32wb_ipcc_device_t {
     volatile uint8_t                      state;
-    volatile uint8_t                      ble_busy;
     volatile uint8_t                      acl_busy;
     volatile uint8_t                      mm_busy;
+    stm32wb_ipcc_sys_command_t            *sys_head;
+    stm32wb_ipcc_sys_command_t            *sys_tail;
+    stm32wb_ipcc_sys_command_t * volatile sys_submit;
+    stm32wb_ipcc_sys_command_t            *sys_current;
     stm32wb_ipcc_ble_command_t            *ble_head;
     stm32wb_ipcc_ble_command_t            *ble_tail;
     stm32wb_ipcc_ble_command_t * volatile ble_submit;
@@ -642,13 +648,17 @@ bool stm32wb_ipcc_sys_enable(void)
     }
     
     stm32wb_ipcc_device.state = (MB_SysState == STM32WB_IPCC_SYS_STATE_NONE) ? STM32WB_IPCC_STATE_NOT_READY : STM32WB_IPCC_STATE_READY;
-    stm32wb_ipcc_device.ble_busy = false;
     stm32wb_ipcc_device.acl_busy = false;
     stm32wb_ipcc_device.mm_busy = false;
 
-    stm32wb_ipcc_device.ble_head = NULL;
-    stm32wb_ipcc_device.ble_tail = NULL;
-    stm32wb_ipcc_device.ble_submit = NULL;
+    stm32wb_ipcc_device.sys_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+    stm32wb_ipcc_device.sys_tail = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+    stm32wb_ipcc_device.sys_submit = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+    stm32wb_ipcc_device.sys_current = NULL;
+    
+    stm32wb_ipcc_device.ble_head = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
+    stm32wb_ipcc_device.ble_tail = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
+    stm32wb_ipcc_device.ble_submit = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
     stm32wb_ipcc_device.ble_current = NULL;
 
     stm32wb_ipcc_device.evt_head = NULL;
@@ -735,73 +745,39 @@ bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return)
     return true;
 }
 
-
-static bool __svc_stm32wb_ipcc_sys_command(uint32_t control, const void *cparam, void *rparam)
+bool stm32wb_ipcc_sys_command(stm32wb_ipcc_sys_command_t *command)
 {
-    uint32_t opcode, clen, rsize, rlen;
-    volatile uint8_t *MB_SysRspBuffer;
-
+    stm32wb_ipcc_sys_command_t *command_submit;
+    
     if (stm32wb_ipcc_device.state <= STM32WB_IPCC_STATE_NOT_READY)
     {
         return false;
     }
 
-    opcode = (control >>  0) & 0xffff;
-    clen   = (control >> 16) & 0xff;
-    rsize  = (control >> 24) & 0xff;
-    
-    MB_SysCmdBuffer.data[0] = SYS_COMMAND_PACKET;
-    MB_SysCmdBuffer.data[1] = (opcode >> 0);
-    MB_SysCmdBuffer.data[2] = (opcode >> 8);
-    MB_SysCmdBuffer.data[3] = clen;
-
-    if (clen)
+    if (armv7m_atomic_cas((volatile uint32_t*)&command->next, (uint32_t)NULL, (uint32_t)STM32WB_IPCC_SYS_COMMAND_SENTINEL) != (uint32_t)NULL)
     {
-        memcpy(&MB_SysCmdBuffer.data[4], cparam, clen);
+        return false;
     }
 
-    IPCC->C1SCR = IPCC_C1SCR_CH2S;
+    command->status = STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY;
 
-    while (IPCC->C1TOC2SR & IPCC_C1TOC2SR_CH2F)
+    do
     {
+        command_submit = stm32wb_ipcc_device.sys_submit;
+
+        command->next = command_submit;
     }
+    while ((stm32wb_ipcc_sys_command_t*)armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.sys_submit, (uint32_t)command_submit, (uint32_t)command) != command_submit);
     
-    MB_SysRspBuffer = (volatile uint8_t*)&MB_SysCmdBuffer;
-
-    if (rparam)
+    if (command_submit == STM32WB_IPCC_SYS_COMMAND_SENTINEL)
     {
-        rlen = MB_SysRspBuffer[2] - 3;
-
-        if (rlen > rsize)
+        if (__current_irq() != IPCC_C1_TX_IRQn)
         {
-            ((uint8_t*)rparam)[0] = 0xff;
-        }
-        else
-        {
-            memcpy(rparam, (const void*)&MB_SysRspBuffer[6], rlen);
+            NVIC_SetPendingIRQ(IPCC_C1_TX_IRQn);
         }
     }
-
+            
     return true;
-}
-
-bool stm32wb_ipcc_sys_command(uint16_t opcode, const void *cparam, uint8_t clen, void *rparam, uint8_t rsize)
-{
-    uint32_t control;
-
-    control = (opcode << 0) | (clen << 16) | (rsize << 24);
-    
-    if (armv7m_core_is_in_thread())
-    {
-        return armv7m_svcall_3((uint32_t)&__svc_stm32wb_ipcc_sys_command, (uint32_t)control, (uint32_t)cparam, (uint32_t)rparam);
-    }
-
-    if (armv7m_core_is_in_pendsv_or_svcall())
-    {
-        return __svc_stm32wb_ipcc_sys_command(control, cparam, rparam);
-    }
-
-    return false;
 }
 
 bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return)
@@ -809,9 +785,10 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     static uint8_t firmware_data[1024];
     const uint8_t *firmware_image;
     uint32_t firmware_address, firmware_size, firmware_offset, firmware_chunk, firmware_index;
-    static uint8_t fus_status;
-    static stm32wb_ipcc_sys_info_t sys_info;
-    static stm32wb_ipcc_sys_fus_state_t fus_state;
+    uint8_t fus_status;
+    stm32wb_ipcc_sys_info_t sys_info;
+    stm32wb_ipcc_sys_fus_state_t fus_state;
+    stm32wb_ipcc_sys_command_t command;
     stm32wb_flash_request_t request;
     bool success = true;
 
@@ -829,6 +806,15 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
         return false;
     }
 
+    command.next = NULL;
+    command.event = 0;
+    command.callback = NULL;
+    command.context = NULL;
+
+    request.next = NULL;
+    request.callback = NULL;
+    request.context = NULL;
+    
     *p_code_return = 0x00000000;
     
     if (((sys_info.FusVersion & 0xffff0000) < 0x01020000) ||
@@ -837,19 +823,52 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     {
         if (stm32wb_ipcc_sys_state() == STM32WB_IPCC_SYS_STATE_WIRELESS)
         {
-            stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE, NULL, 0, NULL, 0);
-            stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE, NULL, 0, NULL, 0);
+            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
+            command.cparam = NULL;
+            command.clen = 0;
+            command.rparam = &fus_state;
+            command.rsize = sizeof(fus_state);
+            
+            stm32wb_ipcc_sys_command(&command);
+
+            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
+
+            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
+            command.cparam = NULL;
+            command.clen = 0;
+            command.rparam = &fus_state;
+            command.rsize = sizeof(fus_state);
+            
+            stm32wb_ipcc_sys_command(&command);
+
+            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
             
             while (1) { __WFE(); }
         }
-        
-        stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE, NULL, 0, &fus_state, sizeof(fus_state));
 
+        command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
+        command.cparam = NULL;
+        command.clen = 0;
+        command.rparam = &fus_state;
+        command.rsize = sizeof(fus_state);
+        
+        stm32wb_ipcc_sys_command(&command);
+
+        while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
+        
         while ((fus_state.state != STM32WB_IPCC_SYS_FUS_STATE_IDLE) && (fus_state.error_code == STM32WB_IPCC_SYS_FUS_ERROR_CODE_NO_ERROR))
         {
             armv7m_core_udelay(250000);
 
-            stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE, NULL, 0, &fus_state, sizeof(fus_state));
+            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
+            command.cparam = NULL;
+            command.clen = 0;
+            command.rparam = &fus_state;
+            command.rsize = sizeof(fus_state);
+            
+            stm32wb_ipcc_sys_command(&command);
+
+            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
         }
         
         if (fus_state.state != STM32WB_IPCC_SYS_FUS_STATE_IDLE)
@@ -867,8 +886,16 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
         {
             if (sys_info.WirelessStackMemorySize)
             {
-                stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE, NULL, 0, &fus_status, sizeof(fus_status));
-                    
+                command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE;
+                command.cparam = NULL;
+                command.clen = 0;
+                command.rparam = &fus_status;
+                command.rsize = sizeof(fus_status);
+            
+                stm32wb_ipcc_sys_command(&command);
+
+                while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
+                
                 if (fus_status == STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
                 {
                     while (1) { __WFE(); }
@@ -901,13 +928,10 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
                     firmware_size = size;
                 }
 
-                request.next = NULL;
                 request.control = STM32WB_FLASH_CONTROL_ERASE | STM32WB_FLASH_CONTROL_FLUSH;
                 request.address = firmware_address;
                 request.count = ((FLASH_BASE + ((FLASH->SFR & FLASH_SFR_SFSA) * 4096)) - firmware_address);
                 request.data = NULL;
-                request.callback = NULL;
-                request.context = NULL;
                 
                 stm32wb_flash_request(&request);
 
@@ -933,13 +957,10 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
                             firmware_data[firmware_index] = firmware_image[firmware_offset + firmware_index] ^ 0xff;
                         }
                                 
-                        request.next = NULL;
                         request.control = STM32WB_FLASH_CONTROL_PROGRAM | STM32WB_FLASH_CONTROL_FLUSH;
                         request.address = firmware_address + firmware_offset;
                         request.count = firmware_chunk;
                         request.data = (const uint8_t*)&firmware_data[0];
-                        request.callback = NULL;
-                        request.context = NULL;
                         
                         stm32wb_flash_request(&request);
                         
@@ -957,8 +978,16 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
 
                     if (success)
                     {
-                        stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE, NULL, 0, &fus_status, sizeof(fus_status));
+                        command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE;
+                        command.cparam = NULL;
+                        command.clen = 0;
+                        command.rparam = &fus_status;
+                        command.rsize = sizeof(fus_status);
 
+                        stm32wb_ipcc_sys_command(&command);
+
+                        while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
+                        
                         if (fus_status == STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
                         {
                             while (1) {  __WFE(); }
@@ -979,6 +1008,7 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
 bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32wb_ipcc_ble_event_callback_t callback, void *context)
 {
     uint8_t sys_status;
+    stm32wb_ipcc_sys_command_t command;
 
     if (stm32wb_ipcc_device.state != STM32WB_IPCC_STATE_READY)
     {
@@ -1002,7 +1032,19 @@ bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32
     
     armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH1OM);
 
-    stm32wb_ipcc_sys_command(STM32WB_IPCC_SYS_OPCODE_BLE_INIT, params, sizeof(stm32wb_ipcc_ble_init_params_t), &sys_status, sizeof(sys_status));
+    command.next = NULL;
+    command.opcode = STM32WB_IPCC_SYS_OPCODE_BLE_INIT;
+    command.event = 0;
+    command.cparam = params;
+    command.clen = sizeof(stm32wb_ipcc_ble_init_params_t);
+    command.rparam = &sys_status;
+    command.rsize = sizeof(sys_status);
+    command.callback = NULL;
+    command.context = NULL;
+    
+    stm32wb_ipcc_sys_command(&command);
+
+    while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
     
     if (sys_status != 0x00)
     {
@@ -1041,17 +1083,22 @@ bool stm32wb_ipcc_ble_command(stm32wb_ipcc_ble_command_t *command)
         return false;
     }
 
+    if (armv7m_atomic_cas((volatile uint32_t*)&command->next, (uint32_t)NULL, (uint32_t)STM32WB_IPCC_BLE_COMMAND_SENTINEL) != (uint32_t)NULL)
+    {
+        return false;
+    }
+
     command->status = STM32WB_IPCC_BLE_STATUS_BUSY;
 
     do
     {
         command_submit = stm32wb_ipcc_device.ble_submit;
 
-        armv7m_atomic_store((volatile uint32_t*)&command->next, (uint32_t)command_submit);
+        command->next = command_submit;
     }
     while ((stm32wb_ipcc_ble_command_t*)armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.ble_submit, (uint32_t)command_submit, (uint32_t)command) != command_submit);
     
-    if (command_submit == NULL)
+    if (command_submit == STM32WB_IPCC_BLE_COMMAND_SENTINEL)
     {
         if (__current_irq() != IPCC_C1_RX_IRQn)
         {
@@ -1117,7 +1164,7 @@ uint8_t *stm32wb_ipcc_ble_event(void)
         {
             ble_event_release = stm32wb_ipcc_device.evt_release;
 
-            armv7m_atomic_store((volatile uint32_t*)&ble_event->node.next, (uint32_t)&ble_event_release->node);
+            ble_event->node.next = &ble_event_release->node;
         }
         while ((MB_BleEvent_t*)armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.evt_release, (uint32_t)ble_event_release, (uint32_t)ble_event) != ble_event_release);
 
@@ -1138,7 +1185,7 @@ uint8_t *stm32wb_ipcc_ble_event(void)
         {
             ble_event_next = (MB_BleEvent_t*)ble_event_acquire->node.next;
 
-            armv7m_atomic_store((volatile uint32_t*)&ble_event_acquire->node.next, (uint32_t)&ble_event_head->node);
+            ble_event_acquire->node.next = &ble_event_head->node;
 
             ble_event_head = ble_event_acquire;
         }
@@ -1149,7 +1196,7 @@ uint8_t *stm32wb_ipcc_ble_event(void)
         }
         else
         {
-            armv7m_atomic_store((volatile uint32_t*)&stm32wb_ipcc_device.evt_tail->node.next, (uint32_t)&ble_event_head->node);
+            stm32wb_ipcc_device.evt_tail->node.next = &ble_event_head->node;
         }
         
         stm32wb_ipcc_device.evt_tail = ble_event_tail;
@@ -1248,9 +1295,9 @@ void IPCC_C1_RX_IRQHandler(void)
     uint32_t ipcc_c1mr, ipcc_c2toc1sr, evt_code, evt_count, length;
     uint16_t opcode;
     const uint8_t *data;
-    stm32wb_ipcc_ble_command_t *command, *command_submit, *command_next, *command_head, *command_tail;
-    stm32wb_ipcc_ble_command_callback_t callback;
-    void *context;
+    stm32wb_ipcc_ble_command_t *ble_command, *ble_command_submit, *ble_command_next, *ble_command_head, *ble_command_tail;
+    stm32wb_ipcc_ble_command_callback_t ble_callback;
+    void *ble_context;
     MB_BleEvent_t *ble_event, *ble_event_next, *ble_event_acquire, *ble_event_release;
     MB_SysEvent_t *sys_event;
     
@@ -1275,31 +1322,29 @@ void IPCC_C1_RX_IRQHandler(void)
                 {
                     /* type, evt, length, packets, opcode[0], opcode[1], params */
 
-                    stm32wb_ipcc_device.ble_busy = (data[3] == 0);
-                    
                     opcode = (data[4] << 0) | (data[5] << 8);
 
-                    command = stm32wb_ipcc_device.ble_current;
+                    ble_command = stm32wb_ipcc_device.ble_current;
 
-                    if (command && (command->opcode == opcode))
+                    if (ble_command && (ble_command->opcode == opcode))
                     {
                         stm32wb_ipcc_device.ble_current = NULL;
 
-                        if (command->rparam)
+                        if (ble_command->rparam)
                         {
                             length = (data[2] - 3);
                             
-                            if (length > command->rsize)
+                            if (length > ble_command->rsize)
                             {
-                                length = command->rsize;
+                                length = ble_command->rsize;
                             }
                             
                             if (length)
                             {
-                                memcpy(command->rparam, &data[6], length);
+                                memcpy(ble_command->rparam, &data[6], length);
                             }
                             
-                            command->rlen = length;
+                            ble_command->rlen = length;
                             
                             if (((void*)ble_event >= (void*)(&MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
                             {
@@ -1313,14 +1358,16 @@ void IPCC_C1_RX_IRQHandler(void)
                         armv7m_rtt_printf("<< HCI_COMMAND_COMPLETE_EVENT = %02x\r\n", data[6]);
 #endif /* (STM32WB_IPCC_TRACE_SUPPORTED == 1) */
                         
-                        callback = command->callback;
-                        context = command->context;
+                        ble_callback = ble_command->callback;
+                        ble_context = ble_command->context;
 
-                        command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
+                        ble_command->next = NULL;
                         
-                        if (callback)
+                        ble_command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
+                        
+                        if (ble_callback)
                         {
-                            (*callback)(context);
+                            (*ble_callback)(ble_context);
                         }
                     }
                 }
@@ -1329,31 +1376,29 @@ void IPCC_C1_RX_IRQHandler(void)
                 {
                     /* type, evt, length, status, packets, opcode[0], opcode[1] */
 
-                    stm32wb_ipcc_device.ble_busy = (data[4] == 0);
-
                     opcode = (data[5] << 0) | (data[6] << 8);
                     
-                    command = stm32wb_ipcc_device.ble_current;
+                    ble_command = stm32wb_ipcc_device.ble_current;
 
-                    if (command && (command->opcode == opcode))
+                    if (ble_command && (ble_command->opcode == opcode))
                     {
                         stm32wb_ipcc_device.ble_current = NULL;
 
-                        if (command->rparam)
+                        if (ble_command->rparam)
                         {
                             length = 1;
 
-                            if (length > command->rsize)
+                            if (length > ble_command->rsize)
                             {
-                                length = command->rsize;
+                                length = ble_command->rsize;
                             }
                             
                             if (length)
                             {
-                                ((uint8_t*)command->rparam)[0] = data[3];
+                                ((uint8_t*)ble_command->rparam)[0] = data[3];
                             }
                             
-                            command->rlen = length;
+                            ble_command->rlen = length;
 
                             if (((void*)ble_event >= (void*)(&MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
                             {
@@ -1367,14 +1412,16 @@ void IPCC_C1_RX_IRQHandler(void)
                         armv7m_rtt_printf("<< HCI_COMMAND_STATUS_EVENT = %02x\r\n", data[3]);
 #endif /* (STM32WB_IPCC_TRACE_SUPPORTED == 1) */
                         
-                        callback = command->callback;
-                        context = command->context;
+                        ble_callback = ble_command->callback;
+                        ble_context = ble_command->context;
 
-                        command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
+                        ble_command->next = NULL;
+                        
+                        ble_command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
                             
-                        if (callback)
+                        if (ble_callback)
                         {
-                            (*callback)(context);
+                            (*ble_callback)(ble_context);
                         }
                     }
                 }
@@ -1386,7 +1433,7 @@ void IPCC_C1_RX_IRQHandler(void)
                 {
                     ble_event_acquire = stm32wb_ipcc_device.evt_acquire;
                     
-                    armv7m_atomic_store((volatile uint32_t*)&ble_event->node.next, (uint32_t)&ble_event_acquire->node);
+                    ble_event->node.next = &ble_event_acquire->node;
                 }
                 while ((MB_BleEvent_t*)armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.evt_acquire, (uint32_t)ble_event_acquire, (uint32_t)ble_event) != ble_event_acquire);
 
@@ -1447,54 +1494,62 @@ void IPCC_C1_RX_IRQHandler(void)
         IPCC->C1SCR = IPCC_C1SCR_CH2C;
     }
 
-    if (stm32wb_ipcc_device.ble_submit)
+    if (stm32wb_ipcc_device.ble_submit != STM32WB_IPCC_BLE_COMMAND_SENTINEL)
     {
-        command_submit = (stm32wb_ipcc_ble_command_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_ipcc_device.ble_submit, (uint32_t)NULL);
+        ble_command_submit = (stm32wb_ipcc_ble_command_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_ipcc_device.ble_submit, (uint32_t)STM32WB_IPCC_BLE_COMMAND_SENTINEL);
 
-        for (command_head = NULL, command_tail = command_submit; command_submit != NULL; command_submit = command_next)
+        if (ble_command_submit->next == STM32WB_IPCC_BLE_COMMAND_SENTINEL)
         {
-            command_next = command_submit->next;
-
-            armv7m_atomic_store((volatile uint32_t*)&command_submit->next, (uint32_t)command_head);
-
-            command_head = command_submit;
-        }
-        
-        if (!stm32wb_ipcc_device.ble_head)
-        {
-            stm32wb_ipcc_device.ble_head = command_head;
+            ble_command_head = ble_command_submit;
+            ble_command_tail = ble_command_submit;
         }
         else
         {
-            armv7m_atomic_store((volatile uint32_t*)&stm32wb_ipcc_device.ble_tail->next, (uint32_t)command_head);
+            for (ble_command_head = STM32WB_IPCC_BLE_COMMAND_SENTINEL, ble_command_tail = ble_command_submit; ble_command_submit != STM32WB_IPCC_BLE_COMMAND_SENTINEL; ble_command_submit = ble_command_next)
+            {
+                ble_command_next = ble_command_submit->next;
+                
+                ble_command_submit->next = ble_command_head;
+                
+                ble_command_head = ble_command_submit;
+            }
         }
         
-        stm32wb_ipcc_device.ble_tail = command_tail;
+        if (stm32wb_ipcc_device.ble_head == STM32WB_IPCC_BLE_COMMAND_SENTINEL)
+        {
+            stm32wb_ipcc_device.ble_head = ble_command_head;
+        }
+        else
+        {
+            stm32wb_ipcc_device.ble_tail->next = ble_command_head;
+        }
+        
+        stm32wb_ipcc_device.ble_tail = ble_command_tail;
     }
     
     if (!stm32wb_ipcc_device.ble_current)
     {
-        if (stm32wb_ipcc_device.ble_head && !stm32wb_ipcc_device.ble_busy)
+        ble_command = stm32wb_ipcc_device.ble_head;
+
+        if (ble_command != STM32WB_IPCC_BLE_COMMAND_SENTINEL)
         {
-            command = stm32wb_ipcc_device.ble_head;
-            
             if (stm32wb_ipcc_device.ble_head == stm32wb_ipcc_device.ble_tail)
             {
-                stm32wb_ipcc_device.ble_head = NULL;
-                stm32wb_ipcc_device.ble_tail = NULL;
+                stm32wb_ipcc_device.ble_head = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
+                stm32wb_ipcc_device.ble_tail = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
             }
             else
             {
-                stm32wb_ipcc_device.ble_head = command->next;
+                stm32wb_ipcc_device.ble_head = ble_command->next;
             }
             
-            stm32wb_ipcc_device.ble_current = command;
+            stm32wb_ipcc_device.ble_current = ble_command;
 
 #if (STM32WB_IPCC_TRACE_SUPPORTED == 1)
             {
                 unsigned int index, opcode;
 
-                opcode = command->opcode;
+                opcode = ble_command->opcode;
                 
                 for (index = 0; index < (sizeof(hci_command_table) / sizeof(hci_command_table[0])); index++)
                 {
@@ -1513,13 +1568,13 @@ void IPCC_C1_RX_IRQHandler(void)
 #endif /* (STM32WB_IPCC_TRACE_SUPPORTED == 1) */
             
             MB_BleCmdBuffer.data[0] = HCI_COMMAND_DATA_PACKET;
-            MB_BleCmdBuffer.data[1] = (uint8_t)(command->opcode >> 0);
-            MB_BleCmdBuffer.data[2] = (uint8_t)(command->opcode >> 8);
-            MB_BleCmdBuffer.data[3] = (uint8_t)command->clen;
+            MB_BleCmdBuffer.data[1] = (uint8_t)(ble_command->opcode >> 0);
+            MB_BleCmdBuffer.data[2] = (uint8_t)(ble_command->opcode >> 8);
+            MB_BleCmdBuffer.data[3] = (uint8_t)ble_command->clen;
             
-            if (command->clen)
+            if (ble_command->clen)
             {
-                memcpy(&MB_BleCmdBuffer.data[4], command->cparam, command->clen);
+                memcpy(&MB_BleCmdBuffer.data[4], ble_command->cparam, ble_command->clen);
             }
             
             IPCC->C1SCR = IPCC_C1SCR_CH1S;
@@ -1560,14 +1615,64 @@ void IPCC_C1_RX_IRQHandler(void)
 
 void IPCC_C1_TX_IRQHandler(void)
 {
-  uint32_t ipcc_c1mr, ipcc_c1toc2sr;
+    uint32_t ipcc_c1mr, ipcc_c1toc2sr, length;
+    stm32wb_ipcc_sys_command_t *sys_command, *sys_command_submit, *sys_command_next, *sys_command_head, *sys_command_tail;
+    stm32wb_ipcc_sys_command_callback_t sys_callback;
+    void *sys_context;
     volatile uint8_t *acl_status;
     stm32wb_ipcc_ble_acldata_callback_t acl_callback;
     void *acl_context;
+    volatile uint8_t *MB_SysRspBuffer;
 
     ipcc_c1mr = IPCC->C1MR;
     ipcc_c1toc2sr = IPCC->C1TOC2SR;
-   
+
+    if (!(ipcc_c1mr & IPCC_C1MR_CH2FM) && !(ipcc_c1toc2sr & IPCC_C1TOC2SR_CH2F))
+    {
+        /* SYS TX ACK */
+
+        armv7m_atomic_or(&IPCC->C1MR, IPCC_C1MR_CH2FM);
+
+        sys_command = stm32wb_ipcc_device.sys_current;
+
+        if (sys_command)
+        {
+            MB_SysRspBuffer = (volatile uint8_t*)&MB_SysCmdBuffer;
+
+
+            stm32wb_ipcc_device.sys_current = NULL;
+        
+            if (sys_command->rparam)
+            {
+                length = MB_SysRspBuffer[2] - 3;
+
+                if (length > sys_command->rsize)
+                {
+                    length = sys_command->rsize;
+                }
+
+                if (length)
+                {
+                    memcpy(sys_command->rparam, (const void*)&MB_SysRspBuffer[6], length);
+                }
+
+                sys_command->rlen = length;
+            }
+
+            sys_callback = sys_command->callback;
+            sys_context = sys_command->context;
+
+            sys_command->next = NULL;
+
+            sys_command->status = MB_SysRspBuffer[5];
+
+            if (sys_callback)
+            {
+                (*sys_callback)(sys_context);
+            }
+        }
+    }
+    
     if (!(ipcc_c1mr & IPCC_C1MR_CH4FM) && !(ipcc_c1toc2sr & IPCC_C1TOC2SR_CH4F))
     {
         /* MM TX ACK */
@@ -1587,7 +1692,7 @@ void IPCC_C1_TX_IRQHandler(void)
         acl_callback = stm32wb_ipcc_device.acl_callback;
         acl_context = stm32wb_ipcc_device.acl_context;
         
-        armv7m_atomic_storeb(&stm32wb_ipcc_device.acl_busy, false);
+        stm32wb_ipcc_device.acl_busy = false;
 
         if (acl_status)
         {
@@ -1597,6 +1702,65 @@ void IPCC_C1_TX_IRQHandler(void)
         if (acl_callback)
         {
             (*acl_callback)(acl_context);
+        }
+    }
+
+    if (stm32wb_ipcc_device.sys_submit != STM32WB_IPCC_SYS_COMMAND_SENTINEL)
+    {
+        sys_command_submit = (stm32wb_ipcc_sys_command_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_ipcc_device.sys_submit, (uint32_t)STM32WB_IPCC_SYS_COMMAND_SENTINEL);
+
+        for (sys_command_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL, sys_command_tail = sys_command_submit; sys_command_submit != STM32WB_IPCC_SYS_COMMAND_SENTINEL; sys_command_submit = sys_command_next)
+        {
+            sys_command_next = sys_command_submit->next;
+
+            sys_command_submit->next = sys_command_head;
+
+            sys_command_head = sys_command_submit;
+        }
+        
+        if (stm32wb_ipcc_device.sys_head == STM32WB_IPCC_SYS_COMMAND_SENTINEL)
+        {
+            stm32wb_ipcc_device.sys_head = sys_command_head;
+        }
+        else
+        {
+            stm32wb_ipcc_device.sys_tail->next = sys_command_head;
+        }
+        
+        stm32wb_ipcc_device.sys_tail = sys_command_tail;
+    }
+
+    if (!stm32wb_ipcc_device.sys_current)
+    {
+        sys_command = stm32wb_ipcc_device.sys_head;
+
+        if (sys_command != STM32WB_IPCC_SYS_COMMAND_SENTINEL)
+        {
+            if (sys_command == stm32wb_ipcc_device.sys_tail)
+            {
+                stm32wb_ipcc_device.sys_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+                stm32wb_ipcc_device.sys_tail = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+            }
+            else
+            {
+                stm32wb_ipcc_device.sys_tail = sys_command->next;
+            }
+
+            stm32wb_ipcc_device.sys_current = sys_command;
+            
+            MB_SysCmdBuffer.data[0] = SYS_COMMAND_PACKET;
+            MB_SysCmdBuffer.data[1] = (sys_command->opcode >> 0);
+            MB_SysCmdBuffer.data[2] = (sys_command->opcode >> 8);
+            MB_SysCmdBuffer.data[3] = sys_command->clen;
+            
+            if (sys_command->clen)
+            {
+                memcpy(&MB_SysCmdBuffer.data[4], sys_command->cparam, sys_command->clen);
+            }
+            
+            IPCC->C1SCR = IPCC_C1SCR_CH2S;
+
+            armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH2FM);
         }
     }
     

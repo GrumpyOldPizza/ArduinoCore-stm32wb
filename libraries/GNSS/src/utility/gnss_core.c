@@ -30,8 +30,8 @@
 #include "stm32wbxx.h"
 
 #include "gnss_api.h"
-#include "stm32wb_rtc.h"
 #include "stm32wb_lptim.h"
+#include "stm32wb_rtc.h"
 
 /*
  * NOTES:
@@ -273,7 +273,7 @@ static void ubx_configure(gnss_device_t *device, unsigned int response, uint32_t
 static void gnss_location(gnss_device_t *device)
 {
     uint64_t clock;
-    uint32_t seconds, ticks;
+    uint32_t seconds_p, seconds_o, seconds_n, ticks_p, ticks_o, ticks_n;
     stm32wb_rtc_tod_t tod;
 
     switch (device->location.type) {
@@ -324,23 +324,32 @@ static void gnss_location(gnss_device_t *device)
             {
                 if (device->location.mask & GNSS_LOCATION_MASK_RESOLVED)
                 {
-                    if ((device->pps_correction != device->location.correction) || !(stm32wb_rtc_status() & STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL))
+                    if (device->pps_correction != device->location.correction)
                     {
-                        stm32wb_rtc_set_utc_offset(device->location.correction, true);
+                        stm32wb_rtc_set_leap_seconds(device->location.correction);
                     }
                     
                     device->pps_correction = device->location.correction;
                     device->pps_resolved = 1;
                 }
-
+                
                 do
                 {
                     device->pps_sequence[1] = device->pps_sequence[0];
-
+                    
                     clock = stm32wb_rtc_clock_convert(&device->pps_capture);
                 }
                 while (device->pps_sequence[1] != device->pps_sequence[0]);
-
+                
+                stm32wb_rtc_clock_to_time(clock, &seconds_p, &ticks_p);
+                
+                if (ticks_p)
+                {
+                    stm32wb_rtc_time_adjust((ticks_p < (STM32WB_RTC_CLOCK_TICKS_PER_SECOND / 2)) ? (0 - ticks_p) : (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - ticks_p));
+                }
+                
+                stm32wb_rtc_time_read(&seconds_o, &ticks_o);
+                
                 tod.year = (device->location.time.year + 1980) - 1980;
                 tod.month = device->location.time.month;
                 tod.day = device->location.time.day;
@@ -349,9 +358,14 @@ static void gnss_location(gnss_device_t *device)
                 tod.seconds = device->location.time.seconds;
                 tod.ticks = 0;
 
-                stm32wb_rtc_tod_to_time(&tod, &seconds, &ticks);
+                stm32wb_rtc_tod_to_time(&tod, &seconds_n, &ticks_n);
 
-                stm32wb_rtc_time_write(clock, seconds - 432000 + device->pps_correction, ticks, true);
+                seconds_n = (seconds_n + device->pps_correction) - 432000;
+
+                if (seconds_o != seconds_n)
+                {
+                    stm32wb_rtc_time_write(seconds_n);
+                }
             }
         }
     }
@@ -1678,7 +1692,7 @@ static void ubx_start_message(gnss_device_t *device, unsigned int message)
             
         device->rx_chunk = 40;
 
-        stm32wb_lptim_timeout_stop(&device->ubx.timeout);
+        stm32wb_lptim_timeout_cancel(&device->ubx.timeout);
     }
 }
 
@@ -2860,14 +2874,14 @@ static void ubx_table(gnss_device_t *device, const uint8_t * const * table)
 
     ubx_send(device, data);
 
-    stm32wb_lptim_timeout_start(&device->ubx.timeout, stm32wb_lptim_timeout_millis_to_ticks(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout); // 125ms
+    stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
 }
 
 static void ubx_configure(gnss_device_t *device, __attribute__((unused)) unsigned int response, uint32_t command)
 {
     const uint8_t *data = NULL;
 
-    stm32wb_lptim_timeout_stop(&device->ubx.timeout);
+    stm32wb_lptim_timeout_cancel(&device->ubx.timeout);
 
     // printf("CONFIGURE %04x\r\n", command);
     
@@ -2932,7 +2946,7 @@ static void ubx_configure(gnss_device_t *device, __attribute__((unused)) unsigne
     {
         ubx_send(device, data);
 
-        stm32wb_lptim_timeout_start(&device->ubx.timeout, stm32wb_lptim_timeout_millis_to_ticks(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout); // 125ms
+        stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
     }
 }
 
@@ -3014,7 +3028,7 @@ static void ubx_timeout(void)
 
         ubx_send(device, data);
 
-        stm32wb_lptim_timeout_start(&device->ubx.timeout, stm32wb_lptim_timeout_millis_to_ticks(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout); // 125ms
+        stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
     }
 }
 
@@ -3028,7 +3042,7 @@ static void gnss_send_callback(void)
     {
         device->command = ~0l;
         
-        stm32wb_lptim_timeout_start(&device->ubx.sleep, stm32wb_lptim_timeout_millis_to_ticks(125), (stm32wb_lptim_timeout_callback_t)ubx_sleep); // 125ms
+        stm32wb_lptim_timeout_relative(&device->ubx.sleep, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_sleep, NULL); // 125ms
     }
     else
     {
@@ -3319,7 +3333,7 @@ void gnss_initialize(unsigned int mode, unsigned int rate, unsigned int speed, g
 
     device->pps_sequence[0] = 0;
     device->pps_sequence[1] = 0;
-    device->pps_correction = stm32wb_rtc_get_utc_offset();
+    device->pps_correction = stm32wb_rtc_get_leap_seconds();
     device->pps_resolved = 0;
     
     memset(&device->location, 0, sizeof(device->location));
@@ -3355,8 +3369,8 @@ void gnss_initialize(unsigned int mode, unsigned int rate, unsigned int speed, g
         
         uart_count = strlen(uart_data);
 
-        stm32wb_lptim_timeout_create(&device->ubx.sleep);
-        stm32wb_lptim_timeout_create(&device->ubx.timeout);
+        device->ubx.sleep = STM32WB_LPTIM_TIMEOUT_INIT();
+        device->ubx.timeout = STM32WB_LPTIM_TIMEOUT_INIT();
     }
     else
     {

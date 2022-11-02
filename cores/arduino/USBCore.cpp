@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -68,15 +68,15 @@ static const stm32wb_usbd_params_t g_USBParams =
 #endif
 
 USBDeviceClass::USBDeviceClass() {
+    m_events = 0;
+    
     m_attach_callback = Callback();
     m_detach_callback = Callback();
     m_connect_callback = Callback();
     m_suspend_callback = Callback();
     m_resume_callback = Callback();
 
-    Callback work_callback = Callback(&USBDeviceClass::workRoutine, this);
-
-    k_work_create(&m_work, work_callback.callback(), work_callback.context());
+    m_work = K_WORK_INIT(&USBDeviceClass::notifyRoutine, (void*)this);
 
 #if (USB_TYPE == 2)
 #if (STM32WB_CONFIG_SFLASH == 1) || (STORAGE_TYPE == 1)
@@ -185,36 +185,36 @@ void USBDeviceClass::onResume(Callback callback) {
     m_resume_callback = callback;
 }
 
-void USBDeviceClass::workRoutine() {
-    uint32_t events;
-
-    events = armv7m_atomic_swap(&m_events, 0);
-
-    if (events & STM32WB_USBD_EVENT_ATTACH) {
-        m_attach_callback();
-    }
-
-    if (events & STM32WB_USBD_EVENT_DETACH) {
-        m_attach_callback();
-    }
-    
-    if (events & STM32WB_USBD_EVENT_CONNECT) {
-        m_connect_callback();
-    }
-
-    if (events & STM32WB_USBD_EVENT_SUSPEND) {
-        m_suspend_callback();
-    }
-
-    if (events & STM32WB_USBD_EVENT_RESUME) {
-        m_resume_callback();
-    }
-}
-
 void USBDeviceClass::eventCallback(class USBDeviceClass *self, uint32_t events) {
     armv7m_atomic_or(&self->m_events, events);
 
     k_work_submit(&self->m_work);
+}
+
+void USBDeviceClass::notifyRoutine(class USBDeviceClass *self) {
+    uint32_t events;
+
+    events = armv7m_atomic_swap(&self->m_events, 0);
+
+    if (events & STM32WB_USBD_EVENT_ATTACH) {
+        self->m_attach_callback();
+    }
+
+    if (events & STM32WB_USBD_EVENT_DETACH) {
+        self->m_attach_callback();
+    }
+    
+    if (events & STM32WB_USBD_EVENT_CONNECT) {
+        self->m_connect_callback();
+    }
+
+    if (events & STM32WB_USBD_EVENT_SUSPEND) {
+        self->m_suspend_callback();
+    }
+
+    if (events & STM32WB_USBD_EVENT_RESUME) {
+        self->m_resume_callback();
+    }
 }
 
 USBDeviceClass USBDevice;

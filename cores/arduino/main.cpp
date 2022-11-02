@@ -22,10 +22,12 @@
 
 #if defined(ARDUINO_MAKEFILE)
 
-void setup() {
+#include "STM32WB.h"
+
+void setup(void) {
 }
 
-void loop() {
+void loop(void) {
 }
 
 #endif
@@ -46,9 +48,6 @@ void initUSB() {
 
 #endif
 
-// Initialize C library
-extern "C" void __libc_init_array(void);
-
 void (*g_serialEventRun)(void) = NULL;
 
 /*
@@ -57,8 +56,6 @@ void (*g_serialEventRun)(void) = NULL;
 int main( void ) {
   init();
   initVariant();
-
-  __libc_init_array();
 
 #if defined(USBCON)
   initUSB();

@@ -28,7 +28,7 @@ Firefly-WB55CG.build.ldscript=STM32WB55xx_FLASH.ld
 Firefly-WB55CG.build.openocdscript=openocd_scripts/firefly-wb55cg.cfg
 Firefly-WB55CG.build.variant=Firefly-WB55CG
 Firefly-WB55CG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
-Firefly-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+Firefly-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Core/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
 
 Firefly-WB55CG.upload.tool=dfu-util
 Firefly-WB55CG.upload.protocol=dfu
@@ -90,7 +90,7 @@ Katydid-WB55CG.build.ldscript=STM32WB55xx_FLASH.ld
 Katydid-WB55CG.build.openocdscript=openocd_scripts/katydid-wb55cg.cfg
 Katydid-WB55CG.build.variant=Katydid-WB55CG
 Katydid-WB55CG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
-Katydid-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+Katydid-WB55CG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Core/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
 
 Katydid-WB55CG.upload.tool=dfu-util
 Katydid-WB55CG.upload.protocol=dfu
@@ -146,7 +146,7 @@ Mothra-WB5MMG.build.ldscript=STM32WB55xx_FLASH.ld
 Mothra-WB5MMG.build.openocdscript=openocd_scripts/mothra-wb5mmg.cfg
 Mothra-WB5MMG.build.variant=Mothra-WB5MMG
 Mothra-WB5MMG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
-Mothra-WB5MMG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+Mothra-WB5MMG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Core/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
 
 Mothra-WB5MMG.upload.tool=dfu-util
 Mothra-WB5MMG.upload.protocol=dfu
@@ -202,7 +202,7 @@ Snoopy6-WB5MMG.build.ldscript=STM32WB55xx_FLASH.ld
 Snoopy6-WB5MMG.build.openocdscript=openocd_scripts/snoopy6-wb5mmg.cfg
 Snoopy6-WB5MMG.build.variant=Snoopy6-WB5MMG
 Snoopy6-WB5MMG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
-Snoopy6-WB5MMG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+Snoopy6-WB5MMG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Core/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
 
 Snoopy6-WB5MMG.upload.tool=dfu-util
 Snoopy6-WB5MMG.upload.protocol=dfu
@@ -252,7 +252,7 @@ NUCLEO-WB55RG.build.ldscript=STM32WB55xx_FLASH.ld
 NUCLEO-WB55RG.build.openocdscript=openocd_scripts/nucleo-wb55rg.cfg
 NUCLEO-WB55RG.build.variant=NUCLEO-WB55RG
 NUCLEO-WB55RG.build.variant_system_libs="-L{runtime.platform.path}/system/STM32WBxx/Lib" "-L{runtime.platform.path}/system/CMSIS/DSP/Lib" -lstm32wb55xx -larm_cortexM4lf_math
-NUCLEO-WB55RG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
+NUCLEO-WB55RG.build.variant_system_include="-I{runtime.platform.path}/system/CMSIS/Core/Include" "-I{runtime.platform.path}/system/CMSIS/DSP/Include" "-I{runtime.platform.path}/system/CMSIS/Device/ST/STM32WBxx/Include" "-I{runtime.platform.path}/system/STM32WBxx/Include" 
 
 NUCLEO-WB55RG.upload.tool=openocd
 NUCLEO-WB55RG.upload.protocol=stlink

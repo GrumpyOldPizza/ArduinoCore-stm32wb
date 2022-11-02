@@ -511,8 +511,9 @@ public:
     virtual int getValue(void *value, int length);
 
     virtual bool setValue(const void *value, int length);
-    virtual bool writeValue(const void *value, int length, volatile uint8_t *p_status_return, Callback callback);
+    virtual bool writeValue(const void *value, int length, Callback callback);
     
+    virtual uint8_t status();
     virtual bool busy();
     virtual bool written();
     virtual bool subscribed();
@@ -647,7 +648,7 @@ public:
     int getValue(void *value, int length) override;
 
     bool setValue(const void *value, int length) override;
-    bool writeValue(const void *value, int length, volatile uint8_t *p_status_return, Callback callback) override;
+    bool writeValue(const void *value, int length, Callback callback) override;
     
     bool busy() override;
     bool written() override;
@@ -678,14 +679,13 @@ protected:
     volatile uint8_t m_sync_value : 1;
     volatile uint8_t m_sync_subscribed : 1;
     
-    volatile uint8_t m_busy;
+    volatile uint8_t m_status;
     volatile uint16_t m_written;
     
     uint8_t * const m_value;
     uint16_t m_value_length;
     const uint16_t m_value_size;
 
-    volatile uint8_t *m_status;
     Callback m_done_callback;
 
     Callback m_read_callback;
@@ -1043,8 +1043,12 @@ bool BLECharacteristicInstance::setValue(const void *value __attribute__((unused
     return false;
 }
 
-bool BLECharacteristicInstance::writeValue(const void *value __attribute__((unused)), int length __attribute__((unused)), volatile uint8_t *p_status_return __attribute__((unused)), Callback callback __attribute__((unused))) {
+bool BLECharacteristicInstance::writeValue(const void *value __attribute__((unused)), int length __attribute__((unused)), Callback callback __attribute__((unused))) {
     return false;
+}
+
+uint8_t BLECharacteristicInstance::status() {
+    return BLE_STATUS_SUCCESS;
 }
 
 bool BLECharacteristicInstance::busy() {
@@ -1238,7 +1242,7 @@ BLEServerCharacteristic::BLEServerCharacteristic(const char *uuid, uint8_t prope
     m_sync_value = false;
     m_sync_subscribed = false;
     
-    m_busy = 0;
+    m_status = BLE_STATUS_SUCCESS;
     m_written = 0;
 
     m_done_callback = Callback();
@@ -1252,7 +1256,7 @@ BLEServerCharacteristic::BLEServerCharacteristic(const char *uuid, uint8_t prope
     m_server.sibling = nullptr;
     m_server.children = nullptr;
 
-    armv7m_atomic_store((volatile uint32_t*)&m_process.request, (uint32_t)nullptr);
+    m_process.request = nullptr;
 }
 
 BLEServerCharacteristic::~BLEServerCharacteristic() {
@@ -1313,6 +1317,8 @@ int BLEServerCharacteristic::getValue(void *value, int length) {
 }
   
 bool BLEServerCharacteristic::setValue(const void *value, int length) {
+    uint8_t status;
+    
     if (m_constant) {
         return false;
     }
@@ -1327,12 +1333,14 @@ bool BLEServerCharacteristic::setValue(const void *value, int length) {
         }
     }
 
-    if (armv7m_atomic_casb((volatile uint8_t*)&m_busy, 0, 1) != 0) {
+    status = armv7m_atomic_swapb((volatile uint8_t*)&m_status, BLE_STATUS_BUSY);
+    
+    if (status == BLE_STATUS_BUSY) {
         return false;
     }
     
     if (m_written & 0x8000) {
-        armv7m_atomic_storeb(&m_busy, 0);
+        m_status = status;
         
         return false;
     }
@@ -1343,12 +1351,14 @@ bool BLEServerCharacteristic::setValue(const void *value, int length) {
 
     m_update_value = true;
 
-    armv7m_atomic_storeb(&m_busy, 0);
+    m_status = status;
     
     return true;
 }
 
-bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile uint8_t *p_status_return, Callback callback) {
+bool BLEServerCharacteristic::writeValue(const void *value, int length, Callback callback) {
+    uint8_t status;
+
     if (m_constant) {
         return false;
     }
@@ -1363,12 +1373,14 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
         }
     }
 
-    if (armv7m_atomic_casb((volatile uint8_t*)&m_busy, 0, 1) != 0) {
+    status = armv7m_atomic_swapb((volatile uint8_t*)&m_status, BLE_STATUS_BUSY);
+    
+    if (status == BLE_STATUS_BUSY) {
         return false;
     }
     
     if (m_written & 0x8000) {
-        armv7m_atomic_storeb(&m_busy, 0);
+        m_status = status;
         
         return false;
     }
@@ -1381,12 +1393,7 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
 
     m_update_type = m_subscribed;
     m_update_value = false;
-
-    if (p_status_return) {
-        *p_status_return = BLE_STATUS_BUSY;
-    }
     
-    m_status = p_status_return;
     m_done_callback = callback;
         
     BLEHost.request(this);
@@ -1395,7 +1402,7 @@ bool BLEServerCharacteristic::writeValue(const void *value, int length, volatile
 }
 
 bool BLEServerCharacteristic::busy() {
-    return m_busy;
+    return (m_status == BLE_STATUS_BUSY);
 }
 
 bool BLEServerCharacteristic::written() {
@@ -1754,19 +1761,26 @@ void BLEPeerDevice::onConnectionUpdate(Callback callback) {
 static const uint8_t ER[16] = { 0xfe,0xdc,0xba,0x09,0x87,0x65,0x43,0x21,0xfe,0xdc,0xba,0x09,0x87,0x65,0x43,0x21 };
 static const uint8_t IR[16] = { 0x12,0x34,0x56,0x78,0x9a,0xbc,0xde,0xf0,0x12,0x34,0x56,0x78,0x9a,0xbc,0xde,0xf0 };
 
+static void hci_done_req(k_task_t *task) {
+    k_task_wakeup(task);
+}
+
 int hci_send_req(stm32wb_ipcc_ble_command_t *command, bool async) {
+    if (async) {
+        return BLE_STATUS_ERROR;
+    }
+
+    command->next = NULL;
     command->rsize = command->rlen;
+    command->callback = (stm32wb_ipcc_ble_command_callback_t)hci_done_req;
+    command->context = k_task_self();
 
     if (!stm32wb_ipcc_ble_command(command)) {
         return BLE_STATUS_ERROR;
     }
 
-    if (async) {
-        return BLE_STATUS_SUCCESS;
-    }
-
-    while (command->status == STM32WB_IPCC_BLE_STATUS_BUSY) {
-        __WFE();
+    if (k_task_sleep(K_TIMEOUT_FOREVER) != K_NO_ERROR) {
+        return BLE_STATUS_ERROR;
     }
 
     return (command->status == STM32WB_IPCC_BLE_STATUS_SUCCESS) ? BLE_STATUS_SUCCESS : BLE_STATUS_TIMEOUT;
@@ -1829,7 +1843,7 @@ BLELocalDevice::BLELocalDevice() {
     
     Callback process_callback = Callback(&BLELocalDevice::process, this);
 
-    k_work_create(&m_process.work, process_callback.callback(), process_callback.context());
+    k_work_init(&m_process.work, process_callback.callback(), process_callback.context());
 }
 
 bool BLELocalDevice::begin(int mtu, uint32_t options) {
@@ -2148,7 +2162,7 @@ bool BLELocalDevice::setPreferredPhy(BLEPhy txPhy, BLEPhy rxPhy, BLEPhyOption ph
 }
 
 void BLELocalDevice::setDeviceName(const char *deviceName) {
-    uint32_t length;
+    uint32_t length = 0;
     
     if (m_device_name) {
         deallocate_noconst(m_device_name);
@@ -2160,10 +2174,6 @@ void BLELocalDevice::setDeviceName(const char *deviceName) {
         length = strlen(deviceName);
 
         m_device_name = (const char*)allocate_noconst(deviceName, length +1);
-    }
-
-    if (!m_device_name) {
-        length = 0;
     }
 
     if (!m_reset) {
@@ -3089,7 +3099,8 @@ void BLELocalDevice::reset() {
     BLEServerCharacteristic *characteristic, *request, *request_next;
     BLEServerDescriptor *descriptor;
     uint32_t index;
-
+    Callback callback;
+    
     for (index = 0; index < BLE_NUM_GATT_SERVICES; index++) {
         if (m_process.service_table[index] != nullptr) {
             service = m_process.service_table[index];
@@ -3112,7 +3123,7 @@ void BLELocalDevice::reset() {
                     if (characteristic->m_server.handle) {
                         characteristic->m_server.handle = 0x0000;
 
-                        armv7m_atomic_storeh(&characteristic->m_written, 0x0000);
+                        characteristic->m_written = 0x0000;
             
                         characteristic->unreference();
                     }
@@ -3130,44 +3141,38 @@ void BLELocalDevice::reset() {
     if (m_process.request_current) {
         request = m_process.request_current;
 
-        armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
-        armv7m_atomic_storeb(&request->m_busy, 0);
+        callback = request->m_done_callback;
 
-        if (request->m_status) {
-            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-        }
+        request->m_process.request = nullptr;
+        request->m_status = BLE_STATUS_FAILURE; // HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE
 
-        request->m_done_callback();
+        callback();
     }
 
     for (request = m_process.request_head; request; request = request_next) {
         request_next = request->m_process.request;
 
-        armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
-        armv7m_atomic_storeb(&request->m_busy, 0);
+        callback = request->m_done_callback;
+        
+        request->m_process.request = nullptr;
+        request->m_status = BLE_STATUS_FAILURE; // HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE
 
-        if (request->m_status) {
-            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-        }
-
-        request->m_done_callback();
+        callback();
     }
 
     for (request = m_process.request_submit; request; request = request_next) {
         request_next = request->m_process.request;
 
-        armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)nullptr);
-        armv7m_atomic_storeb(&request->m_busy, 0);
+        callback = request->m_done_callback;
 
-        if (request->m_status) {
-            *request->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-        }
+        request->m_process.request = nullptr;
+        request->m_status = BLE_STATUS_FAILURE; // HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE
 
-        request->m_done_callback();
+        callback();
     }
 
 
-    armv7m_atomic_store(&m_process.sequence, 0);
+    m_process.sequence = 0;
 
     m_process.connection = BLE_PEER_DEVICE_NOT_CONNECTED;
     m_process.published = false;
@@ -3180,7 +3185,7 @@ void BLELocalDevice::reset() {
     m_process.request_head = nullptr;
     m_process.request_tail = nullptr;
     m_process.request_current = nullptr;
-    armv7m_atomic_store((volatile uint32_t*)&m_process.request_submit, (uint32_t)nullptr);
+    m_process.request_submit = nullptr;
 
     m_process.sync_value = false;
     m_process.value_current = nullptr;
@@ -3507,7 +3512,7 @@ void BLELocalDevice::request(class BLEServerCharacteristic *request) {
     do {
         request_submit = m_process.request_submit;
 
-        armv7m_atomic_store((volatile uint32_t*)&request->m_process.request, (uint32_t)request_submit);
+        request->m_process.request = request_submit;
     } while ((BLEServerCharacteristic *)armv7m_atomic_cas((volatile uint32_t*)&m_process.request_submit, (uint32_t)request_submit, (uint32_t)request) != request_submit);
 
     if (!request_submit) {
@@ -3579,6 +3584,7 @@ void BLELocalDevice::terminate() {
     BLEServerService *service;
     BLEServerCharacteristic *characteristic;
     uint32_t index;
+    Callback callback;
     
     if (m_central) {
         for (index = 0; index < BLE_NUM_GATT_SERVICES; index++) {
@@ -3615,14 +3621,12 @@ void BLELocalDevice::terminate() {
 #if (BLE_TRACE_SUPPORTED == 1)
             printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE, characteristic->m_uuid, characteristic->m_update_type);
 #endif
-            
-            armv7m_atomic_storeb(&characteristic->m_busy, 0);
 
-            if (characteristic->m_status) {
-                *characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-            }
+            callback = characteristic->m_done_callback;
             
-            characteristic->m_done_callback();
+            characteristic->m_status = BLE_STATUS_FAILURE; // HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
+            
+            callback();
         }
         
         m_central->m_handle = BLE_PEER_DEVICE_NOT_CONNECTED;
@@ -3665,7 +3669,8 @@ void BLELocalDevice::process() {
     const hci_event_pckt *hci_event;
     const evt_le_meta_event *hci_le_event;
     const evt_blue_aci *hci_vs_event;
-
+    Callback callback;
+    
     if (m_reset) {
         return;
     }
@@ -3731,14 +3736,12 @@ void BLELocalDevice::process() {
 #if (BLE_TRACE_SUPPORTED == 1)
                                     printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE, characteristic->m_uuid, characteristic->m_update_type);
 #endif
+
+                                    callback = characteristic->m_done_callback;
                                     
-                                    armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                                    characteristic->m_status = BLE_STATUS_FAILURE; // HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE
 
-                                    if (characteristic->m_status) {
-                                        *characteristic->m_status = HCI_REMOTE_USER_TERMINATED_CONNECTION_ERR_CODE;
-                                    }
-
-                                    characteristic->m_done_callback();
+                                    callback();
                                 }
                             } else {
                                 m_process.request_current = nullptr;
@@ -3746,14 +3749,12 @@ void BLELocalDevice::process() {
 #if (BLE_TRACE_SUPPORTED == 1)
                                 printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", rparam->Status, characteristic->m_uuid, characteristic->m_update_type);
 #endif
+
+                                callback = characteristic->m_done_callback;
                                 
-                                armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                                characteristic->m_status = (rparam->Status == HCI_SUCCESS_ERR_CODE) ? (uint8_t)BLE_STATUS_SUCCESS : (uint8_t)BLE_STATUS_FAILURE;
 
-                                if (characteristic->m_status) {
-                                    *characteristic->m_status = rparam->Status;
-                                }
-
-                                characteristic->m_done_callback();
+                                callback();
                             }
                         }
                     } else {
@@ -3763,13 +3764,11 @@ void BLELocalDevice::process() {
                         printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", rparam->Status, characteristic->m_uuid, characteristic->m_update_type);
 #endif
                         
-                        armv7m_atomic_storeb(&characteristic->m_busy, 0);
+                        callback = characteristic->m_done_callback;
                                 
-                        if (characteristic->m_status) {
-                            *characteristic->m_status = rparam->Status;
-                        }
-
-                        characteristic->m_done_callback();
+                        characteristic->m_status = (rparam->Status == HCI_SUCCESS_ERR_CODE) ? (uint8_t)BLE_STATUS_SUCCESS : (uint8_t)BLE_STATUS_FAILURE;
+                        
+                        callback();
                     }
 
                     if (characteristic->m_written) {
@@ -4059,9 +4058,9 @@ void BLELocalDevice::process() {
                                                    (eparam->Attr_Data_Length - (eparam->Offset & 0x7fff)));
                                             
                                             if (!(eparam->Offset & 0x8000)) {
-                                                armv7m_atomic_storeh(&characteristic->m_written, (0x8000 | eparam->Attr_Data_Length));
+                                                characteristic->m_written = (0x8000 | eparam->Attr_Data_Length);
                                                 
-                                                if (!characteristic->m_busy) {
+                                                if (characteristic->m_status != BLE_STATUS_BUSY) {
 #if (BLE_TRACE_SUPPORTED == 1)
                                                     printf("PROCESS-WRITTEN (\"%s\")\r\n", characteristic->m_uuid);
 #endif
@@ -4181,14 +4180,12 @@ void BLELocalDevice::process() {
 #if (BLE_TRACE_SUPPORTED == 1)
                             printf("PROCESS-DONE %02x (\"%s\", %02x)\r\n", BLE_STATUS_SUCCESS, characteristic->m_uuid, characteristic->m_update_type);
 #endif
-                            
-                            armv7m_atomic_storeb(&characteristic->m_busy, 0);
-                            
-                            if (characteristic->m_status) {
-                                *characteristic->m_status = BLE_STATUS_SUCCESS;
-                            }
 
-                            characteristic->m_done_callback();
+                            callback = characteristic->m_done_callback;
+                            
+                            characteristic->m_status = BLE_STATUS_SUCCESS;
+
+                            callback();
                         }
                         break;
                     }
@@ -4237,7 +4234,7 @@ void BLELocalDevice::process() {
         {
             request_next = request_submit->m_process.request;
 
-            armv7m_atomic_store((volatile uint32_t*)&request_submit->m_process.request, (uint32_t)request_head);
+            request_submit->m_process.request = request_head;
 
             request_head = request_submit;
         }
@@ -4248,7 +4245,7 @@ void BLELocalDevice::process() {
         }
         else
         {
-            armv7m_atomic_store((volatile uint32_t*)&m_process.request_tail->m_process.request, (uint32_t)request_head);
+            m_process.request_tail->m_process.request = request_head;
         }
         
         m_process.request_tail = request_tail;
@@ -4806,19 +4803,19 @@ bool BLECharacteristic::setValue(const void *value, int length) {
 }
 
 bool BLECharacteristic::writeValue(const void *value, int length) {
-    return (*m_instance).writeValue(value, length, NULL, Callback());
+    return (*m_instance).writeValue(value, length, Callback());
 }
 
-bool BLECharacteristic::writeValue(const void *value, int length, volatile uint8_t &status) {
-    return (*m_instance).writeValue(value, length, &status, Callback());
+bool BLECharacteristic::writeValue(const void *value, int length, void(*callback)(void)) {
+    return (*m_instance).writeValue(value, length, Callback(callback));
 }
 
-bool BLECharacteristic::writeValue(const void *value, int length, volatile uint8_t &status, void(*callback)(void)) {
-    return (*m_instance).writeValue(value, length, &status, Callback(callback));
+bool BLECharacteristic::writeValue(const void *value, int length, Callback callback) {
+    return (*m_instance).writeValue(value, length, callback);
 }
 
-bool BLECharacteristic::writeValue(const void *value, int length, volatile uint8_t &status, Callback callback) {
-    return (*m_instance).writeValue(value, length, &status, callback);
+uint8_t BLECharacteristic::status() {
+    return (*m_instance).status();
 }
 
 bool BLECharacteristic::busy() {
@@ -5435,7 +5432,7 @@ size_t BLEUart::write(const uint8_t *buffer, size_t size) {
         tx_count = BLE_UART_TX_BUFFER_SIZE - m_tx_count;
 
         if (!tx_count) {
-            if (m_nonblocking || !armv7m_core_is_in_thread() || k_work_is_in_progress()) {
+            if (m_nonblocking || !k_task_is_in_progress()) {
                 break;
             }
 
@@ -5453,7 +5450,7 @@ size_t BLEUart::write(const uint8_t *buffer, size_t size) {
                 
                 m_tx_size = tx_size;
                 
-                while (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, m_status, Callback(&BLEUart::transmit, this))) { }
+                while (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, Callback(&BLEUart::transmit, this))) { }
             }
 
             while (m_tx_busy) { __WFE(); }
@@ -5495,11 +5492,11 @@ size_t BLEUart::write(const uint8_t *buffer, size_t size) {
             
             m_tx_size = tx_size;
             
-            if (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, m_status, Callback(&BLEUart::transmit, this))) {
-                armv7m_atomic_storeb(&m_tx_busy, false);
+            if (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, Callback(&BLEUart::transmit, this))) {
+                m_tx_busy = false;
             }
         } else {
-            armv7m_atomic_storeb(&m_tx_busy, false);
+            m_tx_busy = false;
         }
     }
 
@@ -5507,7 +5504,7 @@ size_t BLEUart::write(const uint8_t *buffer, size_t size) {
 }
 
 void BLEUart::flush() {
-    if (armv7m_core_is_in_thread() && !k_work_is_in_progress()) {
+    if (k_task_is_in_progress()) {
         while (m_tx_busy) {
             __WFE();
         }
@@ -5537,11 +5534,11 @@ void BLEUart::transmit() {
         
         m_tx_size = tx_size;
         
-        while (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, m_status, Callback(&BLEUart::transmit, this))) {
+        while (!m_tx_characteristic.writeValue(&m_tx_data[tx_read], tx_size, Callback(&BLEUart::transmit, this))) {
             receive();
         }
     } else {
-        armv7m_atomic_storeb(&m_tx_busy, false);
+        m_tx_busy = false;
     }
 }
 

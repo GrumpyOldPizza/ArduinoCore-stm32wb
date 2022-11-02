@@ -28,7 +28,7 @@ volatile bool lps22hb_done = false;
 
 uint8_t lps22hb_data[5];
 
-volatile uint8_t lps22hb_status;
+TwoWireTransaction lps22hb_async;
 
 TimerMillis lps22hb_sample;
 
@@ -36,14 +36,14 @@ void sampleCallback(void)
 {
     static uint8_t tx_data[] = { 0x11, 0x11 };
 
-    Wire.transfer(LPS22HB_I2C_ADDRESS, &tx_data[0], 2, NULL, 0, true, lps22hb_status);
+    lps22hb_async.submit(Wire, LPS22HB_I2C_ADDRESS, &tx_data[0], 2, NULL, 0);
 }
 
 void readyCallback(void)
 {
     static uint8_t tx_data[] = { 0x28 };
 
-    Wire.transfer(LPS22HB_I2C_ADDRESS, &tx_data[0], 1, &lps22hb_data[0], 5, true, lps22hb_status, doneCallback);
+    lps22hb_async.submit(Wire, LPS22HB_I2C_ADDRESS, &tx_data[0], 1, &lps22hb_data[0], 5, doneCallback);
 }
 
 void doneCallback(void)

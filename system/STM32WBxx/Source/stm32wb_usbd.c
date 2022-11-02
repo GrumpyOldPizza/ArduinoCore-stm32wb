@@ -29,8 +29,8 @@
 #include "armv7m.h"
 #include "stm32wb_gpio.h"
 #include "stm32wb_exti.h"
-#include "stm32wb_system.h"
 #include "stm32wb_lptim.h"
+#include "stm32wb_system.h"
 #include "stm32wb_usbd.h"
 #include "stm32wb_usbd_dcd.h"
 
@@ -164,12 +164,12 @@ static void stm32wb_usbd_vbus_changed(void)
     {
         if (!vbus_status_previous)
         {
-            stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
+            stm32wb_lptim_timeout_relative(&stm32wb_usbd_control.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout, NULL);
         }
     }
     else
     {
-        stm32wb_lptim_timeout_stop(&stm32wb_usbd_control.timeout);
+        stm32wb_lptim_timeout_cancel(&stm32wb_usbd_control.timeout);
 
         if (vbus_status_previous)
         {
@@ -843,7 +843,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
 
     if (events & STM32WB_USBD_DCD_EVENT_EP0_SETUP)
     {
-        armv7m_atomic_load_2((volatile uint32_t*)&stm32wb_usbd_control.ep0_setup, &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[0]), &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[1]));
+        armv7m_atomic_load_2_restart((volatile uint32_t*)&stm32wb_usbd_control.ep0_setup, &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[0]), &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[1]));
 
         stm32wb_usbd_control.ep0_status_routine = NULL;
         stm32wb_usbd_control.ep0_out_data = stm32wb_usbd_control.info->ep0_data;
@@ -1042,11 +1042,10 @@ bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_u
         return false;
     }
 
-    stm32wb_lptim_timeout_create(&stm32wb_usbd_control.timeout);
-
     stm32wb_usbd_control.device = device;
     stm32wb_usbd_control.info = info;
     stm32wb_usbd_control.pin_vbus = params->pin_vbus;
+    stm32wb_usbd_control.timeout = STM32WB_LPTIM_TIMEOUT_INIT();
 
     stm32wb_usbd_control.state = STM32WB_USBD_STATE_INIT;
 
@@ -1093,14 +1092,14 @@ static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, vo
         else
         {
             stm32wb_gpio_pin_configure(stm32wb_usbd_control.pin_vbus, (STM32WB_GPIO_PARK_NONE | STM32WB_GPIO_PUPD_PULLDOWN | STM32WB_GPIO_OSPEED_LOW | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
-            stm32wb_exti_attach(stm32wb_usbd_control.pin_vbus, (STM32WB_EXTI_CONTROL_PRIORITY_LOW | STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_EDGE_FALLING), (stm32wb_exti_callback_t)stm32wb_usbd_vbus_changed, NULL);
+            stm32wb_exti_catch(stm32wb_usbd_control.pin_vbus, (STM32WB_EXTI_CONTROL_PRIORITY_LOW | STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_EDGE_FALLING), (stm32wb_exti_callback_t)stm32wb_usbd_vbus_changed, NULL);
 
             stm32wb_usbd_control.vbus_status = !!stm32wb_gpio_pin_read(stm32wb_usbd_control.pin_vbus);
         }
     
         if (stm32wb_usbd_control.vbus_status)
         {
-            stm32wb_lptim_timeout_start(&stm32wb_usbd_control.timeout, stm32wb_lptim_timeout_millis_to_ticks(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout); /* 40ms */
+            stm32wb_lptim_timeout_relative(&stm32wb_usbd_control.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(40), (stm32wb_lptim_timeout_callback_t)stm32wb_usbd_vbus_timeout, NULL); /* 40ms */
         }
     }
     else
@@ -1192,7 +1191,7 @@ bool stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context)
         return armv7m_svcall_2((uint32_t)&__svc_stm32wb_usbd_enable, (uint32_t)callback, (uint32_t)context);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
         return __svc_stm32wb_usbd_enable(callback, context);
     }
@@ -1207,7 +1206,7 @@ bool stm32wb_usbd_disable(void)
         return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_disable);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
         return __svc_stm32wb_usbd_disable();
     }
@@ -1222,7 +1221,7 @@ bool stm32wb_usbd_start(void)
         return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_start);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
         return __svc_stm32wb_usbd_start();
     }
@@ -1237,7 +1236,7 @@ bool stm32wb_usbd_stop(void)
         return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_stop);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
         return __svc_stm32wb_usbd_stop();
     }
@@ -1252,7 +1251,7 @@ bool stm32wb_usbd_wakeup(void)
         return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_wakeup);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
         return __svc_stm32wb_usbd_wakeup();
     }

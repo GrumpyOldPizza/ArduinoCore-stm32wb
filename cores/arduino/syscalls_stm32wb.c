@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -37,36 +37,27 @@
 #include <sys/unistd.h>
 
 #include "armv7m.h"
+#include "rtos_api.h"
 
-int (*stm32wb_stdio_put)(char, FILE*) = NULL;
-int (*stm32wb_stdio_get)(FILE*) = NULL;
+extern int wiring_stdin_read(char *data, int nbytes);
+extern int wiring_stdout_write(const char *data, int nbytes);
+extern int wiring_stderr_write(const char *data, int nbytes);
 
 #undef errno
 extern int errno;
 
-extern uint32_t __end__[];
-extern uint32_t __HeapLimit[];
-
 void * _sbrk (int nbytes)
 {
-    void *p;
+    void *p = k_heap_allocate(nbytes);
 
-    static void *__HeapCurrent = (void*)(&__end__[0]);
-
-    if (((uint8_t*)__HeapCurrent + nbytes) <= (uint8_t*)(&__HeapLimit[0]))
-    {
-        p = __HeapCurrent;
-        
-        __HeapCurrent = (void*)((uint8_t*)__HeapCurrent + nbytes);
-
-        return p;
-    }
-    else
+    if (!p)
     {
         errno = ENOMEM;
 
         return  (void *) -1;
     }
+
+    return p;
 }
 
 int _getpid(void)
@@ -126,32 +117,9 @@ int _lseek(int file, int offset, int whence)
 
 int _read(int file, char *buf, int nbytes)
 {
-    int c, n;
-
     switch (file) {
     case STDIN_FILENO:
-        n = 0;
-
-        if (nbytes != 0)
-        {
-            if (stm32wb_stdio_get != NULL)
-            {
-                do
-                {
-                    c = (*stm32wb_stdio_get)(stdin);
-                    
-                    if (c == -1)
-                    {
-                        break;
-                    }
-
-                    buf[n++] = c;
-                    nbytes--;
-                }
-                while (nbytes != 0);
-            }
-        }
-        return n;
+        return wiring_stdin_read(buf, nbytes);
 
     default:
         errno = EBADF;
@@ -161,31 +129,12 @@ int _read(int file, char *buf, int nbytes)
 
 int _write(int file, const char *buf, int nbytes)
 {
-    int n;
-
     switch (file) {
     case STDOUT_FILENO:
+        return wiring_stdout_write(buf, nbytes);
+
     case STDERR_FILENO:
-        n = 0;
-
-        if (nbytes != 0)
-        {
-            if (stm32wb_stdio_put != NULL)
-            {
-                do
-                {
-                    if (!(*stm32wb_stdio_put)(buf[n], stdout))
-                    {
-                        break;
-                    }
-
-                    n++;
-                    nbytes--;
-                }
-                while (nbytes != 0);
-            }
-        }
-        return n;
+        return wiring_stderr_write(buf, nbytes);
 
     default:
         errno = EBADF;
@@ -200,63 +149,15 @@ void _exit(int status)
     while (1) { };
 }
 
-void *malloc(size_t nbytes)
+static k_mutex_t __malloc_mutex = K_MUTEX_INIT(K_PRIORITY_MIN, K_MUTEX_PRIORITY_INHERIT | K_MUTEX_RECURSIVE);
+
+void __malloc_lock(struct _reent *ptr __attribute__((unused)))
 {
-    if (!armv7m_core_is_in_thread())
-    {
-        return NULL;
-    }
-    
-    return (void*)armv7m_svcall_2((uint32_t)&_malloc_r, (uint32_t)_REENT, (uint32_t)nbytes);
+    k_mutex_lock(&__malloc_mutex, K_TIMEOUT_FOREVER);
 }
 
-void free(void *aptr)
+void __malloc_unlock(struct _reent *ptr __attribute__((unused)))
 {
-    if (!armv7m_core_is_in_thread())
-    {
-        return;
-    }
-
-    armv7m_svcall_2((uint32_t)&_free_r, (uint32_t)_REENT, (uint32_t)aptr);
+    k_mutex_unlock(&__malloc_mutex);
 }
 
-void *realloc(void *aptr, size_t nbytes)
-{
-    if (!armv7m_core_is_in_thread())
-    {
-        return NULL;
-    }
-
-    return (void*)armv7m_svcall_3((uint32_t)&_realloc_r, (uint32_t)_REENT, (uint32_t)aptr, (uint32_t)nbytes);
-}
-
-void *reallocf(void *aptr, size_t nbytes)
-{
-    void *nptr;
-
-    nptr = realloc(aptr, nbytes);
-    if (!nptr && aptr) {
-        free(aptr);
-    }
-    return (nptr);
-}
-
-void *memalign(size_t align, size_t nbytes)
-{
-    if (!armv7m_core_is_in_thread())
-    {
-        return NULL;
-    }
-
-    return (void*)armv7m_svcall_3((uint32_t)&_memalign_r, (uint32_t)_REENT, (uint32_t)align, (uint32_t)nbytes);
-}
-
-size_t malloc_usable_size(void *aptr)
-{
-    if (!armv7m_core_is_in_thread())
-    {
-        return 0;
-    }
-
-    return armv7m_svcall_2((uint32_t)&_malloc_usable_size_r, (uint32_t)_REENT, (uint32_t)aptr);
-}

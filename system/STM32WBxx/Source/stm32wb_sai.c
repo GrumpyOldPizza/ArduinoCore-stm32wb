@@ -120,7 +120,7 @@ static __attribute__((optimize("O3"))) void stm32wb_sai_stop(stm32wb_sai_t *sai)
 {
     SAI_Block_TypeDef *SAIx = sai->SAIx;
 
-    armv7m_atomic_storeb(&sai->busy, STM32WB_SAI_BUSY_START);
+    sai->busy = STM32WB_SAI_BUSY_START;
     
     SAIx->CR1 &= ~SAI_xCR1_SAIEN;
 
@@ -149,7 +149,7 @@ static __attribute__((optimize("O3"))) void stm32wb_sai_dma_callback(stm32wb_sai
 
 	if (sai->state == STM32WB_SAI_STATE_READY)
 	{
-	    armv7m_atomic_storeb(&sai->busy, STM32WB_SAI_BUSY_RESTART);
+	    sai->busy = STM32WB_SAI_BUSY_RESTART;
 	}
     }
 }
@@ -206,6 +206,7 @@ bool stm32wb_sai_enable(stm32wb_sai_t *sai, uint32_t clock, uint32_t width, uint
 	case  24000: saiclk = STM32WB_SYSTEM_SAICLK_24576000; sai_cr1 = ( 4 << SAI_xCR1_MCKDIV_Pos); break;
 	case  32000: saiclk = STM32WB_SYSTEM_SAICLK_24576000; sai_cr1 = ( 3 << SAI_xCR1_MCKDIV_Pos); break;
 	case  48000: saiclk = STM32WB_SYSTEM_SAICLK_24576000; sai_cr1 = ( 2 << SAI_xCR1_MCKDIV_Pos); break;
+	case  96000: saiclk = STM32WB_SYSTEM_SAICLK_24576000; sai_cr1 = ( 1 << SAI_xCR1_MCKDIV_Pos); break;
 	default:
 	    return false;
 	}
@@ -344,7 +345,7 @@ bool stm32wb_sai_enable(stm32wb_sai_t *sai, uint32_t clock, uint32_t width, uint
     
     if (!stm32wb_system_saiclk_configure(saiclk))
     {
-        armv7m_atomic_store((volatile uint32_t*)&stm32wb_sai_device.instances[sai->instance], (uint32_t)NULL);
+        stm32wb_sai_device.instances[sai->instance] = NULL;
 	
 	return false;
     }
@@ -374,7 +375,7 @@ bool stm32wb_sai_enable(stm32wb_sai_t *sai, uint32_t clock, uint32_t width, uint
 	stm32wb_gpio_pin_configure(sai->pins.mck, (STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     }
 
-    armv7m_atomic_storeb(&sai->busy, STM32WB_SAI_BUSY_START);
+    sai->busy = STM32WB_SAI_BUSY_START;
     
     sai->state = STM32WB_SAI_STATE_READY;
 
@@ -406,7 +407,7 @@ bool stm32wb_sai_disable(stm32wb_sai_t *sai)
 	stm32wb_gpio_pin_configure(sai->pins.mck, (STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_MODE_ANALOG));
     }
 
-    armv7m_atomic_store((volatile uint32_t*)&stm32wb_sai_device.instances[sai->instance], (uint32_t)NULL);
+    stm32wb_sai_device.instances[sai->instance] = NULL;
     
     sai->state = STM32WB_SAI_STATE_INIT;
 

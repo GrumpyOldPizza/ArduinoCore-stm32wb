@@ -48,8 +48,14 @@ extern "C" {
 #define STM32WB_HSEM_INDEX_FLASH_CPU2  7
 
 #define STM32WB_HSEM_PROCID_NONE       0
-#define STM32WB_HSEM_PROCID_RANDOM     1
-#define STM32WB_HSEM_PROCID_USBD_DCD   2
+#define STM32WB_HSEM_PROCID_RNG        1
+#define STM32WB_HSEM_PROCID_PKA        2
+#define STM32WB_HSEM_PROCID_FLASH      3
+#define STM32WB_HSEM_PROCID_FLASH_CPU1 4
+#define STM32WB_HSEM_PROCID_FLASH_CPU2 5
+#define STM32WB_HSEM_PROCID_USBD_DCD   6
+
+#define STM32WB_HSEM_PROCID_COUNT      8
   
 extern void __stm32wb_hsem_initialize(void);
 extern bool __stm32wb_hsem_lock(uint32_t index, uint32_t procid);
@@ -60,8 +66,6 @@ static inline bool stm32wb_hsem_trylock(uint32_t index, uint32_t procid)
     {
         if (HSEM->RLR[index] == (HSEM_RLR_LOCK | HSEM_RLR_COREID_CPU1))
         {
-            // armv7m_rtt_printf("HSEM_TRYLOCK(%d [%d])\n", index, procid);
-
             return true;
         }
     }
@@ -71,8 +75,6 @@ static inline bool stm32wb_hsem_trylock(uint32_t index, uint32_t procid)
 
 	if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
         {
-            // armv7m_rtt_printf("HSEM_TRYLOCK(%d [%d])\n", index, procid);
-
             return true;
         }
     }
@@ -86,8 +88,6 @@ static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
     {
 	if (HSEM->RLR[index] == (HSEM_RLR_LOCK | HSEM_RLR_COREID_CPU1))
 	{
-            // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
-
             return true;
 	}
     }
@@ -97,9 +97,7 @@ static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
 
 	if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
 	{
-            // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
-
-          return true;
+            return true;
 	}
     }
 
@@ -108,8 +106,6 @@ static inline bool stm32wb_hsem_lock(uint32_t index, uint32_t procid)
     
 static inline void stm32wb_hsem_unlock(uint32_t index, uint32_t procid)
 {
-    // armv7m_rtt_printf("HSEM_UNLOCK(%d [%d])\n", index, procid);
-    
     HSEM->R[index] = (HSEM_R_COREID_CPU1 | procid);
 }
 
@@ -117,43 +113,22 @@ static inline bool stm32wb_hsem_is_locked(uint32_t index, uint32_t procid)
 {
     return (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid));
 }
-  
-extern void HSEM0_HSEMHandler(void);
-extern void HSEM1_HSEMHandler(void);
-extern void HSEM2_HSEMHandler(void);
-extern void HSEM3_HSEMHandler(void);
-extern void HSEM4_HSEMHandler(void);
-extern void HSEM5_HSEMHandler(void);
-extern void HSEM6_HSEMHandler(void);
-extern void HSEM7_HSEMHandler(void);
-extern void HSEM8_HSEMHandler(void);
-extern void HSEM9_HSEMHandler(void);
-extern void HSEM10_HSEMHandler(void);
-extern void HSEM11_HSEMHandler(void);
-extern void HSEM12_HSEMHandler(void);
-extern void HSEM13_HSEMHandler(void);
-extern void HSEM14_HSEMHandler(void);
-extern void HSEM15_HSEMHandler(void);
-extern void HSEM16_HSEMHandler(void);
-extern void HSEM17_HSEMHandler(void);
-extern void HSEM18_HSEMHandler(void);
-extern void HSEM19_HSEMHandler(void);
-extern void HSEM20_HSEMHandler(void);
-extern void HSEM21_HSEMHandler(void);
-extern void HSEM22_HSEMHandler(void);
-extern void HSEM23_HSEMHandler(void);
-extern void HSEM24_HSEMHandler(void);
-extern void HSEM25_HSEMHandler(void);
-extern void HSEM26_HSEMHandler(void);
-extern void HSEM27_HSEMHandler(void);
-extern void HSEM28_HSEMHandler(void);
-extern void HSEM29_HSEMHandler(void);
-extern void HSEM30_HSEMHandler(void);
-extern void HSEM31_HSEMHandler(void);
     
-#define RNG_HSEMHandler                HSEM0_HSEMHandler
-#define PKA_HSEMHandler                HSEM1_HSEMHandler
-#define FLASH_CPU2_HSEMHandler         HSEM7_HSEMHandler    
+extern void PROCID1_HSEMHandler(void);
+extern void PROCID2_HSEMHandler(void);
+extern void PROCID3_HSEMHandler(void);
+extern void PROCID4_HSEMHandler(void);
+extern void PROCID5_HSEMHandler(void);
+extern void PROCID6_HSEMHandler(void);
+extern void PROCID7_HSEMHandler(void);
+extern void PROCID8_HSEMHandler(void);
+
+#define RNG_HSEMHandler                PROCID1_HSEMHandler
+#define PKA_HSEMHandler                PROCID2_HSEMHandler    
+#define FLASH_HSEMHandler              PROCID3_HSEMHandler    
+#define FLASH_CPU1_HSEMHandler         PROCID4_HSEMHandler    
+#define FLASH_CPU2_HSEMHandler         PROCID5_HSEMHandler    
+#define USBD_DCD_HSEMHandler           PROCID6_HSEMHandler
     
 #ifdef __cplusplus
 }

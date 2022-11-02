@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -59,19 +59,16 @@ extern "C" {
 #endif
 
 extern void dosfs_sflash_initialize();
-  
-#define PIN_BUTTON_DATA_MASK    0x01
-#define PIN_BUTTON_DATA_SHIFT   0
-#define PIN_BUTTON_MODE_MASK    0x0e
-#define PIN_BUTTON_MODE_SHIFT   1
-#define PIN_BUTTON_READ_BATTERY 0x80
 
-extern volatile uint32_t g_pinButton;
+extern k_event_t g_wakeup_event;
+
+#define WIRING_EVENT_WAKEUP 0x00000001
+
 extern const uint32_t g_pinModeConfiguration[];
   
 extern void (*g_serialEventRun)(void);
 
-extern uint32_t __analogReadInternal(uint32_t channel, uint32_t smp);
+extern uint32_t __analogReadChannel(uint32_t channel, uint32_t smp);
 extern void __analogWriteDisable(uint32_t pin);
 
 /*

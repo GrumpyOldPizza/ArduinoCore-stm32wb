@@ -1,5 +1,5 @@
  /*
- * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,26 +35,32 @@
 #define Y2K_UNIX_TIME        946684800
 #define UNIX_TO_GPS_OFFSET   -315964800
 
-extern uint8_t __RTC_ZONE__;
-extern uint8_t __RTC_DST__;
+static const uint8_t days_in_month[4][16] = {
+    {   0,  31,  29,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
+    {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
+    {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
+    {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
+};
+
+struct RTCClass::RTCAlarm RTCClass::m_alarm = {
+    .match = RTC_MATCH_OFF,
+    .seconds = 0,
+    .minutes = 0,
+    .hours = 0,
+    .day = 0,
+    .month = 0,
+    .year = 0,
+    .tod = { },
+    .callback = Callback(),
+    .work = K_WORK_INIT(RTCClass::alarmNotify, nullptr)
+};
 
 RTCClass::RTCClass() {
-    m_zone = (int32_t)&__RTC_ZONE__;
-    m_dst = (int32_t)&__RTC_DST__;
-    m_alarm_match = RTC_MATCH_OFF;
-    m_alarm_seconds = 0;
-    m_alarm_minutes = 0;
-    m_alarm_hours = 0;
-    m_alarm_day = 1;
-    m_alarm_month = 1;
-    m_alarm_year = 0;
-    m_alarm_timeout = 0;
-    m_alarm_callback = Callback();
 }
 
 void RTCClass::begin(bool resetTime) {
-    if (resetTime && !(stm32wb_rtc_status() & (STM32WB_RTC_STATUS_TIME_INTERNAL | STM32WB_RTC_STATUS_TIME_EXTERNAL))) {
-        stm32wb_rtc_time_write(0, Y2K_TO_GPS_OFFSET + Y2K_UTC_OFFSET, 0, false);
+    if (resetTime && !(stm32wb_rtc_status() & STM32WB_RTC_STATUS_TIME_WRITTEN)) {
+        stm32wb_rtc_time_write(Y2K_TO_GPS_OFFSET + Y2K_UTC_OFFSET);
     }
 }
 
@@ -158,6 +164,22 @@ void RTCClass::getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t 
     seconds = tod.seconds;
 }
 
+void RTCClass::getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, int32_t &zone, uint32_t &dst) {
+    stm32wb_rtc_tod_t tod;
+
+    getTod(&tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+
+    zone = stm32wb_rtc_get_zone();
+    dst = stm32wb_rtc_get_dst();
+}
+
 void RTCClass::getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds) {
     stm32wb_rtc_tod_t tod;
 
@@ -170,6 +192,23 @@ void RTCClass::getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t 
     minutes = tod.minutes;
     seconds = tod.seconds;
     milliSeconds = (1000 * tod.ticks) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
+}
+
+void RTCClass::getDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds, int32_t &zone, uint32_t &dst) {
+    stm32wb_rtc_tod_t tod;
+
+    getTod(&tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+    milliSeconds = (1000 * tod.ticks) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
+
+    zone = stm32wb_rtc_get_zone();
+    dst = stm32wb_rtc_get_dst();
 }
 
 void RTCClass::setSeconds(uint8_t seconds) {
@@ -271,12 +310,13 @@ void RTCClass::setDateTime(uint8_t day, uint8_t month, uint8_t year, uint8_t hou
     setTod(&tod);
 }
 
+
 uint32_t RTCClass::getEpoch() {
     uint32_t tseconds, tticks;
 
     stm32wb_rtc_time_read(&tseconds, &tticks);
 
-    return tseconds - UNIX_TO_GPS_OFFSET - stm32wb_rtc_time_to_utc_offset(tseconds);
+    return tseconds - UNIX_TO_GPS_OFFSET - stm32wb_rtc_get_leap_seconds();
 }
 
 uint64_t RTCClass::getEpochMilliSeconds() {
@@ -284,19 +324,114 @@ uint64_t RTCClass::getEpochMilliSeconds() {
     
     stm32wb_rtc_time_read(&tseconds, &tticks);
 
-    seconds = tseconds - UNIX_TO_GPS_OFFSET - stm32wb_rtc_time_to_utc_offset(tseconds);
+    seconds = tseconds - UNIX_TO_GPS_OFFSET - stm32wb_rtc_get_leap_seconds();
 
     return (uint64_t)((uint64_t)seconds * 1000) + ((tticks * 1000) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
 }
 
-void RTCClass::setEpoch(uint32_t seconds) {
-    if (seconds < Y2K_UNIX_TIME) {
-        return;
+bool RTCClass::setEpoch(uint32_t epoch) {
+
+    if (epoch < Y2K_UNIX_TIME) {
+        return false;
     }
 
-    seconds += UNIX_TO_GPS_OFFSET;
+    stm32wb_rtc_time_write(epoch + UNIX_TO_GPS_OFFSET + stm32wb_rtc_get_leap_seconds());
 
-    stm32wb_rtc_time_write(0, seconds + stm32wb_rtc_utc_to_utc_offset(seconds), 0, false);
+    return true;
+}
+
+bool RTCClass::convertEpoch(uint32_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds)
+{
+    stm32wb_rtc_tod_t tod;
+
+    if (epoch < Y2K_UNIX_TIME) {
+        return false;
+    }
+
+    stm32wb_rtc_time_to_tod(epoch - Y2K_UNIX_TIME + stm32wb_rtc_get_zone() + stm32wb_rtc_get_dst(), 0, &tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+    
+    return true;
+}
+
+bool RTCClass::convertEpoch(uint32_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, int32_t &zone, uint32_t &dst)
+{
+    stm32wb_rtc_tod_t tod;
+
+    if (epoch < Y2K_UNIX_TIME) {
+        return false;
+    }
+
+    zone = stm32wb_rtc_get_zone();
+    dst = stm32wb_rtc_get_dst();
+
+    stm32wb_rtc_time_to_tod(epoch - Y2K_UNIX_TIME + zone + dst, 0, &tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+    
+    return true;
+}
+
+bool RTCClass::convertEpochMilliSeconds(uint64_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds)
+{
+    stm32wb_rtc_tod_t tod;
+    uint32_t eseconds;
+
+    eseconds = epoch / 1000;
+    
+    if (eseconds < Y2K_UNIX_TIME) {
+        return false;
+    }
+
+    stm32wb_rtc_time_to_tod(eseconds - Y2K_UNIX_TIME + stm32wb_rtc_get_zone() + stm32wb_rtc_get_dst(), 0, &tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+    milliSeconds = (epoch - ((uint64_t)eseconds * 1000));
+    
+    return true;
+}
+
+bool RTCClass::convertEpochMilliSeconds(uint64_t epoch, uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds, uint16_t &milliSeconds, int32_t &zone, uint32_t &dst)
+{
+    stm32wb_rtc_tod_t tod;
+    uint32_t eseconds;
+
+    eseconds = epoch / 1000;
+    
+    if (eseconds < Y2K_UNIX_TIME) {
+        return false;
+    }
+
+    zone = stm32wb_rtc_get_zone();
+    dst = stm32wb_rtc_get_dst();
+    
+    stm32wb_rtc_time_to_tod(eseconds - Y2K_UNIX_TIME + zone + dst, 0, &tod);
+
+    day = tod.day;
+    month = tod.month;
+    year = tod.year;
+    hours = tod.hours;
+    minutes = tod.minutes;
+    seconds = tod.seconds;
+    milliSeconds = (epoch - ((uint64_t)eseconds * 1000));
+    
+    return true;
 }
 
 uint32_t RTCClass::getY2kEpoch() {
@@ -304,151 +439,131 @@ uint32_t RTCClass::getY2kEpoch() {
 
     stm32wb_rtc_time_read(&tseconds, &tticks);
 
-    return tseconds - Y2K_TO_GPS_OFFSET - stm32wb_rtc_time_to_utc_offset(tseconds);
+    return tseconds - Y2K_TO_GPS_OFFSET - stm32wb_rtc_get_leap_seconds();
 }
 
-void RTCClass::getY2kEpoch(uint32_t &seconds, uint16_t &milliSeconds) {
-    uint32_t tseconds, tticks;
+uint64_t RTCClass::getY2kEpochMilliSeconds() {
+    uint32_t tseconds, tticks, seconds;
     
     stm32wb_rtc_time_read(&tseconds, &tticks);
 
-    seconds = tseconds - Y2K_TO_GPS_OFFSET - stm32wb_rtc_time_to_utc_offset(tseconds);
-    milliSeconds = (1000 * tticks) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
+    seconds = tseconds - Y2K_TO_GPS_OFFSET - stm32wb_rtc_get_leap_seconds();
+
+    return (uint64_t)((uint64_t)seconds * 1000) + ((tticks * 1000) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
 }
 
 void RTCClass::setY2kEpoch(uint32_t seconds) {
     seconds += Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_write(0, seconds + stm32wb_rtc_utc_to_utc_offset(seconds), 0, false);
-}
-
-uint32_t RTCClass::getGpsEpoch() {
-    uint32_t tseconds, tticks;
-
-    stm32wb_rtc_time_read(&tseconds, &tticks);
-
-    return tseconds;
-}
-
-void RTCClass::getGpsEpoch(uint32_t &seconds, uint16_t &milliSeconds) {
-    uint32_t tseconds, tticks;
-    
-    stm32wb_rtc_time_read(&tseconds, &tticks);
-
-    seconds = tseconds;
-    milliSeconds = (1000 * tticks) / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-}
-
-void RTCClass::setGpsEpoch(uint32_t seconds) {
-    stm32wb_rtc_time_write(0, seconds, 0, false);
+    stm32wb_rtc_time_write(seconds + stm32wb_rtc_get_leap_seconds());
 }
 
 uint8_t RTCClass::getAlarmSeconds() {
-    return m_alarm_seconds;
+    return m_alarm.seconds;
 }
 
 uint8_t RTCClass::getAlarmMinutes() {
-    return m_alarm_minutes;
+    return m_alarm.minutes;
 }
 
 uint8_t RTCClass::getAlarmHours() {
-    return m_alarm_hours;
+    return m_alarm.hours;
 }
 
 uint8_t RTCClass::getAlarmDay() {
-    return m_alarm_day;
+    return m_alarm.day;
 }
 
 uint8_t RTCClass::getAlarmMonth() {
-    return m_alarm_month;
+    return m_alarm.month;
 }
 
 uint8_t RTCClass::getAlarmYear() {
-    return m_alarm_year;
+    return m_alarm.year;
 }
 
 void RTCClass::getAlarmTime(uint8_t &hours, uint8_t &minutes, uint8_t &seconds) {
-    hours = m_alarm_hours;
-    minutes = m_alarm_minutes;
-    seconds = m_alarm_seconds;
+    hours = m_alarm.hours;
+    minutes = m_alarm.minutes;
+    seconds = m_alarm.seconds;
 }
 
 void RTCClass::getAlarmDate(uint8_t &day, uint8_t &month, uint8_t &year) {
-    day = m_alarm_day;
-    month = m_alarm_month;
-    year = m_alarm_year;
+    day = m_alarm.day;
+    month = m_alarm.month;
+    year = m_alarm.year;
 }
 
 void RTCClass::getAlarmDateTime(uint8_t &day, uint8_t &month, uint8_t &year, uint8_t &hours, uint8_t &minutes, uint8_t &seconds) {
-    day = m_alarm_day;
-    month = m_alarm_month;
-    year = m_alarm_year;
-    hours = m_alarm_hours;
-    minutes = m_alarm_minutes;
-    seconds = m_alarm_seconds;
+    day = m_alarm.day;
+    month = m_alarm.month;
+    year = m_alarm.year;
+    hours = m_alarm.hours;
+    minutes = m_alarm.minutes;
+    seconds = m_alarm.seconds;
 }
 
 void RTCClass::setAlarmSeconds(uint8_t seconds) {
-    m_alarm_seconds = seconds;
+    m_alarm.seconds = seconds;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmMinutes(uint8_t minutes) {
-    m_alarm_minutes = minutes;
+    m_alarm.minutes = minutes;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmHours(uint8_t hours) {
-    m_alarm_hours = hours;
+    m_alarm.hours = hours;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmDay(uint8_t day) {
-    m_alarm_day = day;
+    m_alarm.day = day;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmMonth(uint8_t month) {
-    m_alarm_month = month;
+    m_alarm.month = month;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmYear(uint8_t year) {
-    m_alarm_year = year;
+    m_alarm.year = year;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmTime(uint8_t hours, uint8_t minutes, uint8_t seconds) {
-    m_alarm_hours = hours;
-    m_alarm_minutes = minutes;
-    m_alarm_seconds = seconds;
+    m_alarm.hours = hours;
+    m_alarm.minutes = minutes;
+    m_alarm.seconds = seconds;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmDate(uint8_t day, uint8_t month, uint8_t year) {
-    m_alarm_day = day;
-    m_alarm_month = month;
-    m_alarm_year = year;
+    m_alarm.day = day;
+    m_alarm.month = month;
+    m_alarm.year = year;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmDateTime(uint8_t day, uint8_t month, uint8_t year, uint8_t hours, uint8_t minutes, uint8_t seconds) {
-    m_alarm_day = day;
-    m_alarm_month = month;
-    m_alarm_year = year;
-    m_alarm_hours = hours;
-    m_alarm_minutes = minutes;
-    m_alarm_seconds = seconds;
+    m_alarm.day = day;
+    m_alarm.month = month;
+    m_alarm.year = year;
+    m_alarm.hours = hours;
+    m_alarm.minutes = minutes;
+    m_alarm.seconds = seconds;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::setAlarmEpoch(uint32_t seconds) {
@@ -461,74 +576,64 @@ void RTCClass::setAlarmEpoch(uint32_t seconds) {
     seconds += UNIX_TO_GPS_OFFSET;
     seconds -= Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_to_tod(seconds + (m_zone + m_dst), 0, &tod);
+    stm32wb_rtc_time_to_tod(seconds + stm32wb_rtc_get_zone() + stm32wb_rtc_get_dst(), 0, &tod);
 
-    m_alarm_day = tod.day;
-    m_alarm_month = tod.month;
-    m_alarm_year = tod.year;
-    m_alarm_hours = tod.hours;
-    m_alarm_minutes = tod.minutes;
-    m_alarm_seconds = tod.seconds;
+    m_alarm.day = tod.day;
+    m_alarm.month = tod.month;
+    m_alarm.year = tod.year;
+    m_alarm.hours = tod.hours;
+    m_alarm.minutes = tod.minutes;
+    m_alarm.seconds = tod.seconds;
     
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::enableAlarm(RTCAlarmMatch match) {
-    m_alarm_match = match;
+    m_alarm.match = match;
 
-    syncAlarm();
+    alarmSync();
 }
 
 void RTCClass::disableAlarm() {
-    if (m_alarm_match != RTC_MATCH_OFF) {
-        m_alarm_match = RTC_MATCH_OFF;
+    if (m_alarm.match != RTC_MATCH_OFF) {
+        m_alarm.match = RTC_MATCH_OFF;
 
-        stm32wb_rtc_alarm_stop();
+        alarmSync();
     }
 }
 
-void RTCClass::attachInterrupt(void(*callback)(void)) {
-    attachInterrupt(Callback(callback));
+void RTCClass::onAlarm(void(*callback)(void)) {
+    onAlarm(Callback(callback));
 }
 
-void RTCClass::attachInterrupt(Callback callback) {
-    m_alarm_callback = callback;
+void RTCClass::onAlarm(Callback callback) {
+    m_alarm.callback = callback;
 
-    syncAlarm();
-}
-
-void RTCClass::detachInterrupt() {
-    m_alarm_callback = Callback(); 
-
-    syncAlarm();
+    alarmSync();
 }
 
 int32_t RTCClass::getZone() {
-    return m_zone;
+    return stm32wb_rtc_get_zone();
 }
 
 void RTCClass::setZone(int32_t seconds) {
-    m_zone = seconds;
+    stm32wb_rtc_set_zone(seconds);
 }
 
-int32_t RTCClass::getDst() {
-    return m_dst;
+uint32_t RTCClass::getDst() {
+    return stm32wb_rtc_get_dst();
 }
 
-void RTCClass::setDst(int32_t seconds) {
-    m_dst = seconds;
+void RTCClass::setDst(uint32_t seconds) {
+    stm32wb_rtc_set_dst(seconds);
 }
 
-int32_t RTCClass::getUtcOffset() {
-    uint32_t seconds, ticks;
-    
-    stm32wb_rtc_time_read(&seconds, &ticks);
-
-    return stm32wb_rtc_time_to_utc_offset(seconds);
+int32_t RTCClass::getLeapSeconds() {
+    return stm32wb_rtc_get_leap_seconds();
 }
 
-void RTCClass::setUtcOffset(int32_t seconds) {
-    stm32wb_rtc_set_utc_offset(seconds, false);
+void RTCClass::setLeapSeconds(int32_t seconds) {
+    stm32wb_rtc_set_leap_seconds(seconds);
 }
 
 uint32_t RTCClass::status() {
@@ -537,238 +642,205 @@ uint32_t RTCClass::status() {
 
 void RTCClass::getTod(stm32wb_rtc_tod_t *tod) {
     uint32_t seconds, ticks;
-    int32_t utc_offset;
+    int32_t leapSeconds;
     
     stm32wb_rtc_time_read(&seconds, &ticks);
 
-    utc_offset = stm32wb_rtc_time_to_utc_offset(seconds);
+    leapSeconds = stm32wb_rtc_get_leap_seconds();
 
     seconds -= Y2K_TO_GPS_OFFSET;
 
-    stm32wb_rtc_time_to_tod(seconds - utc_offset + (m_zone + m_dst), ticks, tod);
+    stm32wb_rtc_time_to_tod(seconds - leapSeconds + stm32wb_rtc_get_zone() + stm32wb_rtc_get_dst(), ticks, tod);
 }
 
 void RTCClass::setTod(const stm32wb_rtc_tod_t *tod) {
     uint32_t seconds, ticks;
-    int32_t utc_offset;
+    int32_t leapSeconds;
 
     stm32wb_rtc_tod_to_time(tod, &seconds, &ticks);
 
     seconds += Y2K_TO_GPS_OFFSET;
 
-    utc_offset = stm32wb_rtc_time_to_utc_offset(seconds);
+    leapSeconds = stm32wb_rtc_get_leap_seconds();
 
-    stm32wb_rtc_time_write(0, seconds + utc_offset - (m_zone + m_dst), 0, false);
+    stm32wb_rtc_time_write(seconds + leapSeconds - stm32wb_rtc_get_zone() - stm32wb_rtc_get_dst());
 }
 
-void RTCClass::syncAlarm() {
-    stm32wb_rtc_tod_t tod, alarm_tod;
-    uint32_t seconds, ticks;
+void RTCClass::alarmSync() {
+    stm32wb_rtc_notify(RTCClass::alarmEvent, NULL);
+    
+    if (m_alarm.match != RTC_MATCH_OFF) {
+        getTod(&m_alarm.tod);
 
-    static const uint8_t days_in_month[4][16] = {
-        {   0,  31,  29,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
-        {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
-        {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
-        {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
-    };
-
-    if (m_alarm_match != RTC_MATCH_OFF) {
-        getTod(&alarm_tod);
-
-        switch (m_alarm_match) {
-        case RTC_MATCH_ANY: // Every Second
-            alarm_tod.ticks = 0;
+        switch (m_alarm.match) {
+        case RTC_MATCH_ANY:          // Every Second
+            m_alarm.tod.ticks = 0;
             break;
         
-        case RTC_MATCH_SS:  // Every Minute
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
+        case RTC_MATCH_SS:           // Every Minute
+            m_alarm.tod.ticks = 0;
+            m_alarm.tod.seconds = m_alarm.seconds;
             break;
         
-        case RTC_MATCH_MMSS:  // Every Hour
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
-            alarm_tod.minutes = m_alarm_minutes;
+        case RTC_MATCH_MMSS:         // Every Hour
+            m_alarm.tod.ticks = 0;
+            m_alarm.tod.seconds = m_alarm.seconds;
+            m_alarm.tod.minutes = m_alarm.minutes;
             break;
         
-        case RTC_MATCH_HHMMSS:  // Every Day
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
-            alarm_tod.minutes = m_alarm_minutes;
-            alarm_tod.hours = m_alarm_hours;
+        case RTC_MATCH_HHMMSS:       // Every Day
+            m_alarm.tod.ticks = 0;
+            m_alarm.tod.seconds = m_alarm.seconds;
+            m_alarm.tod.minutes = m_alarm.minutes;
+            m_alarm.tod.hours = m_alarm.hours;
             break;
         
-        case RTC_MATCH_DDHHMMSS:  // Every Month
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
-            alarm_tod.minutes = m_alarm_minutes;
-            alarm_tod.hours = m_alarm_hours;
-            alarm_tod.day = m_alarm_day;
-            break;
-        
-        case RTC_MATCH_MMDDHHMMSS:  // Every Year
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
-            alarm_tod.minutes = m_alarm_minutes;
-            alarm_tod.hours = m_alarm_hours;
-            alarm_tod.day = m_alarm_day;
-            alarm_tod.month = m_alarm_month;
-            break;
-        
-        case RTC_MATCH_YYMMDDHHMMSS:  // Once
-            alarm_tod.ticks = 0;
-            alarm_tod.seconds = m_alarm_seconds;
-            alarm_tod.minutes = m_alarm_minutes;
-            alarm_tod.hours = m_alarm_hours;
-            alarm_tod.day = m_alarm_day;
-            alarm_tod.month = m_alarm_month;
-            alarm_tod.year = m_alarm_year;
+        case RTC_MATCH_YYMMDDHHMMSS: // Once
+            m_alarm.tod.ticks = 0;
+            m_alarm.tod.seconds = m_alarm.seconds;
+            m_alarm.tod.minutes = m_alarm.minutes;
+            m_alarm.tod.hours = m_alarm.hours;
+            m_alarm.tod.day = m_alarm.day;
+            m_alarm.tod.month = m_alarm.month;
+            m_alarm.tod.year = m_alarm.year;
             break;
         }
 
-        if (m_alarm_match == RTC_MATCH_YYMMDDHHMMSS) {
-            stm32wb_rtc_tod_to_time(&alarm_tod, &m_alarm_timeout, &ticks);
-        } else {
-            while (1) {
-                getTod(&tod);
+        alarmStart();
+    } else {
+        alarmStop();
+    }
+}
 
-                stm32wb_rtc_tod_to_time(&alarm_tod, &m_alarm_timeout, &ticks);
-                stm32wb_rtc_tod_to_time(&tod, &seconds, &ticks);
+void RTCClass::alarmStart() {
+    uint32_t alarm_seconds, alarm_ticks;
 
-                if (m_alarm_timeout > seconds) {
-                    break;
-                }
-            
-                switch (m_alarm_match) {
-                case RTC_MATCH_ANY: // Every Second
-                    alarm_tod.seconds = alarm_tod.seconds + 1;
+    switch (m_alarm.match) {
+    case RTC_MATCH_ANY: // Every Second
+        m_alarm.tod.seconds = m_alarm.tod.seconds + 1;
                 
-                    if (alarm_tod.seconds >= 60) {
-                        alarm_tod.seconds = 0;
+        if (m_alarm.tod.seconds >= 60) {
+            m_alarm.tod.seconds = 0;
                     
-                        alarm_tod.minutes = alarm_tod.minutes + 1;
+            m_alarm.tod.minutes = m_alarm.tod.minutes + 1;
                     
-                        if (alarm_tod.minutes >= 60) {
-                            alarm_tod.minutes = 0;
+            if (m_alarm.tod.minutes >= 60) {
+                m_alarm.tod.minutes = 0;
                         
-                            alarm_tod.hours = alarm_tod.hours + 1;
+                m_alarm.tod.hours = m_alarm.tod.hours + 1;
                     
-                            if (alarm_tod.hours >= 24) {
-                                alarm_tod.hours = 0;
+                if (m_alarm.tod.hours >= 24) {
+                    m_alarm.tod.hours = 0;
                         
-                                alarm_tod.day = alarm_tod.day + 1;
+                    m_alarm.tod.day = m_alarm.tod.day + 1;
                         
-                                if (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]) {
-                                    alarm_tod.day = 1;
-                                    alarm_tod.month = alarm_tod.month + 1;
+                    if (m_alarm.tod.day > days_in_month[m_alarm.tod.year & 3][m_alarm.tod.month]) {
+                        m_alarm.tod.day = 1;
+                        m_alarm.tod.month = m_alarm.tod.month + 1;
                             
-                                    if (alarm_tod.month > 12) {
-                                        alarm_tod.month = 1;
-                                        alarm_tod.year = alarm_tod.year + 1;
-                                    }
-                                }
-                            }
+                        if (m_alarm.tod.month > 12) {
+                            m_alarm.tod.month = 1;
+                            m_alarm.tod.year = m_alarm.tod.year + 1;
                         }
                     }
-                    break;
-                    
-                case RTC_MATCH_SS:  // Every Minute
-                    alarm_tod.minutes = alarm_tod.minutes + 1;
-                
-                    if (alarm_tod.minutes >= 60) {
-                        alarm_tod.minutes = 0;
-                
-                        alarm_tod.hours = alarm_tod.hours + 1;
-                
-                        if (alarm_tod.hours >= 24) {
-                            alarm_tod.hours = 0;
-                    
-                            alarm_tod.day = alarm_tod.day + 1;
-                    
-                            if (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]) {
-                                alarm_tod.day = 1;
-                                alarm_tod.month = alarm_tod.month + 1;
-                        
-                                if (alarm_tod.month > 12) {
-                                    alarm_tod.month = 1;
-                                    alarm_tod.year = alarm_tod.year + 1;
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    
-                case RTC_MATCH_MMSS:  // Every Hour
-                    alarm_tod.hours = alarm_tod.hours + 1;
-            
-                    if (alarm_tod.hours >= 24) {
-                        alarm_tod.hours = 0;
-                
-                        alarm_tod.day = alarm_tod.day + 1;
-                
-                        if (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]) {
-                            alarm_tod.day = 1;
-                            alarm_tod.month = alarm_tod.month + 1;
-                    
-                            if (alarm_tod.month > 12) {
-                                alarm_tod.month = 1;
-                                alarm_tod.year = alarm_tod.year + 1;
-                            }
-                        }
-                    }
-                    break;
-                    
-                case RTC_MATCH_HHMMSS:  // Every Day
-                    alarm_tod.day = alarm_tod.day + 1;
-                
-                    if (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]) {
-                        alarm_tod.day = 1;
-                        alarm_tod.month = alarm_tod.month + 1;
-                
-                        if (alarm_tod.month > 12) {
-                            alarm_tod.month = 1;
-                            alarm_tod.year = alarm_tod.year + 1;
-                        }
-                    }
-                    break;
-                    
-                case RTC_MATCH_DDHHMMSS:  // Every Month
-                    do {
-                        alarm_tod.month = alarm_tod.month + 1;
-                
-                        if (alarm_tod.month > 12) {
-                            alarm_tod.month = 1;
-                            alarm_tod.year = alarm_tod.year + 1;
-                        }
-                    }
-                    while (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]);
-                    break;
-                    
-                case RTC_MATCH_MMDDHHMMSS:  // Every Year
-                    do {
-                        alarm_tod.year = alarm_tod.year + 1;
-                    }
-                    while (alarm_tod.day > days_in_month[alarm_tod.year & 3][alarm_tod.month]);
-                    break;
                 }
             }
         }
-        seconds = m_alarm_timeout + Y2K_TO_GPS_OFFSET - (m_zone + m_dst);
+        break;
+                    
+    case RTC_MATCH_SS:  // Every Minute
+        m_alarm.tod.minutes = m_alarm.tod.minutes + 1;
+                
+        if (m_alarm.tod.minutes >= 60) {
+            m_alarm.tod.minutes = 0;
+                
+            m_alarm.tod.hours = m_alarm.tod.hours + 1;
+                
+            if (m_alarm.tod.hours >= 24) {
+                m_alarm.tod.hours = 0;
+                    
+                m_alarm.tod.day = m_alarm.tod.day + 1;
+                    
+                if (m_alarm.tod.day > days_in_month[m_alarm.tod.year & 3][m_alarm.tod.month]) {
+                    m_alarm.tod.day = 1;
+                    m_alarm.tod.month = m_alarm.tod.month + 1;
+                        
+                    if (m_alarm.tod.month > 12) {
+                        m_alarm.tod.month = 1;
+                        m_alarm.tod.year = m_alarm.tod.year + 1;
+                    }
+                }
+            }
+        }
+        break;
+                    
+    case RTC_MATCH_MMSS:  // Every Hour
+        m_alarm.tod.hours = m_alarm.tod.hours + 1;
+            
+        if (m_alarm.tod.hours >= 24) {
+            m_alarm.tod.hours = 0;
+                
+            m_alarm.tod.day = m_alarm.tod.day + 1;
+                
+            if (m_alarm.tod.day > days_in_month[m_alarm.tod.year & 3][m_alarm.tod.month]) {
+                m_alarm.tod.day = 1;
+                m_alarm.tod.month = m_alarm.tod.month + 1;
+                    
+                if (m_alarm.tod.month > 12) {
+                    m_alarm.tod.month = 1;
+                    m_alarm.tod.year = m_alarm.tod.year + 1;
+                }
+            }
+        }
+        break;
+                    
+    case RTC_MATCH_HHMMSS:  // Every Day
+        m_alarm.tod.day = m_alarm.tod.day + 1;
+                
+        if (m_alarm.tod.day > days_in_month[m_alarm.tod.year & 3][m_alarm.tod.month]) {
+            m_alarm.tod.day = 1;
+            m_alarm.tod.month = m_alarm.tod.month + 1;
+                
+            if (m_alarm.tod.month > 12) {
+                m_alarm.tod.month = 1;
+                m_alarm.tod.year = m_alarm.tod.year + 1;
+            }
+        }
+        break;
 
-        Callback alarm_callback = Callback(&RTCClass::alarmCallback, this);
-        
-        stm32wb_rtc_alarm_start(seconds, 0, alarm_callback.callback(), alarm_callback.context());
+    case RTC_MATCH_YYMMDDHHMMSS:
+        break;
+    }
+
+    stm32wb_rtc_tod_to_time(&m_alarm.tod, &alarm_seconds, &alarm_ticks);
+
+    alarm_seconds = (alarm_seconds + Y2K_TO_GPS_OFFSET) + stm32wb_rtc_get_leap_seconds() - stm32wb_rtc_get_zone() - stm32wb_rtc_get_dst();
+
+    stm32wb_rtc_alarm_start(alarm_seconds, alarm_ticks, RTCClass::alarmCallback, NULL);
+}
+
+void RTCClass::alarmStop() {
+    stm32wb_rtc_alarm_stop();
+}
+
+void RTCClass::alarmEvent(__attribute__((unused)) void *context, __attribute__((unused)) uint32_t events) {
+    if (m_alarm.match != RTC_MATCH_OFF) {
+        alarmSync();
     }
 }
 
-void RTCClass::alarmCallback() {
-    if (m_alarm_match == RTC_MATCH_YYMMDDHHMMSS) {
-        m_alarm_match = RTC_MATCH_OFF;
+void RTCClass::alarmCallback(__attribute__((unused)) void *context) {
+    if (m_alarm.match == RTC_MATCH_YYMMDDHHMMSS) {
+        m_alarm.match = RTC_MATCH_OFF;
     } else {
-        syncAlarm();
+        alarmStart();
     }
     
-    m_alarm_callback();
+    k_work_submit(&m_alarm.work);
+}
+
+void RTCClass::alarmNotify(__attribute__((unused)) void *context) {
+    m_alarm.callback();
 }
 
 RTCClass RTC;

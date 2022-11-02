@@ -142,22 +142,6 @@ extern void stm32wb_dma_start(uint16_t channel, uint32_t tx_data, uint32_t rx_da
 extern uint16_t stm32wb_dma_stop(uint16_t channel);
 extern uint16_t stm32wb_dma_count(uint16_t channel);
 extern bool stm32wb_dma_done(uint16_t channel);
-  
-extern void DMA1_Channel1_IRQHandler(void);
-extern void DMA1_Channel2_IRQHandler(void);
-extern void DMA1_Channel3_IRQHandler(void);
-extern void DMA1_Channel4_IRQHandler(void);
-extern void DMA1_Channel5_IRQHandler(void);
-extern void DMA1_Channel6_IRQHandler(void);
-extern void DMA1_Channel7_IRQHandler(void);
-
-extern void DMA2_Channel1_IRQHandler(void);
-extern void DMA2_Channel2_IRQHandler(void);
-extern void DMA2_Channel3_IRQHandler(void);
-extern void DMA2_Channel4_IRQHandler(void);
-extern void DMA2_Channel5_IRQHandler(void);
-extern void DMA2_Channel6_IRQHandler(void);
-extern void DMA2_Channel7_IRQHandler(void);
 
 #ifdef __cplusplus
 }

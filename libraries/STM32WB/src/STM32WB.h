@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -45,15 +45,16 @@
 #define WAKEUP_PIN_3         0x00000004
 #define WAKEUP_PIN_4         0x00000008
 #define WAKEUP_PIN_5         0x00000010
-#define WAKEUP_TIMEOUT       0x00000100
-#define WAKEUP_WATCHDOG      0x00000200
-#define WAKEUP_RESET         0x00000400
+#define WAKEUP_TIMEOUT       0x00010000
+#define WAKEUP_ALARM         0x00020000
+#define WAKEUP_WATCHDOG      0x00040000
+#define WAKEUP_RESET         0x00080000
 
-#define POLICY_RUN           0
-#define POLICY_SLEEP         1
-#define POLICY_STOP          2
+#define POLICY_RUN           1
+#define POLICY_SLEEP         2
+#define POLICY_STOP          3
 
-#define TIMEOUT_POLL         0x00000000
+#define TIMEOUT_NONE         0x00000000
 #define TIMEOUT_FOREVER      0xffffffff
 
 #define FLASHSTART           ((uint32_t)(&__FlashBase))
@@ -81,7 +82,7 @@ public:
     static bool sleep(uint32_t policy, uint32_t timeout);
     static bool stop();
     static bool stop(uint32_t timeout);
-    static void delay(uint32_t policy, uint32_t delay);
+    static bool delay(uint32_t policy, uint32_t delay);
     static void standby();
     static void standby(uint32_t timeout);
     static void standby(uint32_t pin, uint32_t mode);

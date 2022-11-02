@@ -29,12 +29,20 @@
         .arch armv7-m
         .syntax unified
 
-        .section .stack, "aw"
+        .section .stack
         .align  3
 #ifdef __STACK_SIZE
         .space  __STACK_SIZE
 #else
         .space  4096
+#endif
+
+        .section .heap
+        .align  3
+#ifdef __HEAP_SIZE
+        .space  __HEAP_SIZE
+#else
+        .space  2048
 #endif
 
         .section .vectors
@@ -180,10 +188,6 @@ Reset_Handler:
 6:      cmp     r1, r2
         bne.n   4b
         
-        /* ##### default starts is "_start" */
-#ifndef __START
-#define __START main
-#endif
-        b       __START
+        b       __runtime_start
 
         .size   Reset_Handler, . - Reset_Handler

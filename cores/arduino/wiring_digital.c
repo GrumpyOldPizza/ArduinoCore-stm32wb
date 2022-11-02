@@ -64,12 +64,6 @@ void pinMode(uint32_t pin, uint32_t mode)
         if ((mode == OUTPUT) || (mode == OUTPUT_OPENDRAIN)) {
             return;
         }
-            
-#if defined(STM32WB_CONFIG_PIN_VBAT_SWITCH) && (STM32WB_CONFIG_PIN_VBAT_SWITCH == STM32WB_CONFIG_PIN_BUTTON)
-        if (armv7m_atomic_modify(&g_pinButton, PIN_BUTTON_MODE_MASK, (mode << PIN_BUTTON_MODE_SHIFT)) & PIN_BUTTON_READ_BATTERY) {
-            return;
-        }
-#endif /* defined(STM32WB_CONFIG_PIN_VBAT_SWITCH) && (STM32WB_CONFIG_PIN_VBAT_SWITCH == STM32WB_CONFIG_PIN_BUTTON) */
 #else /* defined(STM32WB_CONFIG_PIN_BUTTON) */
         return;
 #endif /* defined(STM32WB_CONFIG_PIN_BUTTON) */
@@ -86,7 +80,7 @@ void pinMode(uint32_t pin, uint32_t mode)
     stm32wb_gpio_pin_configure(g_APinDescription[pin].pin, g_pinModeConfiguration[mode]);
 }
 
-__attribute__((optimize("O3"))) void digitalWrite(uint32_t pin, uint32_t output)
+void __attribute__((optimize("O3"))) digitalWrite(uint32_t pin, uint32_t output)
 {
     GPIO_TypeDef *GPIO;
     uint32_t bit;
@@ -109,7 +103,7 @@ __attribute__((optimize("O3"))) void digitalWrite(uint32_t pin, uint32_t output)
     }
 }
 
-__attribute__((optimize("O3"))) int digitalRead(uint32_t pin)
+int __attribute__((optimize("O3"))) digitalRead(uint32_t pin)
 {
     GPIO_TypeDef *GPIO;
     uint32_t bit;
@@ -123,11 +117,6 @@ __attribute__((optimize("O3"))) int digitalRead(uint32_t pin)
         if (g_APinDescription[pin].pin != STM32WB_CONFIG_PIN_BUTTON) {
             return 0;
         }
-
-        if (g_pinButton & PIN_BUTTON_READ_BATTERY) {
-            return ((g_pinButton & PIN_BUTTON_DATA_MASK) >> PIN_BUTTON_DATA_SHIFT);
-        }
-        
         return !!stm32wb_gpio_pin_read(STM32WB_CONFIG_PIN_BUTTON);
 #else /* defined(STM32WB_CONFIG_PIN_BUTTON) */
         return 0;

@@ -37,14 +37,30 @@
 
 #include "stm32wbxx.h"
 
-#define ARMV7M_RTOS_SUPPORTED 1
-
 #include "armv7m_atomic.h"
 #include "armv7m_core.h"
 #include "armv7m_pendsv.h"
-#include "armv7m_rtos.h"
 #include "armv7m_rtt.h"
 #include "armv7m_svcall.h"
 #include "armv7m_systick.h"
+
+#define __CONCAT1(x,y) x ## y
+#define __CONCAT(x,y)  __CONCAT1(x,y)
+#define __STRING(x)    #x
+#define __XSTRING(x)   __STRING(x)
+
+#define __SECTION_TEXT    __attribute__((section(".text."    __XSTRING(__COUNTER__))))
+#define __SECTION_RODATA  __attribute__((section(".rodata."  __XSTRING(__COUNTER__))))
+
+#define __SECTION_CCTEXT  __attribute__((section(".cctext."  __XSTRING(__COUNTER__))))
+
+#define __SECTION_DATA    __attribute__((section(".data."    __XSTRING(__COUNTER__))))
+#define __SECTION_BSS     __attribute__((section(".bss."     __XSTRING(__COUNTER__))))
+#define __SECTION_NOINIT  __attribute__((section(".noinit."  __XSTRING(__COUNTER__))))
+#define __SECTION_DMA     __attribute__((section(".dma."     __XSTRING(__COUNTER__))))
+
+#define __SECTION_DATA2   __attribute__((section(".data2."   __XSTRING(__COUNTER__))))
+#define __SECTION_BSS2    __attribute__((section(".bss2."    __XSTRING(__COUNTER__))))
+#define __SECTION_NOINIT2 __attribute__((section(".noinit2." __XSTRING(__COUNTER__))))
 
 #endif /* _ARMV7M_H */

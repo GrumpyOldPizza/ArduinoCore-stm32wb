@@ -38,10 +38,11 @@ setDateTime		KEYWORD2
 getEpoch		KEYWORD2
 getEpochMilliSeconds	KEYWORD2
 setEpoch		KEYWORD2
+convertEpoch		KEYWORD2
+convertEpochMilliSeconds	KEYWORD2
 getY2kEpoch		KEYWORD2
+getY2kEpochMilliSeconds KEYWORD2
 setY2kEpoch		KEYWORD2
-getGpsEpoch		KEYWORD2
-setGpsEpoch		KEYWORD2
 
 getAlarmSeconds 	KEYWORD2
 getAlarmMinutes		KEYWORD2
@@ -67,8 +68,7 @@ setAlarmEpoch		KEYWORD2
 enableAlarm 		KEYWORD2
 disableAlarm 		KEYWORD2
 
-attachInterrupt		KEYWORD2
-detachInterrupt		KEYWORD2
+onAlarm                 KEYWORD2
 
 getZone			KEYWORD2
 setZone			KEYWORD2
@@ -76,10 +76,10 @@ setZone			KEYWORD2
 getDst			KEYWORD2
 setDst			KEYWORD2
 
-getUtcOffset	 	KEYWORD2
-setUtcOffset	 	KEYWORD2
+getLeapSeconds	 	KEYWORD2
+setLeapSeconds	 	KEYWORD2
 
-isConfigured	 	KEYWORD2
+status                  KEYWORD2
 
 #######################################
 # Constants (LITERAL1)

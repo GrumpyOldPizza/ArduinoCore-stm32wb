@@ -60,35 +60,38 @@
 #define ADC_CCR_PRESC_DIV_256       (ADC_CCR_PRESC_3 | ADC_CCR_PRESC_1 | ADC_CCR_PRESC_0)
 
 #define STM32WB_ADC_STATE_NONE      0
-#define STM32WB_ADC_STATE_READY     1
+#define STM32WB_ADC_STATE_NOT_READY 1
+#define STM32WB_ADC_STATE_READY     2
+#define STM32WB_ADC_STATE_BUSY      3
 
 typedef struct _stm32wb_adc_device_t {
     volatile uint8_t             state;
     uint8_t                      calibration;
-    uint16_t                     period;
 } stm32wb_adc_device_t;
 
 static stm32wb_adc_device_t stm32wb_adc_device;
 
 bool stm32wb_adc_enable(void)
 {
-    if (stm32wb_adc_device.state != STM32WB_ADC_STATE_NONE)
+    if (armv7m_atomic_casb(&stm32wb_adc_device.state, STM32WB_ADC_STATE_NONE, STM32WB_ADC_STATE_NOT_READY) != STM32WB_ADC_STATE_NONE)
     {
         return false;
     }
 
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_CLOCKS);
+    
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_ADC);
 
-    if (stm32wb_system_hclk() <= 48000000)
+    if (stm32wb_system_hclk() > 48000000)
     {
-	armv7m_atomic_modify(&ADC1_COMMON->CCR, ADC_CCR_CKMODE, ADC_CCR_CKMODE_0); /* HCLK / 1 */
+        ADC1_COMMON->CCR = (ADC1_COMMON->CCR & ~ADC_CCR_CKMODE) | ADC_CCR_CKMODE_1; /* HCLK / 2 */
     }
     else
     {
-	armv7m_atomic_modify(&ADC1_COMMON->CCR, ADC_CCR_CKMODE, ADC_CCR_CKMODE_1); /* HCLK / 2 */
+        ADC1_COMMON->CCR = (ADC1_COMMON->CCR & ~ADC_CCR_CKMODE) | ADC_CCR_CKMODE_0; /* HCLK / 1 */
     }
 
-    armv7m_atomic_or(&ADC1_COMMON->CCR, (ADC_CCR_VBATEN | ADC_CCR_VREFEN));
+    ADC1_COMMON->CCR |= ADC_CCR_VREFEN;
 
     ADC1->CR &= ~ADC_CR_DEEPPWD;
 
@@ -151,7 +154,7 @@ bool stm32wb_adc_enable(void)
 
 bool stm32wb_adc_disable(void)
 {
-    if (stm32wb_adc_device.state != STM32WB_ADC_STATE_READY)
+    if (armv7m_atomic_casb(&stm32wb_adc_device.state, STM32WB_ADC_STATE_READY, STM32WB_ADC_STATE_NOT_READY) != STM32WB_ADC_STATE_READY)
     {
         return false;
     }
@@ -165,9 +168,11 @@ bool stm32wb_adc_disable(void)
     ADC1->CR &= ~ADC_CR_ADVREGEN;
     ADC1->CR |= ADC_CR_DEEPPWD;
 
-    armv7m_atomic_and(&ADC1_COMMON->CCR, ~(ADC_CCR_VBATEN | ADC_CCR_VREFEN));
+    ADC1_COMMON->CCR &= ~ADC_CCR_VREFEN;
 
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_ADC);
+
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_CLOCKS);
 
     stm32wb_adc_device.state = STM32WB_ADC_STATE_NONE;
 
@@ -176,45 +181,36 @@ bool stm32wb_adc_disable(void)
 
 uint32_t stm32wb_adc_read(unsigned int channel, unsigned int period)
 {
-    uint32_t convert, threshold, adcclk, adc_smp;
+    uint32_t convert, threshold, hclk, adcclk, adc_smp;
 
-    if (stm32wb_adc_device.state != STM32WB_ADC_STATE_READY)
+    if (armv7m_atomic_casb(&stm32wb_adc_device.state, STM32WB_ADC_STATE_READY, STM32WB_ADC_STATE_BUSY) != STM32WB_ADC_STATE_READY)
     {
         return 0;
     }
 
-    /* Silicon ERRATA 2.4.4. Wrong ADC conversion results when delay between
-     * calibration and first conversion or between 2 consecutive conversions is too long. 
-     */
-
-    if (channel == STM32WB_ADC_CHANNEL_TSENSE)
+    if (channel >= STM32WB_ADC_CHANNEL_TSENSE)
     {
-	ADC1->CR |= ADC_CR_ADDIS;
-
-	while (ADC1->CR & ADC_CR_ADEN)
-	{
-	}
-	    
-	armv7m_atomic_or(&ADC1_COMMON->CCR, ADC_CCR_TSEN);
-
-	ADC1->ISR = ADC_ISR_ADRDY;
-
-	do
-	{
-	    ADC1->CR |= ADC_CR_ADEN;
-	}
-	while (!(ADC1->ISR & ADC_ISR_ADRDY));
-
-	armv7m_core_udelay(120);
+        if (channel == STM32WB_ADC_CHANNEL_TSENSE)
+        {
+            ADC1_COMMON->CCR |= ADC_CCR_TSEN;
+            
+            armv7m_core_udelay(120);
+        }
+        else
+        {
+            ADC1_COMMON->CCR |= ADC_CCR_VBATEN;
+        }
     }
 
-    if (stm32wb_system_hclk() <= 48000000)
+    hclk = stm32wb_system_hclk();
+    
+    if (hclk > 48000000)
     {
-	adcclk = stm32wb_system_hclk();
+	adcclk = hclk / 2;
     }
     else
     {
-	adcclk = stm32wb_system_hclk() / 2;
+	adcclk = hclk;
     }
 
     /* period is in uS. 1e6 / adcclk is one tick in terms of uS.
@@ -245,6 +241,10 @@ uint32_t stm32wb_adc_read(unsigned int channel, unsigned int period)
     ADC1->SMPR1 = (channel < 10) ? (adc_smp << (channel * 3)) : 0;
     ADC1->SMPR2 = (channel >= 10) ? (adc_smp << ((channel * 3) - 30)) : 0;
 
+    /* Silicon ERRATA 2.4.4. Wrong ADC conversion results when delay between
+     * calibration and first conversion or between 2 consecutive conversions is too long. 
+     */
+
     ADC1->CR |= ADC_CR_ADSTART;
     
     while (!(ADC1->ISR & ADC_ISR_EOC))
@@ -265,24 +265,12 @@ uint32_t stm32wb_adc_read(unsigned int channel, unsigned int period)
 
     ADC1->ISR = ADC_ISR_EOC;
 
-    if (channel == STM32WB_ADC_CHANNEL_TSENSE)
+    if (channel >= STM32WB_ADC_CHANNEL_TSENSE)
     {
-	ADC1->CR |= ADC_CR_ADDIS;
-
-	while (ADC1->CR & ADC_CR_ADEN)
-	{
-	}
-	
-	armv7m_atomic_and(&ADC1_COMMON->CCR, ~ADC_CCR_TSEN);
-
-	ADC1->ISR = ADC_ISR_ADRDY;
-
-	do
-	{
-	    ADC1->CR |= ADC_CR_ADEN;
-	}
-	while (!(ADC1->ISR & ADC_ISR_ADRDY));
+        ADC1_COMMON->CCR &= ~(ADC_CCR_VBATEN | ADC_CCR_TSEN);
     }
 
+    stm32wb_adc_device.state = STM32WB_ADC_STATE_READY;
+    
     return convert;
 }

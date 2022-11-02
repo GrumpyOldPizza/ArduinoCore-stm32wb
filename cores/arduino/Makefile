@@ -1,25 +1,25 @@
-TOOLS    = ~/.arduino15/packages/arduino/tools/arm-none-eabi-gcc/7-2017q4/
+#TOOLS    = ~/.arduino15/packages/arduino/tools/arm-none-eabi-gcc/7-2017q4/
+TOOLS    = /opt/arm-none-eabi-gcc/10.3-2021.10
 CPP      = $(TOOLS)/bin/arm-none-eabi-cpp
 CC       = $(TOOLS)/bin/arm-none-eabi-gcc
 CXX      = $(TOOLS)/bin/arm-none-eabi-g++
 AS       = $(TOOLS)/bin/arm-none-eabi-as
 AR       = $(TOOLS)/bin/arm-none-eabi-ar
 LD       = $(TOOLS)/bin/arm-none-eabi-ld
-CFLAGS   = -mcpu=cortex-m4 -mthumb -c -g3 -Os $(WARNINGS) -std=gnu11 -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
-CXXFLAGS = -mcpu=cortex-m4 -mthumb -c -g3 -Os $(WARNINGS) -std=gnu++11 -ffunction-sections -fdata-sections -fno-threadsafe-statics -nostdlib -fno-use-cxa-atexit -fno-rtti -fno-exceptions -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
+OBJCOPY  = $(TOOLS)/bin/arm-none-eabi-objcopy
+CFLAGS   = -c -g3 -Os $(WARNINGS) -std=gnu11 -ffast-math -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
+CXXFLAGS = -c -g3 -Os $(WARNINGS) -std=gnu++11 -ffast-math -ffunction-sections -fdata-sections -fno-threadsafe-statics -nostdlib -fno-use-cxa-atexit -fno-rtti -fno-exceptions -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 ASFLAGS  = -c -g -x assembler-with-cpp $(EXTRAS) $(DEFINES) $(INCLUDES)
-LDFLAGS = -g -Os -mcpu=cortex-m4 -march=armv7e-m -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/Lib/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=0 -Wl,--defsym=__RTC_ZONE__=0 -Wl,--defsym=__RTC_DST__=0
+LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LinkScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
 WARNINGS = -Wall -Wextra
-EXTRAS   = -DSTM32WB55xx -mcpu=cortex-m4 -march=armv7e-m -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-DEFINES  = -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE
-#DEFINES  = -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE -DSTORAGE_TYPE=2
-#DEFINES  = -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE -DUSB_TYPE=0
-#DEFINES  = -D__SYSTEM_CORE_CLOCK__=32000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE -DUSB_TYPE=0
-#DEFINES  = -D__SYSTEM_CORE_CLOCK__=16000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE -DUSB_TYPE=0
-#DEFINES  = -D__SYSTEM_CORE_CLOCK__=2000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE -DUSB_TYPE=0
+EXTRAS   = -mcpu=cortex-m4 -march=armv7e-m+fp -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+DEFINES  = -DSTM32WB55xx -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE
+EPOCH    = $(shell date +"%s")
+
 INCLUDES = \
-	-I../../system/CMSIS/Include \
+	-I../../system/CMSIS/Core/Include \
 	-I../../system/CMSIS/Device/ST/STM32WBxx/Include \
+	-I../../system/CMSIS/RTOS2/Include \
 	-I../../system/STM32WBxx/Include \
 	-I../../variants/Firefly-WB55CG \
 	-I../../libraries/BLE/src \
@@ -38,6 +38,7 @@ INCLUDES = \
 	-I../../libraries/Wire/src \
 	-I.
 SRCS = \
+	../../system/CMSIS/RTOS2/Source/cmsis_os2.c \
 	../../libraries/BLE/src/BLE.cpp \
 	../../libraries/DOSFS/src/DOSFS.cpp \
 	../../libraries/GNSS/src/GNSS.cpp \
@@ -54,7 +55,6 @@ SRCS = \
 	../../variants/Firefly-WB55CG/variant.cpp \
 	avr/dtostrf.c \
 	avr/eeprom.c \
-	avr/fdevopen.c \
 	Callback.cpp \
 	CDC.cpp \
 	HardwareSerial.cpp \
@@ -84,6 +84,7 @@ SRCS = \
 	wiring_shift.c
 
 OBJS = \
+	../../system/CMSIS/RTOS2/Source/cmsis_os2.o \
 	../../libraries/BLE/src/BLE.o \
 	../../libraries/DOSFS/src/DOSFS.o \
 	../../libraries/GNSS/src/GNSS.o \
@@ -100,7 +101,6 @@ OBJS = \
 	../../variants/Firefly-WB55CG/variant.o \
 	avr/dtostrf.o \
 	avr/eeprom.o \
-	avr/fdevopen.o \
 	Callback.o \
 	CDC.o \
 	HardwareSerial.o \
@@ -129,7 +129,7 @@ OBJS = \
 	wiring_pulse.o \
 	wiring_shift.o
 
-all:: flash.elf
+all:: flash.elf flash.bin
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -140,9 +140,11 @@ all:: flash.elf
 %.o: %.S
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-flash.elf: $(OBJS)
+flash.elf: $(OBJS) ../../system/STM32WBxx/Lib/libstm32wb55xx.a
 	$(CC) $(LDFLAGS) $(OBJS) -L../../system/STM32WBxx/Lib -lstm32wb55xx -lm -lc -lgcc -lstm32wb55xx -o flash.elf
 
+flash.bin: flash.elf
+	$(OBJCOPY) -O binary flash.elf flash.bin
 clean::
 	rm -f flash.elf flash.bin *~ *.o *.d $(OBJS)
 

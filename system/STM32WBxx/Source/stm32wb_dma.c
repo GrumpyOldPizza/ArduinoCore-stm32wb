@@ -91,7 +91,7 @@ typedef struct _stm32wb_dma_t {
 typedef struct _stm32wb_dma_device_t {
     stm32wb_dma_t                   channels[14];
     volatile uint32_t               dma;
-    volatile uint32_t               code;
+    volatile uint32_t               flash;
 } stm32wb_dma_device_t;
 
 static stm32wb_dma_device_t stm32wb_dma_device;
@@ -108,7 +108,7 @@ static inline void stm32wb_dma1_interrupt(stm32wb_dma_t *dma, DMA_Channel_TypeDe
     {
 	DMA1->IFCR = (15 << shift);
 
-	armv7m_atomic_load_2((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
+	armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
 
 	if (callback)
 	{
@@ -129,7 +129,7 @@ static inline void stm32wb_dma2_interrupt(stm32wb_dma_t *dma, DMA_Channel_TypeDe
     {
 	DMA2->IFCR = (15 << shift);
 
-	armv7m_atomic_load_2((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
+	armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
 
 	if (callback)
 	{
@@ -197,19 +197,12 @@ bool stm32wb_dma_enable(uint16_t channel, uint8_t priority, stm32wb_dma_callback
     NVIC_SetPriority(stm32wb_dma_interrupt_table[channel & 15], priority);
 
     armv7m_atomic_or(&stm32wb_dma_device.dma, mask);
-
-    if ((channel & 15) < STM32WB_DMA_CHANNEL_DMA2_CH1_INDEX)
-    {
-	armv7m_atomic_or(&RCC->AHB1ENR, (RCC_AHB1ENR_DMA1EN | RCC_AHB1ENR_DMAMUX1EN));
-    }
-    else
-    {
-	armv7m_atomic_or(&RCC->AHB1ENR, (RCC_AHB1ENR_DMA2EN | RCC_AHB1ENR_DMAMUX1EN));
-    }
+    armv7m_atomic_or(&RCC->AHB1ENR, (RCC_AHB1ENR_DMA1EN | RCC_AHB1ENR_DMA2EN | RCC_AHB1ENR_DMAMUX1EN));
 
     RCC->AHB1ENR;
 
     armv7m_atomic_or(&RCC->AHB1SMENR, RCC_AHB1SMENR_SRAM1SMEN);
+    armv7m_atomic_or(&RCC->AHB3SMENR, RCC_AHB3SMENR_SRAM2SMEN);
 
     DMAMUX->CCR = (channel >> 4) & DMAMUX_CxCR_DMAREQ_ID;
 
@@ -229,21 +222,14 @@ void stm32wb_dma_disable(uint16_t channel)
 
     armv7m_atomic_and(&stm32wb_dma_device.dma, ~mask);
 
-    armv7m_atomic_andz(&RCC->AHB1SMENR, ~RCC_AHB1SMENR_SRAM1SMEN, &stm32wb_dma_device.dma, ~0);
-    
-    if ((channel & 15) < STM32WB_DMA_CHANNEL_DMA2_CH1_INDEX)
-    {
-	armv7m_atomic_andz(&RCC->AHB1ENR, ~RCC_AHB1ENR_DMA1EN, &stm32wb_dma_device.dma, 0x007f);
-    }
-    else
-    {
-	armv7m_atomic_andz(&RCC->AHB1ENR, ~RCC_AHB1ENR_DMA2EN, &stm32wb_dma_device.dma, 0x3f80);
-    }
+    armv7m_atomic_andz(&RCC->AHB1SMENR, ~RCC_AHB1SMENR_SRAM1SMEN, &stm32wb_dma_device.dma);
+    armv7m_atomic_andz(&RCC->AHB3SMENR, ~RCC_AHB3SMENR_SRAM2SMEN, &stm32wb_dma_device.dma);
 
-    armv7m_atomic_andz(&RCC->AHB1ENR, ~RCC_AHB1ENR_DMAMUX1EN, &stm32wb_dma_device.dma, ~0);
+    armv7m_atomic_andz(&RCC->AHB1ENR, ~(RCC_AHB1ENR_DMA1EN | RCC_AHB1ENR_DMA2EN | RCC_AHB1ENR_DMAMUX1EN), &stm32wb_dma_device.dma);
+
     RCC->AHB1ENR;
 
-    armv7m_atomic_storeh((volatile uint16_t*)&dma->channel, STM32WB_DMA_CHANNEL_NONE);
+    dma->channel = STM32WB_DMA_CHANNEL_NONE;
 }
 
 __attribute__((optimize("O3"))) void stm32wb_dma_start(uint16_t channel, uint32_t tx_data, uint32_t rx_data, uint16_t xf_count, uint32_t option)
@@ -284,13 +270,13 @@ __attribute__((optimize("O3"))) void stm32wb_dma_start(uint16_t channel, uint32_
     
     DMA->CCR = option | DMA_CCR_EN;
 
-    if (xf_address < 0x20000000)
+    if (xf_address < 0x10000000)
     {
 	mask = 1 << (channel & 15);
 
-	armv7m_atomic_or(&stm32wb_dma_device.code, mask);
+	armv7m_atomic_or(&stm32wb_dma_device.flash, mask);
 
-	armv7m_atomic_or(&RCC->AHB3SMENR, (RCC_AHB3SMENR_SRAM2SMEN | RCC_AHB3SMENR_FLASHSMEN));
+	armv7m_atomic_or(&RCC->AHB3SMENR, RCC_AHB3SMENR_FLASHSMEN);
     }
 }
 
@@ -304,11 +290,11 @@ __attribute__((optimize("O3"))) uint16_t stm32wb_dma_stop(uint16_t channel)
 
     mask = 1 << (channel & 15);
 
-    if (stm32wb_dma_device.code & mask)
+    if (stm32wb_dma_device.flash & mask)
     {
-	armv7m_atomic_and(&stm32wb_dma_device.code, ~mask);
+	armv7m_atomic_and(&stm32wb_dma_device.flash, ~mask);
 
-	armv7m_atomic_andz(&RCC->AHB3SMENR, ~(RCC_AHB3SMENR_SRAM2SMEN | RCC_AHB3SMENR_FLASHSMEN), &stm32wb_dma_device.code, ~0);
+	armv7m_atomic_andz(&RCC->AHB3SMENR, ~RCC_AHB3SMENR_FLASHSMEN, &stm32wb_dma_device.flash);
     }
     
     return dma->size - (DMA->CNDTR & 0xffff);

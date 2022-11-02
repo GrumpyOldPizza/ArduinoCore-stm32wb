@@ -167,16 +167,8 @@ static void stm32wb_spi_dma_callback(stm32wb_spi_t *spi, uint32_t events)
     SPI_TypeDef *SPI = spi->SPI;
     stm32wb_spi_done_callback_t callback;
     void *context;
-    volatile uint8_t *p_status_return;
 
-    p_status_return = spi->xf_status;
-
-    if (!p_status_return)
-    {
-        return;
-    }
-
-    if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)p_status_return, (uint32_t)NULL) != (uint32_t)p_status_return)
+    if (armv7m_atomic_casb(&spi->state, STM32WB_SPI_STATE_DATA_DMA, STM32WB_SPI_STATE_DATA_DMA_STOP) != STM32WB_SPI_STATE_DATA_DMA)
     {
         return;
     }
@@ -196,8 +188,6 @@ static void stm32wb_spi_dma_callback(stm32wb_spi_t *spi, uint32_t events)
     context = spi->xf_context;
 
     spi->state = STM32WB_SPI_STATE_DATA;
-    
-    *p_status_return = STM32WB_SPI_STATUS_SUCCESS;
 
     if (callback)
     {
@@ -225,7 +215,7 @@ bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params)
 
     if (!stm32wb_spi_device.notify.callback)
     {
-        stm32wb_system_register(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_CLOCKS));
+        stm32wb_system_register(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_CLOCKS_EPILOGUE));
     }
     
     return true;
@@ -261,19 +251,9 @@ bool stm32wb_spi_enable(stm32wb_spi_t *spi)
     spi->cr1 = 0;
     spi->cr2 = 0;
 
-    armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
-
-#if 1    
     stm32wb_gpio_pin_configure(spi->pins.mosi, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     stm32wb_gpio_pin_configure(spi->pins.miso, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     stm32wb_gpio_pin_configure(spi->pins.sck,  (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-#endif
-
-#if 0    
-    stm32wb_gpio_pin_configure(spi->pins.mosi, (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-    stm32wb_gpio_pin_configure(spi->pins.miso, (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-    stm32wb_gpio_pin_configure(spi->pins.sck,  (STM32WB_GPIO_PARK_PULLDOWN | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-#endif
     
     spi->state = STM32WB_SPI_STATE_READY;
 
@@ -291,33 +271,33 @@ bool stm32wb_spi_disable(stm32wb_spi_t *spi)
     stm32wb_gpio_pin_configure(spi->pins.miso, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_MODE_ANALOG));
     stm32wb_gpio_pin_configure(spi->pins.sck,  (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_MODE_ANALOG));
     
-    armv7m_atomic_store((volatile uint32_t*)&stm32wb_spi_device.instances[spi->instance], (uint32_t)NULL);
+    stm32wb_spi_device.instances[spi->instance] = NULL;
         
     spi->state = STM32WB_SPI_STATE_INIT;
 
     return true;
 }
 
-bool stm32wb_spi_block(stm32wb_spi_t *spi, uint16_t pin)
+bool stm32wb_spi_block(stm32wb_spi_t *spi, uint32_t mask)
 {
     if (spi->state != STM32WB_SPI_STATE_READY)
     {
         return false;
     }
 
-    spi->mask |= (1ul << ((pin & STM32WB_GPIO_PIN_INDEX_MASK) >> STM32WB_GPIO_PIN_INDEX_SHIFT));
+    spi->mask |= mask;
 
     return true;
 }
 
-bool stm32wb_spi_unblock(stm32wb_spi_t *spi, uint16_t pin)
+bool stm32wb_spi_unblock(stm32wb_spi_t *spi, uint32_t mask)
 {
     if (spi->state != STM32WB_SPI_STATE_READY)
     {
         return false;
     }
 
-    spi->mask &= ~(1ul << ((pin & STM32WB_GPIO_PIN_INDEX_MASK) >> STM32WB_GPIO_PIN_INDEX_SHIFT));
+    spi->mask &= ~mask;
 
     return true;
 }
@@ -337,8 +317,8 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_acquire(stm32wb_spi_t *spi, uin
         stm32wb_exti_block(spi->mask);
     }
 
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_CLOCKS);
     stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
-    stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_SPI1 << spi->instance);
 
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_SPI1 + spi->instance);
 
@@ -416,15 +396,15 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_release(stm32wb_spi_t *spi)
 
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_SPI1 + spi->instance);
 
-    stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_SPI1 << spi->instance);
     stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_SLEEP);
-
-    spi->state = STM32WB_SPI_STATE_READY;
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_CLOCKS);
 
     if (spi->mask)
     {
-        stm32wb_exti_unblock(spi->mask, false);
+        stm32wb_exti_unblock(spi->mask);
     }
+
+    spi->state = STM32WB_SPI_STATE_READY;
 
     return true;
 }
@@ -800,18 +780,12 @@ __attribute__((optimize("O3"))) void stm32wb_spi_data_transfer(stm32wb_spi_t *sp
     }
 }
 
-
-__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context)
+__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, stm32wb_spi_done_callback_t callback, void *context)
 {
     SPI_TypeDef *SPI = spi->SPI;
     uint32_t spi_cr2, rx_option, tx_option;
 
-    if (spi->state != STM32WB_SPI_STATE_DATA)
-    {
-        return false;
-    }
-
-    if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
+    if (armv7m_atomic_casb(&spi->state, STM32WB_SPI_STATE_DATA, STM32WB_SPI_STATE_DATA_DMA) != STM32WB_SPI_STATE_DATA)
     {
         return false;
     }
@@ -820,7 +794,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
     {
         if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -832,7 +806,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
     {
         if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -840,14 +814,9 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
         spi->option |= STM32WB_SPI_OPTION_TX_DMA;
     }
 
-    spi->state = STM32WB_SPI_STATE_DATA_DMA;
-    
-    *p_status_return = STM32WB_SPI_STATUS_BUSY;
-    
-    spi->xf_status = p_status_return;
+    spi->xf_data = rx_data;
     spi->xf_callback = callback;
     spi->xf_context = context;
-    spi->rx_data = rx_data;
 
     if (!spi->clock || ((uint32_t)rx_data & 1) || (rx_count & 1))
     {
@@ -880,17 +849,12 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_receive(stm32wb_spi_t 
     return true;
 }
 
-__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context)
+__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, stm32wb_spi_done_callback_t callback, void *context)
 {
     SPI_TypeDef *SPI = spi->SPI;
     uint32_t spi_cr2, rx_option, tx_option;
     
-    if (spi->state != STM32WB_SPI_STATE_DATA)
-    {
-        return false;
-    }
-
-    if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
+    if (armv7m_atomic_casb(&spi->state, STM32WB_SPI_STATE_DATA, STM32WB_SPI_STATE_DATA_DMA) != STM32WB_SPI_STATE_DATA)
     {
         return false;
     }
@@ -899,7 +863,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     {
         if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -911,7 +875,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     {
         if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -919,14 +883,9 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
         spi->option |= STM32WB_SPI_OPTION_TX_DMA;
     }
 
-    spi->state = STM32WB_SPI_STATE_DATA_DMA;
-    
-    *p_status_return = STM32WB_SPI_STATUS_BUSY;
-
-    spi->xf_status = p_status_return;
+    spi->xf_data = NULL;
     spi->xf_callback = callback;
     spi->xf_context = context;
-    spi->rx_data = NULL;
 
     if (!spi->clock || ((uint32_t)tx_data & 1) || (tx_count & 1))
     {
@@ -959,17 +918,12 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t
     return true;
 }
 
-__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context)
+__attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, stm32wb_spi_done_callback_t callback, void *context)
 {
     SPI_TypeDef *SPI = spi->SPI;
     uint32_t spi_cr2, rx_option, tx_option;
     
-    if (spi->state != STM32WB_SPI_STATE_DATA)
-    {
-        return false;
-    }
-
-    if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL, (uint32_t)p_status_return) != (uint32_t)NULL)
+    if (armv7m_atomic_casb(&spi->state, STM32WB_SPI_STATE_DATA, STM32WB_SPI_STATE_DATA_DMA) != STM32WB_SPI_STATE_DATA)
     {
         return false;
     }
@@ -978,7 +932,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
     {
         if (!stm32wb_dma_enable(spi->rx_dma, spi->priority, (stm32wb_dma_callback_t)stm32wb_spi_dma_callback, spi))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -990,7 +944,7 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
     {
         if (!stm32wb_dma_enable(spi->tx_dma, spi->priority, NULL, NULL))
         {
-            armv7m_atomic_store((volatile uint32_t*)&spi->xf_status, (uint32_t)NULL);
+            spi->state = STM32WB_SPI_STATE_DATA;
             
             return false;
         }
@@ -1000,12 +954,9 @@ __attribute__((optimize("O3"))) bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t
 
     spi->state = STM32WB_SPI_STATE_DATA_DMA;
     
-    *p_status_return = STM32WB_SPI_STATUS_BUSY;
-
-    spi->xf_status = p_status_return;
+    spi->xf_data = rx_data;
     spi->xf_callback = callback;
     spi->xf_context = context;
-    spi->rx_data = rx_data;
 
     if (!spi->clock || ((uint32_t)tx_data & 1) || ((uint32_t)rx_data & 1) || (xf_count & 1))
     {
@@ -1042,17 +993,8 @@ uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi)
 {
     SPI_TypeDef *SPI = spi->SPI;
     uint32_t xf_count, xf_16bit;
-    uint8_t rx_data;
-    volatile uint8_t *p_status_return;
 
-    p_status_return = spi->xf_status;
-
-    if (!p_status_return)
-    {
-        return 0;
-    }
-
-    if (armv7m_atomic_cas((volatile uint32_t*)&spi->xf_status, (uint32_t)p_status_return, (uint32_t)NULL) != (uint32_t)p_status_return)
+    if (armv7m_atomic_casb(&spi->state, STM32WB_SPI_STATE_DATA_DMA, STM32WB_SPI_STATE_DATA_DMA_STOP) != STM32WB_SPI_STATE_DATA_DMA)
     {
         return 0;
     }
@@ -1070,28 +1012,33 @@ uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi)
     
     xf_count = stm32wb_dma_stop(spi->rx_dma) << xf_16bit;
     
-    while (SPI->SR & SPI_SR_FRLVL)
+    if (spi->xf_data)
     {
-        rx_data = STM32WB_SPI_READ_8(SPI);
-        
-        if (spi->rx_data)
+        while (SPI->SR & SPI_SR_FRLVL)
         {
-            spi->rx_data[xf_count] = rx_data;
+            spi->xf_data[xf_count] = STM32WB_SPI_READ_8(SPI);
+        
+            xf_count++;
         }
-        
-        xf_count++;
     }
+    else
+    {
+        while (SPI->SR & SPI_SR_FRLVL)
+        {
+            STM32WB_SPI_READ_8(SPI);
         
+            xf_count++;
+        }
+    }
+    
     SPI->CR1 = spi->cr1 | SPI_CR1_SPE;
 
     spi->state = STM32WB_SPI_STATE_DATA;
-    
-    *p_status_return = STM32WB_SPI_STATUS_FAILURE;
     
     return xf_count;
 }
 
 bool stm32wb_spi_data_dma_busy(stm32wb_spi_t *spi)
 {
-    return (spi->state == STM32WB_SPI_STATE_DATA_DMA);
+    return (spi->state >= STM32WB_SPI_STATE_DATA_DMA);
 }

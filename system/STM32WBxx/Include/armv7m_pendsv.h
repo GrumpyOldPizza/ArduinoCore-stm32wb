@@ -38,8 +38,8 @@ typedef void (*armv7m_pendsv_callback_t)(void);
 extern void __armv7m_pendsv_initialize(void);
 
 extern void armv7m_pendsv_hook(armv7m_pendsv_callback_t callback);
-extern bool armv7m_pendsv_raise(uint32_t index);
-extern bool armv7m_pendsv_is_pending(uint32_t index);
+extern void armv7m_pendsv_raise(uint32_t mask);
+extern bool armv7m_pendsv_is_pending(uint32_t mask);
 
 extern void SWI0_SWIHandler(void);
 extern void SWI1_SWIHandler(void);
@@ -75,43 +75,44 @@ extern void SWI30_SWIHandler(void);
 extern void SWI31_SWIHandler(void);
 
   
-#define ARMV7M_PENDSV_SWI_RADIO             0
-#define ARMV7M_PENDSV_SWI_EXTI              1
-#define ARMV7M_PENDSV_SWI_SERVO             2
-#define ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT     3
-#define ARMV7M_PENDSV_SWI_RTC_MODIFY        4
-#define ARMV7M_PENDSV_SWI_RTC_ALARM         5
-#define ARMV7M_PENDSV_SWI_RTC_TIMER         6
-#define ARMV7M_PENDSV_SWI_RTC_WAKEUP        7
-#define ARMV7M_PENDSV_SWI_USBD_PVM1         8
-#define ARMV7M_PENDSV_SWI_USBD_DCD          9
-#define ARMV7M_PENDSV_SWI_RNG               10
-#define ARMV7M_PENDSV_SWI_EEPROM            11
-#define ARMV7M_PENDSV_SWI_FLASH             12
-#define ARMV7M_PENDSV_SWI_RTT               13
-
-#define ARMV7M_PENDSV_SWI_RTOS_WORK_SCHEDULE 14
-#define ARMV7M_PENDSV_SWI_RTOS_TASK_SCHEDULE 15
-
+#define ARMV7M_PENDSV_SWI_RADIO             (1ul << 0)
+#define ARMV7M_PENDSV_SWI_EXTI              (1ul << 1)
+#define ARMV7M_PENDSV_SWI_SYSTICK           (1ul << 2)
+#define ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT     (1ul << 3)
+#define ARMV7M_PENDSV_SWI_SERVO             (1ul << 4)
+#define ARMV7M_PENDSV_SWI_RTC_SYNC          (1ul << 5)
+#define ARMV7M_PENDSV_SWI_RTC_ALARM         (1ul << 6)
+#define ARMV7M_PENDSV_SWI_USBD_PVM1         (1ul << 7)
+#define ARMV7M_PENDSV_SWI_USBD_DCD          (1ul << 8)
+#define ARMV7M_PENDSV_SWI_RNG               (1ul << 9)
+#define ARMV7M_PENDSV_SWI_EEPROM            (1ul << 10)
+#define ARMV7M_PENDSV_SWI_FLASH             (1ul << 11)
+#define ARMV7M_PENDSV_SWI_RTOS_ALARM        (1ul << 12)
+#define ARMV7M_PENDSV_SWI_RTOS_WORK         (1ul << 13)
+#define ARMV7M_PENDSV_SWI_RTOS_TASK_RESUME  (1ul << 14)
+#define ARMV7M_PENDSV_SWI_RTOS_TASK_WAKEUP  (1ul << 15)
+#define ARMV7M_PENDSV_SWI_RTOS_EVENT_SEND   (1ul << 16)
+#define ARMV7M_PENDSV_SWI_RTOS_SEM_RELEASE  (1ul << 17)
 
 #define RADIO_SWIHandler                    SWI0_SWIHandler
 #define EXTI_SWIHandler                     SWI1_SWIHandler
-#define SERVO_SWIHandler                    SWI2_SWIHandler
+#define SYSTICK_SWIHandler                  SWI2_SWIHandler
 #define LPTIM_TIMEOUT_SWIHandler            SWI3_SWIHandler
-#define RTC_MODIFY_SWIHandler               SWI4_SWIHandler
-#define RTC_ALARM_SWIHandler                SWI5_SWIHandler
-#define RTC_TIMER_SWIHandler                SWI6_SWIHandler
-#define RTC_WAKEUP_SWIHandler               SWI7_SWIHandler
-#define USBD_PVM1_SWIHandler                SWI8_SWIHandler
-#define USBD_DCD_SWIHandler                 SWI9_SWIHandler
-#define RNG_SWIHandler                      SWI10_SWIHandler
-#define EEPROM_SWIHandler                   SWI11_SWIHandler
-#define FLASH_SWIHandler                    SWI12_SWIHandler
-#define RTT_SWIHandler                      SWI13_SWIHandler
-
-#define RTOS_WORK_SCHEDULE_SWIHandler       SWI14_SWIHandler
-#define RTOS_TASK_SCHEDULE_SWIHandler       SWI15_SWIHandler
-
+#define SERVO_SWIHandler                    SWI4_SWIHandler
+#define RTC_SYNC_SWIHandler                 SWI5_SWIHandler
+#define RTC_ALARM_SWIHandler                SWI6_SWIHandler
+#define USBD_PVM1_SWIHandler                SWI7_SWIHandler
+#define USBD_DCD_SWIHandler                 SWI8_SWIHandler
+#define RNG_SWIHandler                      SWI9_SWIHandler
+#define EEPROM_SWIHandler                   SWI10_SWIHandler
+#define FLASH_SWIHandler                    SWI11_SWIHandler
+#define RTOS_ALARM_SWIHandler               SWI12_SWIHandler
+#define RTOS_WORK_SWIHandler                SWI13_SWIHandler
+#define RTOS_TASK_RESUME_SWIHandler         SWI14_SWIHandler
+#define RTOS_TASK_WAKEUP_SWIHandler         SWI15_SWIHandler
+#define RTOS_EVENT_SEND_SWIHandler          SWI16_SWIHandler
+#define RTOS_SEM_RELEASE_SWIHandler         SWI17_SWIHandler
+  
 #ifdef __cplusplus
 }
 #endif

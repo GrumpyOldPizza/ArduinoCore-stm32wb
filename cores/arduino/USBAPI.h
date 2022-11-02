@@ -68,19 +68,15 @@ private:
 
     k_work_t m_work;
     
-    void workRoutine();
     static void eventCallback(class USBDeviceClass *self, uint32_t events);
+    static void notifyRoutine(class USBDeviceClass *self);
 };
 
 extern USBDeviceClass USBDevice;
 
 #define CDC_RX_BUFFER_SIZE 512
 #define CDC_TX_BUFFER_SIZE 512
-#define CDC_TX_PACKET_SIZE 256
-
-#define CDC_STATUS_SUCESS  0
-#define CDC_STATUS_FAILURE 1
-#define CDC_STATUS_BUSY    255
+#define CDC_TX_PACKET_SIZE 128
 
 class CDC : public HardwareSerial
 {
@@ -98,8 +94,8 @@ public:
     virtual void flush(void);
     virtual size_t write(uint8_t);
     virtual size_t write(const uint8_t *buffer, size_t size);
+    virtual operator bool();
     using Print::write; // pull in write(str) from Print
-    operator bool();
 
     // These return the settings specified by the USB host for the
     // serial port. These aren't really used, but are offered here
@@ -125,42 +121,44 @@ public:
     };
 
     // STM32WB EXTENSTION: asynchronous write with callback
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status);
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status, void(*callback)(void));
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status, Callback callback);
-
+    bool write(const uint8_t *buffer, size_t size, void(*callback)(void));
+    bool write(const uint8_t *buffer, size_t size, Callback callback);
+    bool busy();
+  
     // STM32WB EXTENSTION: enable/disable non-blocking writes
     void setNonBlocking(bool enable);
 
     // STM32WB EXTENSTION: receive callback
+    void onReceive(void(*callback)(void));
     void onReceive(Callback callback);
-    void onReceive(void(*callback)(void)) { onReceive(Callback(callback)); }
   
 private:
-    uint8_t m_rx_data[CDC_RX_BUFFER_SIZE];
-    uint8_t m_tx_data[CDC_TX_BUFFER_SIZE];
-    volatile uint16_t m_tx_write;
-    volatile uint16_t m_tx_read;
-    volatile uint32_t m_tx_count;
-    volatile uint32_t m_tx_size;
-
-    const uint8_t *m_tx_data2;
-    volatile uint32_t m_tx_size2;
-    volatile uint8_t *m_tx_status2;
-
     bool m_enabled;
     bool m_nonblocking;
-    volatile bool m_tx_busy;
-    volatile uint8_t m_tx_status;
+    volatile uint8_t m_tx_busy;
+    volatile uint8_t m_tx_lock;
+
+    uint8_t m_rx_data[CDC_RX_BUFFER_SIZE];
+    uint8_t m_tx_data[CDC_TX_BUFFER_SIZE];
+    uint32_t m_rx_size;
+    uint32_t m_tx_size;
+    volatile uint32_t m_tx_read;
+    volatile uint32_t m_tx_write;
+    volatile uint32_t m_tx_write_next;
+    volatile uint32_t m_tx_count;
+
+    const uint8_t * volatile m_tx2_data;
+    volatile uint32_t m_tx2_count;
     
-    volatile uint32_t m_events;
-    
-    Callback m_transmit_callback;
+    volatile uint32_t m_mask;
+      
     Callback m_receive_callback;
+    Callback m_transmit_callback;
     
     k_work_t m_work;
+    k_event_t m_event;
 
-    static void workRoutine(class CDC *self);
     static void transmitCallback(class CDC *self);
     static void eventCallback(class CDC *self, uint32_t events);
+    static void notifyRoutine(class CDC *self);
 };

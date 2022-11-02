@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -36,8 +36,6 @@
 #include "stm32wb_system.h"
 
 typedef struct _stm32wb_i2c_device_t {
-    stm32wb_system_notify_t  notify;
-    volatile uint32_t        wakeup;
     stm32wb_i2c_t *          instances[STM32WB_I2C_INSTANCE_COUNT];
 } stm32wb_i2c_device_t;
 
@@ -62,7 +60,7 @@ static stm32wb_i2c_device_t stm32wb_i2c_device;
 #define I2C_CR2_NBYTES_SHIFT 16
 #define I2C_CR2_NBYTES_MASK  0x00ff0000
 
-#define STM32WB_I2C_TRANSACTION_SENTINEL ((stm32wb_i2c_transaction_t*)0xffffffff)
+#define STM32WB_I2C_TRANSACTION_SENTINEL ((stm32wb_i2c_transaction_t*)0x00000001)
 
 #define STM32WB_I2C_SUSPEND_CALLBACK ((stm32wb_i2c_suspend_callback_t)2)
 
@@ -86,40 +84,6 @@ static const uint32_t stm32wb_i2c_xlate_IMR[STM32WB_I2C_INSTANCE_COUNT] = {
     EXTI_IMR1_IM23,
 };
 
-static void stm32wb_i2c_notify_callback(void *context, uint32_t notify)
-{
-    /* WAR for ERRATA 2.6.1 */
-
-    if (stm32wb_i2c_device.wakeup)
-    {
-        if (notify & STM32WB_SYSTEM_NOTIFY_STOP_ENTER)
-        {
-            if (stm32wb_i2c_device.wakeup & (1u << STM32WB_I2C_INSTANCE_I2C1))
-            {
-                I2C1->CR1 &= ~I2C_CR1_PE;
-            }
-
-            if (stm32wb_i2c_device.wakeup & (1u << STM32WB_I2C_INSTANCE_I2C3))
-            {
-                I2C3->CR1 &= ~I2C_CR1_PE;
-            }
-        }
-
-        if (notify & STM32WB_SYSTEM_NOTIFY_STOP_LEAVE)
-        {
-            if (stm32wb_i2c_device.wakeup & (1u << STM32WB_I2C_INSTANCE_I2C1))
-            {
-                I2C1->CR1 |= I2C_CR1_PE;
-            }
-
-            if (stm32wb_i2c_device.wakeup & (1u << STM32WB_I2C_INSTANCE_I2C3))
-            {
-                I2C3->CR1 |= I2C_CR1_PE;
-            }
-        }
-    }
-}
-
 static void stm32wb_i2c_start(stm32wb_i2c_t *i2c)
 {
     I2C_TypeDef *I2C = i2c->I2C;
@@ -130,9 +94,7 @@ static void stm32wb_i2c_start(stm32wb_i2c_t *i2c)
 
     if (i2c->option & STM32WB_I2C_OPTION_WAKEUP)
     {
-        armv7m_atomic_or(&stm32wb_i2c_device.wakeup, (1u << i2c->instance));
-
-        if (i2c->instance == STM32WB_I2C_INSTANCE_I2C1)
+        if (i2c->instance != STM32WB_I2C_INSTANCE_I2C3)
         {
             stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_1);
         }
@@ -150,12 +112,10 @@ static void stm32wb_i2c_stop(stm32wb_i2c_t *i2c)
 
     if (i2c->option & STM32WB_I2C_OPTION_WAKEUP)
     {
-        if (i2c->instance == STM32WB_I2C_INSTANCE_I2C1)
+        if (i2c->instance != STM32WB_I2C_INSTANCE_I2C3)
         {
             stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_STOP_1);
         }
-
-        armv7m_atomic_and(&stm32wb_i2c_device.wakeup, ~(1u << i2c->instance));
     }
 
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_I2C1 + i2c->instance);
@@ -270,7 +230,7 @@ static void stm32wb_i2c_master_transmit(stm32wb_i2c_t *i2c)
 {
     I2C_TypeDef *I2C = i2c->I2C;
     uint32_t i2c_cr2, count;
-    bool tx_dma = false;
+    bool tx_dma;
 
     i2c->state = STM32WB_I2C_STATE_MASTER_TRANSMIT;
 
@@ -286,11 +246,20 @@ static void stm32wb_i2c_master_transmit(stm32wb_i2c_t *i2c)
     }
     else
     {
-        if (!i2c->rx_data && !(i2c->xf_control & (STM32WB_I2C_CONTROL_RESTART | STM32WB_I2C_CONTROL_DIRECTION)))
+        if (i2c->xf_control & STM32WB_I2C_CONTROL_DIRECTION)
         {
-            i2c_cr2 |= I2C_CR2_AUTOEND;
+            i2c_cr2 |= I2C_CR2_RELOAD;
+        }
+        else
+        {
+            if (!i2c->rx_data && !(i2c->xf_control & STM32WB_I2C_CONTROL_RESTART))
+            {
+                i2c_cr2 |= I2C_CR2_AUTOEND;
+            }
         }
     }
+
+    tx_dma = false;
 
     if ((count > 1) && (i2c->tx_dma != STM32WB_DMA_CHANNEL_NONE))
     {
@@ -322,9 +291,12 @@ static void stm32wb_i2c_master_transmit(stm32wb_i2c_t *i2c)
 
 	I2C->CR1 |= (I2C_CR1_TXIE | I2C_CR1_STOPIE | I2C_CR1_TCIE);
 
-	I2C->ISR |= I2C_ISR_TXE;
-	    
-	I2C->TXDR = *(i2c->tx_data)++;
+        if (count)
+        {
+            I2C->ISR |= I2C_ISR_TXE;
+
+            I2C->TXDR = *(i2c->tx_data)++;
+        }
     }
 }
 
@@ -413,8 +385,8 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
         {
             transaction_next = transaction->next;
             
-            armv7m_atomic_store((volatile uint32_t*)&transaction->next, (uint32_t)transaction_head);
-            
+            transaction->next = transaction_head;
+     
             transaction_head = transaction;
         }
 
@@ -424,7 +396,7 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
         }
         else
         {
-            armv7m_atomic_store((volatile uint32_t*)&i2c->xf_tail->next, (uint32_t)transaction_head);
+            i2c->xf_tail->next = transaction_head;
         }
 
         i2c->xf_tail = transaction_tail;
@@ -448,7 +420,7 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
                         }
                         else
                         {
-			    armv7m_atomic_store((volatile uint32_t*)&transaction_previous->next, (uint32_t)transaction->next);
+			    transaction_previous->next = transaction->next;
                         }
                         
                         if (transaction == i2c->xf_tail)
@@ -485,31 +457,43 @@ static void stm32wb_i2c_master_check(stm32wb_i2c_t *i2c)
                 
                 i2c->xf_address = transaction->address;
                 i2c->xf_control = transaction->control;
-            
-		i2c->tx_data = NULL;
-		i2c->tx_data_e = NULL;
+                
+                i2c->tx_data = NULL;
+                i2c->tx_data_e = NULL;
 		i2c->rx_data = NULL;
 		i2c->rx_data_e = NULL;
-		
-                if (transaction->tx_data)
+
+                if (transaction->tx_count)
                 {
                     i2c->tx_data = transaction->tx_data;
                     i2c->tx_data_e = transaction->tx_data + transaction->tx_count;
-
-		    if (transaction->rx_data && !(transaction->control & STM32WB_I2C_CONTROL_DIRECTION))
-		    {
-			i2c->rx_data = transaction->rx_data;
-			i2c->rx_data_e = transaction->rx_data + transaction->rx_count;
-		    }
-
-                    stm32wb_i2c_master_transmit(i2c);
+                }
+                
+                if (transaction->rx_count)
+                {
+                    if (!(i2c->xf_control & STM32WB_I2C_CONTROL_DIRECTION))
+                    {
+                        i2c->rx_data = transaction->rx_data;
+                        i2c->rx_data_e = transaction->rx_data + transaction->rx_count;
+                    }
+                    
+                    if (transaction->tx_count)
+                    {
+                        stm32wb_i2c_master_transmit(i2c);
+                    }
+                    else
+                    {
+                        stm32wb_i2c_master_receive(i2c);
+                    }
                 }
                 else
                 {
-                    i2c->rx_data = transaction->rx_data;
-                    i2c->rx_data_e = transaction->rx_data + transaction->rx_count;
+                    /* This here allows for a 0 length transfer to ping the bus address.
+                     */
 
-		    stm32wb_i2c_master_receive(i2c);
+                    i2c->xf_control &= ~STM32WB_I2C_CONTROL_DIRECTION;
+
+                    stm32wb_i2c_master_transmit(i2c);
                 }
             }
         }
@@ -653,6 +637,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
     I2C_TypeDef *I2C = i2c->I2C;
     stm32wb_i2c_transaction_t *transaction = i2c->xf_transaction;
     uint32_t i2c_isr, i2c_cr2, count;
+    bool tx_dma;
     uint8_t status;
     stm32wb_i2c_done_callback_t callback;
     void *context;
@@ -739,7 +724,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                     {
                         if (i2c_isr & I2C_ISR_ARLO)
                         {
-                            status = STM32WB_I2C_STATUS_ARBITRATION_LOST;
+                            status = STM32WB_I2C_STATUS_FAILURE;
                         }
                         else
                         {
@@ -751,39 +736,24 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                 }
                 else
                 {
-                    if (i2c->xf_control & STM32WB_I2C_CONTROL_DIRECTION)
+                    if (i2c->rx_data)
                     {
-                        i2c->xf_control &= ~STM32WB_I2C_CONTROL_DIRECTION;
-
-                        i2c->tx_data = transaction->rx_data;
-                        i2c->tx_data_e = transaction->rx_data + transaction->rx_count;
+                        stm32wb_i2c_master_receive(i2c);
                         
-                        stm32wb_i2c_master_transmit(i2c);
-
                         status = STM32WB_I2C_STATUS_BUSY;
-                        
                     }
                     else
                     {
-                        if (i2c->rx_data)
+                        if (i2c->xf_control & STM32WB_I2C_CONTROL_RESTART)
                         {
-                            stm32wb_i2c_master_receive(i2c);
-
-                            status = STM32WB_I2C_STATUS_BUSY;
+                            i2c->state = STM32WB_I2C_STATE_MASTER_RESTART;
                         }
                         else
                         {
-                            if (i2c->xf_control & STM32WB_I2C_CONTROL_RESTART)
-                            {
-                                i2c->state = STM32WB_I2C_STATE_MASTER_RESTART;
-                            }
-                            else
-                            {
-                                i2c->state = STM32WB_I2C_STATE_MASTER_STOP;
-                            }
-                        
-                            status = STM32WB_I2C_STATUS_SUCCESS;
+                            i2c->state = STM32WB_I2C_STATE_MASTER_STOP;
                         }
+                        
+                        status = STM32WB_I2C_STATUS_SUCCESS;
                     }
                 }
 
@@ -794,8 +764,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                     callback = transaction->callback;
                     context = transaction->context;
 
-                    armv7m_atomic_store((volatile uint32_t*)&transaction->next, (uint32_t)NULL);
-
+                    transaction->next = NULL;
                     transaction->status = status;
                     
                     if (callback)
@@ -811,32 +780,103 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                 i2c_cr2 = I2C->CR2 & ~(I2C_CR2_AUTOEND | I2C_CR2_RELOAD | I2C_CR2_NBYTES | I2C_CR2_NACK | I2C_CR2_STOP | I2C_CR2_START);
                 
                 count = i2c->tx_data_e - i2c->tx_data;
-                
-                if (count > I2C_CR2_NBYTES_MAX)
+
+                if (count)
                 {
-                    count = I2C_CR2_NBYTES_MAX;
-                    
-                    i2c_cr2 |= I2C_CR2_RELOAD;
-                }
-                else
-                {
-                    if (!i2c->rx_data && !(i2c->xf_control & (STM32WB_I2C_CONTROL_RESTART | STM32WB_I2C_CONTROL_DIRECTION)))
+                    if (count > I2C_CR2_NBYTES_MAX)
                     {
-                        i2c_cr2 |= I2C_CR2_AUTOEND;
+                        count = I2C_CR2_NBYTES_MAX;
+                        
+                        i2c_cr2 |= I2C_CR2_RELOAD;
+                    }
+                    else
+                    {
+                        if (i2c->xf_control & STM32WB_I2C_CONTROL_DIRECTION)
+                        {
+                            i2c_cr2 |= I2C_CR2_RELOAD;
+                        }
+                        else
+                        {
+                            if (!i2c->rx_data && !(i2c->xf_control & STM32WB_I2C_CONTROL_RESTART))
+                            {
+                                i2c_cr2 |= I2C_CR2_AUTOEND;
+                            }
+                        }
+                    }
+                    
+                    I2C->CR2 = (i2c_cr2 | (count << I2C_CR2_NBYTES_SHIFT));
+                    
+                    if (I2C->CR1 & I2C_CR1_TXDMAEN)
+                    {
+                        i2c->tx_data += count;
+                    }
+                    else
+                    {
+                        if (I2C->ISR & I2C_ISR_TXE)
+                        {
+                            I2C->TXDR = *(i2c->tx_data)++;
+                        }
                     }
                 }
-                
-                I2C->CR2 = (i2c_cr2 | (count << I2C_CR2_NBYTES_SHIFT));
-                
-                if (I2C->CR1 & I2C_CR1_TXDMAEN)
-                {
-                    i2c->tx_data += count;
-                }
                 else
                 {
-                    if (I2C->ISR & I2C_ISR_TXE)
+                    if (i2c->rx_data) { __BKPT(); }
+                    
+                    i2c->xf_control &= ~STM32WB_I2C_CONTROL_DIRECTION;
+
+                    i2c->tx_data = transaction->rx_data;
+                    i2c->tx_data_e = transaction->rx_data + transaction->rx_count;
+
+                    count = i2c->tx_data_e - i2c->tx_data;
+
+                    if (count > I2C_CR2_NBYTES_MAX)
                     {
-                        I2C->TXDR = *(i2c->tx_data)++;
+                        count = I2C_CR2_NBYTES_MAX;
+                        
+                        i2c_cr2 |= I2C_CR2_RELOAD;
+                    }
+                    else
+                    {
+                        if (!(i2c->xf_control & STM32WB_I2C_CONTROL_RESTART))
+                        {
+                            i2c_cr2 |= I2C_CR2_AUTOEND;
+                        }
+                    }
+
+                    tx_dma = false;
+    
+                    if ((count > 1) && (i2c->tx_dma != STM32WB_DMA_CHANNEL_NONE))
+                    {
+                        tx_dma = stm32wb_dma_channel(i2c->tx_dma);
+                        
+                        if (!tx_dma)
+                        {
+                            tx_dma = stm32wb_dma_enable(i2c->tx_dma, i2c->priority, NULL, NULL);
+                        }
+                    }
+
+                    if ((count > 1) && tx_dma)
+                    {
+                        I2C->CR1 = (I2C->CR1 & ~I2C_CR1_TXIE) | I2C_CR1_TXDMAEN;
+
+                        stm32wb_dma_start(i2c->tx_dma, (uint32_t)&I2C->TXDR, (uint32_t)i2c->tx_data, (i2c->tx_data_e - i2c->tx_data), STM32WB_I2C_TX_DMA_OPTION);
+
+                        I2C->CR2 = (i2c_cr2 | (count << I2C_CR2_NBYTES_SHIFT));
+
+                        i2c->tx_data += count;
+                    }
+                    else
+                    {
+                        I2C->CR1 &= ~I2C_CR1_TXDMAEN;
+
+                        I2C->CR2 = (i2c_cr2 | (count << I2C_CR2_NBYTES_SHIFT));
+                        
+                        I2C->CR1 |= I2C_CR1_TXIE;
+
+                        if (I2C->ISR & I2C_ISR_TXE)
+                        {
+                            I2C->TXDR = *(i2c->tx_data)++;
+                        }
                     }
                 }
             }
@@ -879,7 +919,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                     {
                         if (i2c_isr & I2C_ISR_ARLO)
                         {
-                            status = STM32WB_I2C_STATUS_ARBITRATION_LOST;
+                            status = STM32WB_I2C_STATUS_FAILURE;
                         }
                         else
                         {
@@ -910,8 +950,7 @@ static __attribute__((optimize("O3"))) void stm32wb_i2c_interrupt(stm32wb_i2c_t 
                     callback = transaction->callback;
                     context = transaction->context;
 
-                    armv7m_atomic_store((volatile uint32_t*)&transaction->next, (uint32_t)NULL);
-
+                    transaction->next = NULL;
                     transaction->status = status;
                     
                     if (callback)
@@ -1076,11 +1115,6 @@ bool stm32wb_i2c_create(stm32wb_i2c_t *i2c, const stm32wb_i2c_params_t *params)
 
     i2c->state = STM32WB_I2C_STATE_INIT;
 
-    if (!stm32wb_i2c_device.notify.callback)
-    {
-        stm32wb_system_register(&stm32wb_i2c_device.notify, stm32wb_i2c_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_STOP_ENTER | STM32WB_SYSTEM_NOTIFY_STOP_LEAVE));
-    }
-
     return true;
 }
 
@@ -1120,7 +1154,7 @@ bool stm32wb_i2c_enable(stm32wb_i2c_t *i2c, uint32_t option, uint32_t timeout, s
 
     if (!stm32wb_i2c_configure(i2c, option, timeout))
     {
-	armv7m_atomic_store((volatile uint32_t*)&stm32wb_i2c_device.instances[i2c->instance], (uint32_t)NULL);
+	stm32wb_i2c_device.instances[i2c->instance] = NULL;
 	
         i2c->state = STM32WB_I2C_STATE_INIT;
         
@@ -1153,7 +1187,7 @@ bool stm32wb_i2c_disable(stm32wb_i2c_t *i2c)
 
     armv7m_atomic_and(&SYSCFG->CFGR1, ~stm32wb_i2c_xlate_FMP[i2c->instance]);
 
-    armv7m_atomic_store((volatile uint32_t*)&stm32wb_i2c_device.instances[i2c->instance], (uint32_t)NULL);
+    stm32wb_i2c_device.instances[i2c->instance] = NULL;
 
     i2c->state = STM32WB_I2C_STATE_INIT;
 
@@ -1347,16 +1381,13 @@ bool stm32wb_i2c_submit(stm32wb_i2c_t *i2c, stm32wb_i2c_transaction_t *transacti
     {
 	transaction_submit = i2c->xf_submit;
 
-	armv7m_atomic_store((volatile uint32_t*)&transaction->next, (uint32_t)transaction_submit);
+	transaction->next = transaction_submit;
     }
     while ((stm32wb_i2c_transaction_t*)armv7m_atomic_cas((volatile uint32_t*)&i2c->xf_submit, (uint32_t)transaction_submit, (uint32_t)transaction) != transaction_submit);
 
-    if (transaction_submit == STM32WB_I2C_TRANSACTION_SENTINEL)
+    if (__current_irq() != i2c->interrupt)
     {
-        if (__current_irq() != i2c->interrupt)
-        {
-            NVIC_SetPendingIRQ(i2c->interrupt);
-        }
+        NVIC_SetPendingIRQ(i2c->interrupt);
     }
     
     return true;

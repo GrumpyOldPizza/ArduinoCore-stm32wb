@@ -44,8 +44,8 @@ void delay(uint32_t timeout) {
         return;
     }
     
-    if (armv7m_core_is_in_thread() && !k_work_is_in_progress()) {
-        k_task_delay(k_clock_millis_to_ticks(timeout));
+    if (k_task_is_in_progress()) {
+        k_task_delay(timeout);
     } else {
         clock = armv7m_systick_millis() + timeout;
 

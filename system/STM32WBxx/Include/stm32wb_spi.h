@@ -56,10 +56,7 @@ enum {
 #define STM32WB_SPI_STATE_READY                3
 #define STM32WB_SPI_STATE_DATA                 4
 #define STM32WB_SPI_STATE_DATA_DMA             5
-
-#define STM32WB_SPI_STATUS_SUCCESS             0
-#define STM32WB_SPI_STATUS_FAILURE             1
-#define STM32WB_SPI_STATUS_BUSY                255
+#define STM32WB_SPI_STATE_DATA_DMA_STOP        6
 
 typedef struct _stm32wb_spi_pins_t {
     uint16_t                    mosi;
@@ -87,22 +84,21 @@ typedef void (*stm32wb_spi_done_callback_t)(void *context);
     uint16_t                             tx_dma; 
     stm32wb_spi_pins_t                   pins;
     uint32_t                             clock;
-    uint16_t                             control;
-    uint16_t                             mask;
+    uint32_t                             control;
+    uint32_t                             mask;
     uint32_t                             cr1;
     uint32_t                             cr2;
-    volatile uint8_t * volatile          xf_status;
+    uint8_t                              *xf_data;
     stm32wb_spi_done_callback_t volatile xf_callback;
     void * volatile                      xf_context;
-    uint8_t                              *rx_data;
 } stm32wb_spi_t;
 
 extern bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params);
 extern bool stm32wb_spi_destroy(stm32wb_spi_t *spi);
 extern bool stm32wb_spi_enable(stm32wb_spi_t *spi);
 extern bool stm32wb_spi_disable(stm32wb_spi_t *spi);
-extern bool stm32wb_spi_block(stm32wb_spi_t *spi, uint16_t pin);
-extern bool stm32wb_spi_unblock(stm32wb_spi_t *spi, uint16_t pin);
+extern bool stm32wb_spi_block(stm32wb_spi_t *spi, uint32_t mask);
+extern bool stm32wb_spi_unblock(stm32wb_spi_t *spi, uint32_t mask);
 extern bool stm32wb_spi_acquire(stm32wb_spi_t *spi, uint32_t clock, uint32_t control);
 extern bool stm32wb_spi_release(stm32wb_spi_t *spi);
 extern uint8_t stm32wb_spi_data(stm32wb_spi_t *spi, uint8_t data);
@@ -111,9 +107,9 @@ extern uint16_t stm32wb_spi_data16be(stm32wb_spi_t *spi, uint16_t data);
 extern void stm32wb_spi_data_receive(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count);
 extern void stm32wb_spi_data_transmit(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count);
 extern void stm32wb_spi_data_transfer(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count);
-extern bool stm32wb_spi_data_dma_receive(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-extern bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-extern bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+extern bool stm32wb_spi_data_dma_receive(stm32wb_spi_t *spi, uint8_t *rx_data, uint32_t rx_count, stm32wb_spi_done_callback_t callback, void *context);
+extern bool stm32wb_spi_data_dma_transmit(stm32wb_spi_t *spi, const uint8_t *tx_data, uint32_t tx_count, stm32wb_spi_done_callback_t callback, void *context);
+extern bool stm32wb_spi_data_dma_transfer(stm32wb_spi_t *spi, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, stm32wb_spi_done_callback_t callback, void *context);
 extern uint32_t stm32wb_spi_data_dma_cancel(stm32wb_spi_t *spi);
 extern bool stm32wb_spi_data_dma_busy(stm32wb_spi_t *spi);
 
@@ -162,8 +158,8 @@ static inline __attribute__((optimize("O3"),always_inline)) uint16_t STM32WB_SPI
 typedef struct _stm32wb_spi_interface_t {
     bool     (*enable)(void *device);
     bool     (*disable)(void *device);
-    bool     (*block)(void *device, uint16_t pin);
-    bool     (*unblock)(void *device, uint16_t pin);
+    bool     (*block)(void *device, uint32_t mask);
+    bool     (*unblock)(void *device, uint32_t mask);
     bool     (*acquire)(void *device, uint32_t clock, uint32_t control);
     bool     (*release)(void *device);
     uint8_t  (*data)(void *device, uint8_t data);
@@ -172,10 +168,11 @@ typedef struct _stm32wb_spi_interface_t {
     void     (*data_receive)(void *device, uint8_t *rx_data, uint32_t rx_count);
     void     (*data_transmit)(void *device, const uint8_t *tx_data, uint32_t tx_count);
     void     (*data_transfer)(void *device, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count);
-    bool     (*data_dma_receive)(void *device, uint8_t *rx_data, uint32_t rx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-    bool     (*data_dma_transmit)(void *device, const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
-    bool     (*data_dma_transfer)(void *device, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, volatile uint8_t *p_status_return, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_receive)(void *device, uint8_t *rx_data, uint32_t rx_count, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transmit)(void *device, const uint8_t *tx_data, uint32_t tx_count, stm32wb_spi_done_callback_t callback, void *context);
+    bool     (*data_dma_transfer)(void *device, const uint8_t *tx_data, uint8_t *rx_data, uint32_t xf_count, stm32wb_spi_done_callback_t callback, void *context);
     uint32_t (*data_dma_cancel)(void *device);
+    bool     (*data_dma_busy)(void *device);
 } stm32wb_spi_interface_t;
 
 #ifdef __cplusplus

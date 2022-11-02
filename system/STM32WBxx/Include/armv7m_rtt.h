@@ -36,7 +36,9 @@ extern "C" {
 extern void __armv7m_rtt_initialize(void);
 extern uint32_t armv7m_rtt_write(const uint8_t *data, uint32_t size);
 extern void armv7m_rtt_printf(const char * format, ...);
-    
+
+extern const struct _k_hook_table_t armv7m_rtt_hook_table;
+  
 #ifdef __cplusplus
 }
 #endif

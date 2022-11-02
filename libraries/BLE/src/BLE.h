@@ -163,7 +163,7 @@ enum BLEDiscoverable : uint8_t {
 
 enum BLEStatus : uint8_t {
     BLE_STATUS_SUCCESS                                       = 0,
-    BLE_STATUS_TIMEOUT                                       = 254,
+    BLE_STATUS_FAILURE                                       = 1,
     BLE_STATUS_BUSY                                          = 255
 };
   
@@ -239,10 +239,10 @@ public:
     bool setValue(const void *value, int length);
 
     bool writeValue(const void *value, int length);
-    bool writeValue(const void *value, int length, volatile uint8_t &status);
-    bool writeValue(const void *value, int length, volatile uint8_t &status, void(*callback)(void));
-    bool writeValue(const void *value, int length, volatile uint8_t &status, Callback callback);
+    bool writeValue(const void *value, int length, void(*callback)(void));
+    bool writeValue(const void *value, int length, Callback callback);
 
+    uint8_t status();
     bool busy();
     bool written();
     bool subscribed();
@@ -299,20 +299,14 @@ public:
 
     template<typename T>
     typename std::enable_if<std::is_standard_layout<T>::value, bool>::type
-    writeValue(const T& value, volatile uint8_t &status) {
-        return writeValue(reinterpret_cast<const void*>(&value), sizeof(T), status);
+    writeValue(const T& value, void(*callback)(void)) {
+        return writeValue(reinterpret_cast<const void*>(&value), sizeof(T), callback);
     }
 
     template<typename T>
     typename std::enable_if<std::is_standard_layout<T>::value, bool>::type
-    writeValue(const T& value, volatile uint8_t &status, void(*callback)(void)) {
-        return writeValue(reinterpret_cast<const void*>(&value), sizeof(T), status, callback);
-    }
-
-    template<typename T>
-    typename std::enable_if<std::is_standard_layout<T>::value, bool>::type
-    writeValue(const T& value, volatile uint8_t &status, Callback callback) {
-        return writeValue(reinterpret_cast<const void*>(&value), sizeof(T), status, callback);
+    writeValue(const T& value, Callback callback) {
+        return writeValue(reinterpret_cast<const void*>(&value), sizeof(T), callback);
     }
 };
 
@@ -500,7 +494,6 @@ private:
     volatile uint16_t m_tx_size;
     volatile uint8_t m_tx_busy;
     volatile uint8_t m_connected;
-    volatile uint8_t m_status;
 
     const BLEUartProtocol m_protocol;
     uint8_t m_packet_size;

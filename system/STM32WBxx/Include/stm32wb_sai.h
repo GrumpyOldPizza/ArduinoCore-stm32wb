@@ -120,8 +120,6 @@ extern bool stm32wb_sai_disable(stm32wb_sai_t *sai);
 extern bool stm32wb_sai_transmit(stm32wb_sai_t *sai, const uint8_t *tx_data, uint16_t tx_count);
 extern bool stm32wb_sai_receive(stm32wb_sai_t *sai, uint8_t *rx_data, uint16_t rx_count);
 
-extern void SAI1_IRQHandler(void);
-
 #ifdef __cplusplus
 }
 #endif

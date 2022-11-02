@@ -64,9 +64,8 @@ typedef struct _stm32wb_usbd_cdc_control_t {
     volatile uint8_t                        int_request;
     volatile uint8_t                        tx_busy;
     volatile uint8_t                        tx_zlp;
-    const uint8_t *                         tx_data;
+    const uint8_t * volatile                tx_data;
     uint32_t                                tx_count;
-    volatile uint8_t * volatile             tx_status;
     stm32wb_usbd_cdc_done_callback_t        tx_callback;
     void                                    *tx_context;
     uint8_t                                 *rx_data;
@@ -84,7 +83,6 @@ static stm32wb_usbd_cdc_control_t stm32wb_usbd_cdc_control;
 typedef struct _stm32wb_usbd_cdc_transmit_params_t {
     const uint8_t                           *tx_data;
     uint32_t                                tx_count;
-    volatile uint8_t                        *p_status_return;
     stm32wb_usbd_cdc_done_callback_t        callback;
     void                                    *context;
 } stm32wb_usbd_cdc_transmit_params_t;
@@ -181,13 +179,12 @@ static void stm32wb_usbd_cdc_rx_callback(void *context, uint8_t ep_addr, uint16_
 static void stm32wb_usbd_cdc_tx_callback(void *context, uint8_t ep_addr)
 {      
     stm32wb_usbd_cdc_done_callback_t callback;
-    volatile uint8_t *p_status_return;
 
     if (stm32wb_usbd_cdc_control.tx_busy == STM32WB_USBD_CDC_TX_ZLP)
     {
-	if (stm32wb_usbd_cdc_control.tx_status)
+	if (stm32wb_usbd_cdc_control.tx_data)
 	{
-	    armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_BUSY);
+	    stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_BUSY;
 
 	    stm32wb_usbd_cdc_control.tx_zlp = stm32wb_usbd_cdc_control.tx_count && !(stm32wb_usbd_cdc_control.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
             
@@ -195,7 +192,7 @@ static void stm32wb_usbd_cdc_tx_callback(void *context, uint8_t ep_addr)
 	}
 	else
 	{
-	    armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE);
+	    stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_IDLE;
 
 #if (STM32WB_USBD_DCD_LPM_SUPPORTED == 1)
             stm32wb_usbd_dcd_lpm_unreference(STM32WB_USBD_DCD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR));
@@ -204,21 +201,17 @@ static void stm32wb_usbd_cdc_tx_callback(void *context, uint8_t ep_addr)
     }
     else
     {
-	p_status_return = stm32wb_usbd_cdc_control.tx_status;
-
 	callback = stm32wb_usbd_cdc_control.tx_callback;
 	context = stm32wb_usbd_cdc_control.tx_context;
 
-	stm32wb_usbd_cdc_control.tx_status = NULL;
-	    
-	*p_status_return = STM32WB_USBD_CDC_STATUS_SUCCESS;
+	stm32wb_usbd_cdc_control.tx_data = NULL;
 	    
 	if (callback)
 	{
 	    (*callback)(context);
 	}
 	
-	if (stm32wb_usbd_cdc_control.tx_status)
+	if (stm32wb_usbd_cdc_control.tx_data)
 	{
 	    stm32wb_usbd_cdc_control.tx_zlp = stm32wb_usbd_cdc_control.tx_count && !(stm32wb_usbd_cdc_control.tx_count & (STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE -1));
 
@@ -228,7 +221,7 @@ static void stm32wb_usbd_cdc_tx_callback(void *context, uint8_t ep_addr)
 	{
 	    if (stm32wb_usbd_cdc_control.tx_zlp)
 	    {
-		armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_ZLP);
+		stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_ZLP;
 
 		stm32wb_usbd_cdc_control.tx_zlp = false;
 		
@@ -236,7 +229,7 @@ static void stm32wb_usbd_cdc_tx_callback(void *context, uint8_t ep_addr)
 	    }
 	    else
 	    {
-		armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE);
+		stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_IDLE;
 
 #if (STM32WB_USBD_DCD_LPM_SUPPORTED == 1)
                 stm32wb_usbd_dcd_lpm_unreference(STM32WB_USBD_DCD_EP_MASK(STM32WB_USBD_CDC_DATA_IN_EP_ADDR));
@@ -250,7 +243,6 @@ static void stm32wb_usbd_cdc_tx_flush(void)
 {
     stm32wb_usbd_cdc_done_callback_t callback;
     void *context;
-    volatile uint8_t *p_status_return;
 
     if (armv7m_atomic_swapb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE) != STM32WB_USBD_CDC_TX_IDLE)
     {
@@ -263,16 +255,12 @@ static void stm32wb_usbd_cdc_tx_flush(void)
     
     stm32wb_usbd_cdc_control.tx_zlp = false;
 
-    if (stm32wb_usbd_cdc_control.tx_status)
+    if (stm32wb_usbd_cdc_control.tx_data)
     {
-	p_status_return = stm32wb_usbd_cdc_control.tx_status;
-	
 	callback = stm32wb_usbd_cdc_control.tx_callback;
 	context = stm32wb_usbd_cdc_control.tx_context;
 	
-	stm32wb_usbd_cdc_control.tx_status = NULL;
-	
-	*p_status_return = STM32WB_USBD_CDC_STATUS_FAILURE;
+	stm32wb_usbd_cdc_control.tx_data = NULL;
 	
 	if (callback)
 	{
@@ -292,7 +280,7 @@ static void stm32wb_usbd_cdc_int_callback(void *context, uint8_t ep_addr)
     {
         stm32wb_usbd_cdc_control.state = STM32WB_USBD_CDC_STATE_CONNECTED;
 
-        if (stm32wb_usbd_cdc_control.tx_status)
+        if (stm32wb_usbd_cdc_control.tx_data)
         {
             if (armv7m_atomic_casb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
             {
@@ -320,7 +308,7 @@ static void stm32wb_usbd_cdc_int_callback(void *context, uint8_t ep_addr)
     }
     else
     {
-        armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.int_busy, STM32WB_USBD_CDC_INT_IDLE);
+        stm32wb_usbd_cdc_control.int_busy = STM32WB_USBD_CDC_INT_IDLE;
     }
 }
 
@@ -389,7 +377,7 @@ static void stm32wb_usbd_cdc_configure(void *context, uint8_t interface)
     stm32wb_usbd_cdc_control.line_coding.bParityType = STM32WB_USBD_CDC_LINE_CODING_PARITY_TYPE;
     stm32wb_usbd_cdc_control.line_coding.bDataBits = STM32WB_USBD_CDC_LINE_CODING_DATA_BITS;
     
-    armv7m_atomic_storeb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE);
+    stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_IDLE;
 
     stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_CONTROL_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_INTERRUPT, STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE, 0, NULL);
     stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE, 0, NULL);
@@ -553,7 +541,7 @@ static void stm32wb_usbd_cdc_resume(void *context)
         stm32wb_usbd_cdc_int_request();
     }
 
-    if (stm32wb_usbd_cdc_control.tx_status)
+    if (stm32wb_usbd_cdc_control.tx_data)
     {
         if (armv7m_atomic_casb(&stm32wb_usbd_cdc_control.tx_busy, STM32WB_USBD_CDC_TX_IDLE, STM32WB_USBD_CDC_TX_BUSY) == STM32WB_USBD_CDC_TX_IDLE)
         {
@@ -659,14 +647,11 @@ static bool __svc_stm32wb_usbd_cdc_transmit(const stm32wb_usbd_cdc_transmit_para
         return false;
     }
     
-    if (armv7m_atomic_cas((volatile uint32_t*)&stm32wb_usbd_cdc_control.tx_status, (uint32_t)NULL, (uint32_t)params->p_status_return) != (uint32_t)NULL)
+    if (armv7m_atomic_cas((volatile uint32_t*)&stm32wb_usbd_cdc_control.tx_data, (uint32_t)NULL, (uint32_t)params->tx_data) != (uint32_t)NULL)
     {
         return false;
     }
 
-    *stm32wb_usbd_cdc_control.tx_status = STM32WB_USBD_CDC_STATUS_BUSY;
-    
-    stm32wb_usbd_cdc_control.tx_data = params->tx_data;
     stm32wb_usbd_cdc_control.tx_count = params->tx_count;
     stm32wb_usbd_cdc_control.tx_callback = params->callback;
     stm32wb_usbd_cdc_control.tx_context = params->context;
@@ -695,7 +680,7 @@ bool stm32wb_usbd_cdc_enable(uint8_t *rx_data, uint32_t rx_size, stm32wb_usbd_cd
 	return armv7m_svcall_4((uint32_t)&__svc_stm32wb_usbd_cdc_enable, (uint32_t)rx_data, (uint32_t)rx_size, (uint32_t)callback, (uint32_t)context);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
 	return __svc_stm32wb_usbd_cdc_enable(rx_data, rx_size, callback, context);
     }
@@ -710,7 +695,7 @@ bool stm32wb_usbd_cdc_disable(void)
 	return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_cdc_disable);
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (armv7m_core_is_in_svcall_or_pendsv())
     {
 	return __svc_stm32wb_usbd_cdc_disable();
     }
@@ -840,7 +825,7 @@ uint32_t stm32wb_usbd_cdc_read(uint8_t *rx_data, uint32_t rx_size)
     return rx_total;
 }
 
-bool stm32wb_usbd_cdc_transmit(const uint8_t *tx_data, uint32_t tx_count, volatile uint8_t *p_status_return, stm32wb_usbd_cdc_done_callback_t callback, void *context)
+bool stm32wb_usbd_cdc_transmit(const uint8_t *tx_data, uint32_t tx_count, stm32wb_usbd_cdc_done_callback_t callback, void *context)
 {
     stm32wb_usbd_cdc_transmit_params_t params;
 
@@ -851,7 +836,6 @@ bool stm32wb_usbd_cdc_transmit(const uint8_t *tx_data, uint32_t tx_count, volati
     
     params.tx_data = tx_data;
     params.tx_count = tx_count;
-    params.p_status_return = p_status_return;
     params.callback = callback;
     params.context = context;
 
@@ -863,4 +847,9 @@ bool stm32wb_usbd_cdc_transmit(const uint8_t *tx_data, uint32_t tx_count, volati
     {
 	return __svc_stm32wb_usbd_cdc_transmit(&params);
     }
+}
+
+bool stm32wb_usbd_cdc_busy(void)
+{
+    return (stm32wb_usbd_cdc_control.tx_data != NULL);
 }

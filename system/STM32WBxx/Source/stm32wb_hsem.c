@@ -34,43 +34,34 @@
 
 typedef void (*stm32wb_hsem_handler_t)(void);
 
-static const stm32wb_hsem_handler_t stm32wb_hsem_handler[] = {
-    HSEM0_HSEMHandler,
-    HSEM1_HSEMHandler,
-    HSEM2_HSEMHandler,
-    HSEM3_HSEMHandler,
-    HSEM4_HSEMHandler,
-    HSEM5_HSEMHandler,
-    HSEM6_HSEMHandler,
-    HSEM7_HSEMHandler,
-    HSEM8_HSEMHandler,
-    HSEM9_HSEMHandler,
-    HSEM10_HSEMHandler,
-    HSEM11_HSEMHandler,
-    HSEM12_HSEMHandler,
-    HSEM13_HSEMHandler,
-    HSEM14_HSEMHandler,
-    HSEM15_HSEMHandler,
-    HSEM16_HSEMHandler,
-    HSEM17_HSEMHandler,
-    HSEM18_HSEMHandler,
-    HSEM19_HSEMHandler,
-    HSEM20_HSEMHandler,
-    HSEM21_HSEMHandler,
-    HSEM22_HSEMHandler,
-    HSEM23_HSEMHandler,
-    HSEM24_HSEMHandler,
-    HSEM25_HSEMHandler,
-    HSEM26_HSEMHandler,
-    HSEM27_HSEMHandler,
-    HSEM28_HSEMHandler,
-    HSEM29_HSEMHandler,
-    HSEM30_HSEMHandler,
-    HSEM31_HSEMHandler,
+#define STM32WB_HSEM_INDEX_NONE 255
+
+typedef struct _stm32wb_hsem_device_t {
+    volatile uint8_t        index[STM32WB_HSEM_PROCID_COUNT];
+} stm32wb_hsem_device_t;
+
+static stm32wb_hsem_device_t stm32wb_hsem_device;
+
+static const stm32wb_hsem_handler_t stm32wb_hsem_handler[STM32WB_HSEM_PROCID_COUNT] = {
+    PROCID1_HSEMHandler,
+    PROCID2_HSEMHandler,
+    PROCID3_HSEMHandler,
+    PROCID4_HSEMHandler,
+    PROCID5_HSEMHandler,
+    PROCID6_HSEMHandler,
+    PROCID7_HSEMHandler,
+    PROCID8_HSEMHandler,
 };
 
 void __stm32wb_hsem_initialize(void)
 {
+    uint32_t slot;
+
+    for (slot = 0; slot < STM32WB_HSEM_PROCID_COUNT; slot++)
+    {
+        stm32wb_hsem_device.index[slot] = STM32WB_HSEM_INDEX_NONE;
+    }
+
     NVIC_SetPriority(HSEM_IRQn, STM32WB_HSEM_IRQ_PRIORITY);
     NVIC_EnableIRQ(HSEM_IRQn);
 
@@ -85,12 +76,11 @@ bool __attribute__((optimize("O3"))) __stm32wb_hsem_lock(uint32_t index, uint32_
 
     if (HSEM->R[index] == (HSEM_RLR_LOCK | HSEM_R_COREID_CPU1 | procid))
     {
-        // armv7m_rtt_printf("HSEM_LOCK(%d [%d])\n", index, procid);
-
-        
         return true;
     }
-	
+
+    stm32wb_hsem_device.index[procid -1] = index;
+    
     armv7m_atomic_or(&HSEM->C1IER, (1u << index));
 
     return false;
@@ -98,7 +88,7 @@ bool __attribute__((optimize("O3"))) __stm32wb_hsem_lock(uint32_t index, uint32_
 
 void  __attribute__((optimize("O3"))) HSEM_IRQHandler(void)
 {
-    uint32_t mask, index;
+    uint32_t mask, index, slot;
 
     mask = HSEM->C1ISR;
 
@@ -113,7 +103,15 @@ void  __attribute__((optimize("O3"))) HSEM_IRQHandler(void)
 
             armv7m_atomic_and(&HSEM->C1IER, ~mask);
 
-            (*stm32wb_hsem_handler[index])();
+            for (slot = 0; slot < STM32WB_HSEM_PROCID_COUNT; slot++)
+            {
+                if (stm32wb_hsem_device.index[slot] == index)
+                {
+                    stm32wb_hsem_device.index[slot] = STM32WB_HSEM_INDEX_NONE;
+
+                    (*stm32wb_hsem_handler[slot])();
+                }
+            }
 	    
 	    mask = HSEM->C1ISR;
 	}
@@ -127,35 +125,11 @@ static void __attribute__((naked)) Default_HSEMHandler(void)
 {
 }
 
-void HSEM0_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM1_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM2_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM3_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM4_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM5_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM6_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM7_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM8_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM9_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM10_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM11_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM12_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM13_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM14_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM15_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM16_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM17_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM18_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM19_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM20_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM21_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM22_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM23_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM24_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM25_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM26_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM27_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM28_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM29_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM30_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
-void HSEM31_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID1_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID2_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID3_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID4_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID5_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID6_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID7_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));
+void PROCID8_HSEMHandler(void) __attribute__ ((weak, alias("Default_HSEMHandler")));

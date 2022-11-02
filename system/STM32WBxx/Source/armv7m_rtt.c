@@ -27,6 +27,7 @@
  */
 
 #include "armv7m.h"
+#include "rtos_api.h"
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -38,11 +39,12 @@ typedef struct _armv7m_rtt_control_t {
     uint32_t          channels[2];              // 1 == tx, 1 == rx
     const uint8_t     *tx_name;
     uint8_t           *tx_data;
-    uint32_t          tx_size;
+    volatile uint32_t tx_size;
     volatile uint32_t tx_write;                 // target
     volatile uint32_t tx_read;                  // host
     volatile uint32_t tx_flags;
     volatile uint32_t tx_write_next;
+    volatile uint32_t tx_lock;
 } armv7m_rtt_control_t;
 
 static __attribute__((section(".rtt_control"), used)) armv7m_rtt_control_t armv7m_rtt_control;
@@ -73,6 +75,7 @@ void __armv7m_rtt_initialize(void)
     armv7m_rtt_control.tx_flags = 0;
 
     armv7m_rtt_control.tx_write_next = 0;
+    armv7m_rtt_control.tx_lock = 0;
 
     __DMB();
 
@@ -90,16 +93,18 @@ void __armv7m_rtt_initialize(void)
 
 static __attribute__((optimize("O3"))) uint32_t __svc_armv7m_rtt_write(const uint8_t *data, uint32_t size)
 {
-    uint32_t count, tx_write, tx_write_next, tx_read;
+    uint32_t count, tx_read, tx_write, tx_write_next, tx_lock;
 
+    tx_lock = __armv7m_atomic_swap(&armv7m_rtt_control.tx_lock, 1);
+    
     do
     {
-        tx_write = armv7m_rtt_control.tx_write_next;
         tx_read = armv7m_rtt_control.tx_read;
+        tx_write = armv7m_rtt_control.tx_write_next;
         
         if (tx_write >= tx_read)
         {
-            count = ((armv7m_rtt_tx_data_size - tx_write) + tx_read) -1;
+            count = ((armv7m_rtt_control.tx_size - tx_write) + tx_read) -1;
         }
         else
         {
@@ -108,23 +113,25 @@ static __attribute__((optimize("O3"))) uint32_t __svc_armv7m_rtt_write(const uin
         
         if (size > count)
         {
+            armv7m_rtt_control.tx_lock = tx_lock;
+          
             return 0;
         }
 
         tx_write_next = tx_write + size;
 
-        if (tx_write_next >= armv7m_rtt_tx_data_size)
+        if (tx_write_next >= armv7m_rtt_control.tx_size)
         {
-            tx_write_next -= armv7m_rtt_tx_data_size;
+            tx_write_next -= armv7m_rtt_control.tx_size;
         }
     }
     while (armv7m_atomic_cas(&armv7m_rtt_control.tx_write_next, tx_write, tx_write_next) != tx_write);
     
     count = size;
         
-    if (size > (armv7m_rtt_tx_data_size - tx_write))
+    if (size > (armv7m_rtt_control.tx_size - tx_write))
     {
-        size = armv7m_rtt_tx_data_size - tx_write;
+        size = armv7m_rtt_control.tx_size - tx_write;
     }
 
     memcpy(&armv7m_rtt_control.tx_data[tx_write], &data[0], size);
@@ -134,17 +141,18 @@ static __attribute__((optimize("O3"))) uint32_t __svc_armv7m_rtt_write(const uin
         memcpy(&armv7m_rtt_control.tx_data[0], &data[size], (count - size));
     }
 
-    if (armv7m_core_is_in_pendsv_or_svcall())
+    if (!tx_lock)
     {
+        tx_write = armv7m_rtt_control.tx_write;
+        tx_write_next = armv7m_rtt_control.tx_write_next;
+
+        armv7m_rtt_control.tx_lock = 0;    
+        
         __DMB();
 
-        armv7m_rtt_control.tx_write = armv7m_rtt_control.tx_write_next;
+        __armv7m_atomic_cas(&armv7m_rtt_control.tx_write, tx_write, tx_write_next);
 
         __DMB();
-    }
-    else
-    {
-        armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTT);
     }
     
     return count;
@@ -152,12 +160,12 @@ static __attribute__((optimize("O3"))) uint32_t __svc_armv7m_rtt_write(const uin
 
 uint32_t armv7m_rtt_write(const uint8_t *data, uint32_t size)
 {
-    if (armv7m_core_is_in_thread() && !__get_PRIMASK())
+    if (armv7m_core_is_in_interrupt())
     {
-        return armv7m_svcall_2((uint32_t)&__svc_armv7m_rtt_write, (uint32_t)data, (uint32_t)size);
+        return __svc_armv7m_rtt_write(data, size);
     }
 
-    return __svc_armv7m_rtt_write(data, size);
+    return armv7m_svcall_2((uint32_t)&__svc_armv7m_rtt_write, (uint32_t)data, (uint32_t)size);
 }
 
 #define SCRATCH 64
@@ -419,6 +427,53 @@ void armv7m_rtt_printf(const char * format, ...)
 
     va_end(ap);
 }
+
+
+static void armv7m_rtt_hook_task_create(k_task_t *task, const char *name, uint32_t priority, void *stack_base, uint32_t stack_size)
+{
+    armv7m_rtt_printf("RTOS_TASK_CREATE(task=%08x, name=\"%s\", priority=%d, stack_base=%08x, stack_size=%d)\n", task, (name ? name : "<<NULL>>"), priority, stack_base, stack_size);
+} 
+
+static void armv7m_rtt_hook_task_destroy(k_task_t *task)
+{
+    armv7m_rtt_printf("RTOS_TASK_DESTROY(task=%08x)\n", task);
+}
+
+static void armv7m_rtt_hook_task_exit(void)
+{
+    armv7m_rtt_printf("RTOS_TASK_EXIT()\n");
+}
+
+static void armv7m_rtt_hook_task_terminate(k_task_t *task)
+{
+    armv7m_rtt_printf("RTOS_TASK_TERMINATE(task=%08x)\n", task);
+}
+
+static void armv7m_rtt_hook_task_block(k_task_t *task, uint32_t cause)
+{
+    armv7m_rtt_printf("RTOS_TASK_BLOCK(task=%08x, cause=%02x)\n", task, cause);
+}
+
+static void armv7m_rtt_hook_task_ready(k_task_t *task)
+{
+    armv7m_rtt_printf("RTOS_TASK_READY(task=%08x)\n", task);
+}
+
+static void armv7m_rtt_hook_task_run(k_task_t *task)
+{
+    armv7m_rtt_printf("RTOS_TASK_RUN(task=%08x)\n", task);
+}
+
+const k_hook_table_t armv7m_rtt_hook_table =
+{
+    .task_create    = armv7m_rtt_hook_task_create,
+    .task_destroy   = armv7m_rtt_hook_task_destroy,
+    .task_exit      = armv7m_rtt_hook_task_exit,      
+    .task_terminate = armv7m_rtt_hook_task_terminate,
+    .task_block     = armv7m_rtt_hook_task_block,
+    .task_ready     = armv7m_rtt_hook_task_ready,
+    .task_run       = armv7m_rtt_hook_task_run,
+};
 
 void RTT_SWIHandler(void)
 {

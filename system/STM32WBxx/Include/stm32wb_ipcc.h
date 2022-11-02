@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-#define STM32WB_IPCC_IRQ_PRIORITY       ARMV7M_IRQ_PRIORITY_MEDIUM
+#define STM32WB_IPCC_IRQ_PRIORITY       ARMV7M_IRQ_PRIORITY_IPCC
 
 #define STM32WB_IPCC_SYS_STATE_NONE                             0
 #define STM32WB_IPCC_SYS_STATE_FUS                              1
@@ -113,6 +113,32 @@ typedef struct _stm32wb_ipcc_sys_fus_state_t {
     uint8_t  state;
     uint8_t  error_code;
 } stm32wb_ipcc_sys_fus_state_t;
+
+typedef void (*stm32wb_ipcc_sys_command_callback_t)(void *context);
+
+#define STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS                 0
+#define STM32WB_IPCC_SYS_COMMAND_STATUS_FAILURE                 1
+#define STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY                    255
+  
+typedef struct _stm32wb_ipcc_sys_command_t {
+    struct _stm32wb_ipcc_sys_command_t  *next;
+    union {
+	struct {
+	    uint16_t                        ocf : 10;
+	    uint16_t                        ogf : 6;
+	};
+        uint16_t                            opcode;
+    };
+    uint16_t                            event; // MUST BE ZERO
+    const void                          *cparam;
+    void                                *rparam;
+    uint8_t                             clen;
+    uint8_t                             rsize;
+    volatile uint8_t                    rlen;
+    volatile uint8_t                    status;
+    stm32wb_ipcc_sys_command_callback_t callback;
+    void                                *context;
+} stm32wb_ipcc_sys_command_t;
   
 extern void __stm32wb_ipcc_initialize(void);
   
@@ -120,7 +146,7 @@ extern bool stm32wb_ipcc_sys_enable(void);
 extern void stm32wb_ipcc_sys_disable(void);
 extern uint32_t stm32wb_ipcc_sys_state(void);
 extern bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return);
-extern bool stm32wb_ipcc_sys_command(uint16_t opcode, const void *cparam, uint8_t clen, void *rparam, uint8_t rsize);
+extern bool stm32wb_ipcc_sys_command(stm32wb_ipcc_sys_command_t *command);
 extern bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return);
   
 typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
@@ -169,7 +195,7 @@ typedef struct _stm32wb_ipcc_ble_command_t {
 	};
         uint16_t                            opcode;
     };
-    uint16_t                            event;
+    uint16_t                            event; // MUST BE ZERO
     const void                          *cparam;
     void                                *rparam;
     uint8_t                             clen;

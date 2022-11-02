@@ -58,10 +58,10 @@ static void stm32wb_tim_interrupt(stm32wb_tim_t *tim)
 
     TIM->SR = 0;
 
-    events = 0;
-
     if (tim->callback)
     {
+        events = 0;
+
 	if (tim_sr & TIM_SR_UIF)
 	{
 	    events |= STM32WB_TIM_EVENT_PERIOD;
@@ -189,14 +189,14 @@ bool stm32wb_tim_enable(stm32wb_tim_t *tim, uint32_t option, stm32wb_tim_callbac
 
     if (!stm32wb_tim_configure(tim, option))
     {
-	armv7m_atomic_store((volatile uint32_t*)&stm32wb_tim_device.instances[tim->instance], (uint32_t)NULL);
+        stm32wb_tim_device.instances[tim->instance] = NULL;
 
 	tim->state = STM32WB_TIM_STATE_INIT;
 
 	return false;
     }
 
-    stm32wb_system_reference(STM32WB_SYSTEM_REFERENCE_TIM1 << tim->instance);
+    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_CLOCKS);
     
     tim->state = STM32WB_TIM_STATE_READY;
 
@@ -238,7 +238,7 @@ bool stm32wb_tim_disable(stm32wb_tim_t *tim)
 	return false;
     }
 
-    stm32wb_system_unreference(STM32WB_SYSTEM_REFERENCE_TIM1 << tim->instance);
+    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_CLOCKS);
     
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_TIM1 + tim->instance);
 
@@ -277,7 +277,7 @@ bool stm32wb_tim_disable(stm32wb_tim_t *tim)
 	break;
     }
 
-    armv7m_atomic_store((volatile uint32_t*)&stm32wb_tim_device.instances[tim->instance], (uint32_t)NULL);
+    stm32wb_tim_device.instances[tim->instance] = NULL;
 
     tim->state = STM32WB_TIM_STATE_INIT;
 

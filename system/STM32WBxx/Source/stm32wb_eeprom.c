@@ -36,7 +36,7 @@
 #define STM32WB_EEPROM_MAGIC_1 0xaa55ee77
 #define STM32WB_EEPROM_MAGIC_2 0x77eeaa55
 
-extern uint32_t __eeprom_start, __eeprom_end;
+extern uint32_t __eeprom_start__, __eeprom_end__;
 
 #define STM32WB_EEPROM_STATE_NONE      0
 #define STM32WB_EEPROM_STATE_NOT_READY 1
@@ -90,22 +90,209 @@ static void stm32wb_eeprom_callback(void *context)
     armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_EEPROM);
 }
 
+bool __stm32wb_eeprom_reset(void)
+{
+    uint8_t *program;
+
+    if (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
+    {
+        return false;
+    }
+
+    stm32wb_eeprom_device.flash = (uint32_t)&__eeprom_start__;
+    stm32wb_eeprom_device.sequence = 1;
+    stm32wb_eeprom_device.size = ((uint32_t)&__eeprom_end__ - (uint32_t)&__eeprom_start__) / 2;
+    stm32wb_eeprom_device.offset = 0;
+    
+    stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_ERASE;
+    stm32wb_eeprom_device.request.address = (uint32_t)stm32wb_eeprom_device.flash;
+    stm32wb_eeprom_device.request.count = 2 * stm32wb_eeprom_device.size;
+    stm32wb_eeprom_device.request.data = NULL;
+    stm32wb_eeprom_device.request.callback = NULL;
+    stm32wb_eeprom_device.request.context = NULL;
+    
+    if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
+    {
+        return false;
+    }
+
+    while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
+    {
+        __WFE();
+    }
+
+    if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
+    {
+        return false;
+    }
+	
+    program = &stm32wb_eeprom_device.program[0];
+	
+    program[ 0] = (uint8_t)(stm32wb_eeprom_device.sequence >>  0);
+    program[ 1] = (uint8_t)(stm32wb_eeprom_device.sequence >>  8);
+    program[ 2] = (uint8_t)(stm32wb_eeprom_device.sequence >> 16);
+    program[ 3] = (uint8_t)(stm32wb_eeprom_device.sequence >> 24);
+    program[ 4] = (uint8_t)(stm32wb_eeprom_device.sequence >>  0) ^ 0xff;
+    program[ 5] = (uint8_t)(stm32wb_eeprom_device.sequence >>  8) ^ 0xff;
+    program[ 6] = (uint8_t)(stm32wb_eeprom_device.sequence >> 16) ^ 0xff;
+    program[ 7] = (uint8_t)(stm32wb_eeprom_device.sequence >> 24) ^ 0xff;
+    program[ 8] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >>  0);
+    program[ 9] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >>  8);
+    program[10] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >> 16);
+    program[11] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >> 24);
+    program[12] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >>  0);
+    program[13] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >>  8);
+    program[14] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >> 16);
+    program[15] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >> 24);
+    
+    stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_PROGRAM;
+    stm32wb_eeprom_device.request.address = (uint32_t)stm32wb_eeprom_device.flash + stm32wb_eeprom_device.size - 16;
+    stm32wb_eeprom_device.request.count = 16;
+    stm32wb_eeprom_device.request.data = &stm32wb_eeprom_device.program[0];
+    
+    if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
+    {
+        return false;
+    }
+
+    while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
+    {
+        __WFE();
+    }
+
+    if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
+    {
+        return false;
+    }
+
+    memset((uint8_t*)&stm32wb_eeprom_device.data[0], 0xff, STM32WB_EEPROM_SIZE);
+
+    stm32wb_eeprom_device.mask_1 = 0;
+    memset((uint8_t*)&stm32wb_eeprom_device.mask_2[0], 0x00, (STM32WB_EEPROM_SIZE / 128));
+
+    stm32wb_eeprom_device.request.callback = stm32wb_eeprom_callback;
+    stm32wb_eeprom_device.request.context = NULL;
+
+    return true;
+}
+
+bool __stm32wb_eeprom_flush(bool erase)
+{
+    uint32_t index, data, crc16;
+    const uint32_t *flash, *flash_s, *flash_e;
+
+    if (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
+    {
+        return false;
+    }
+
+    stm32wb_eeprom_device.request.callback = NULL;
+    stm32wb_eeprom_device.request.context = NULL;
+    
+    if (stm32wb_eeprom_device.sequence == 1)
+    {
+        memset((uint8_t*)&stm32wb_eeprom_device.data[0], 0xff, STM32WB_EEPROM_SIZE);
+        
+        flash_s = (const uint32_t*)stm32wb_eeprom_device.flash;
+    }
+    else
+    {
+        memcpy((uint8_t*)(&stm32wb_eeprom_device.data[0]), (const uint8_t*)stm32wb_eeprom_device.flash, STM32WB_EEPROM_SIZE);
+        
+        flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash + STM32WB_EEPROM_SIZE);
+    }
+    
+    flash_e = (const uint32_t*)(stm32wb_eeprom_device.flash + (stm32wb_eeprom_device.size - 16));
+    
+    for (flash = flash_s; flash < flash_e; flash += 2)
+    {
+        if ((flash[0] == 0xffffffff) && (flash[1] == 0xffffffff))
+        {
+            break;
+        }
+        
+        data = flash[0];
+        index = (flash[1] >>  0) & ((STM32WB_EEPROM_SIZE / 4) - 1);
+        crc16 = (flash[1] >> 16) & 0xffff;
+	
+	    
+        if (crc16 != stm32wb_eeprom_crc16((const uint8_t*)flash, 6))
+        {
+            continue;
+        }
+	
+        stm32wb_eeprom_device.data[index] = data;
+    }
+    
+    stm32wb_eeprom_device.offset = (uint32_t)flash - stm32wb_eeprom_device.flash;
+    
+    if (erase)
+    {
+        if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start__)
+        {
+            flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash + stm32wb_eeprom_device.size);
+        }
+        else
+        {
+            flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash - stm32wb_eeprom_device.size);
+        }
+
+        flash_e = (const uint32_t*)((uint32_t)flash_s + stm32wb_eeprom_device.size);
+
+        for (flash = flash_s; flash < flash_e; flash += 2)
+        {
+            if ((flash[0] != 0xffffffff) || (flash[1] != 0xffffffff))
+            {
+                break;
+            }
+        }
+        
+        if (flash != flash_e)
+        {
+            stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_ERASE;
+            stm32wb_eeprom_device.request.address = (uint32_t)flash_s;
+            stm32wb_eeprom_device.request.count = stm32wb_eeprom_device.size;
+            stm32wb_eeprom_device.request.data = NULL;
+	    
+            if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
+            {
+                return false;
+            }
+	    
+            while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
+            {
+                __WFE();
+            }
+            
+            if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
+            {
+                return false;
+            }
+        }
+    }
+
+    stm32wb_eeprom_device.mask_1 = 0;
+    memset((uint8_t*)&stm32wb_eeprom_device.mask_2[0], 0x00, (STM32WB_EEPROM_SIZE / 128));
+    
+    stm32wb_eeprom_device.request.callback = stm32wb_eeprom_callback;
+    stm32wb_eeprom_device.request.context = NULL;
+
+    return true;
+}
+
 void __stm32wb_eeprom_initialize(void)
 {
-    uint32_t size, offset, index, data, crc16, sequence_1, sequence_2;
-    const uint32_t *flash, *flash_s, *flash_e, *flash_1, *flash_2;
-    uint8_t *program;
+    uint32_t size, offset, sequence_1, sequence_2;
+    const uint32_t *flash_1, *flash_2;
 
     stm32wb_eeprom_device.state = STM32WB_EEPROM_STATE_NOT_READY;
 
     stm32wb_eeprom_device.request.next = NULL;
     stm32wb_eeprom_device.request.status = STM32WB_FLASH_STATUS_SUCCESS;
-    stm32wb_eeprom_device.request.callback = NULL;
-    stm32wb_eeprom_device.request.context = NULL;
     
-    size = ((uint32_t)&__eeprom_end - (uint32_t)&__eeprom_start) / 2;
-    flash_1 = (const uint32_t*)((uint32_t)&__eeprom_start);
-    flash_2 = (const uint32_t*)((uint32_t)&__eeprom_start + size);
+    size = ((uint32_t)&__eeprom_end__ - (uint32_t)&__eeprom_start__) / 2;
+    flash_1 = (const uint32_t*)((uint32_t)&__eeprom_start__);
+    flash_2 = (const uint32_t*)((uint32_t)&__eeprom_start__ + size);
 
     sequence_1 = 0;
     sequence_2 = 0;
@@ -133,66 +320,10 @@ void __stm32wb_eeprom_initialize(void)
 	stm32wb_eeprom_device.size = size;
 	stm32wb_eeprom_device.offset = 0;
 
-	stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_ERASE;
-	stm32wb_eeprom_device.request.address = (uint32_t)stm32wb_eeprom_device.flash;
-	stm32wb_eeprom_device.request.count = 2 * stm32wb_eeprom_device.size;
-	stm32wb_eeprom_device.request.data = NULL;
-
-	if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
-	{
-	    return;
-	}
-
-	while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
-	{
-	    __WFE();
-	}
-
-	if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
-	{
-	    return;
-	}
-	
-	program = &stm32wb_eeprom_device.program[0];
-	
-	program[ 0] = (uint8_t)(stm32wb_eeprom_device.sequence >>  0);
-	program[ 1] = (uint8_t)(stm32wb_eeprom_device.sequence >>  8);
-	program[ 2] = (uint8_t)(stm32wb_eeprom_device.sequence >> 16);
-	program[ 3] = (uint8_t)(stm32wb_eeprom_device.sequence >> 24);
-	program[ 4] = (uint8_t)(stm32wb_eeprom_device.sequence >>  0) ^ 0xff;
-	program[ 5] = (uint8_t)(stm32wb_eeprom_device.sequence >>  8) ^ 0xff;
-	program[ 6] = (uint8_t)(stm32wb_eeprom_device.sequence >> 16) ^ 0xff;
-	program[ 7] = (uint8_t)(stm32wb_eeprom_device.sequence >> 24) ^ 0xff;
-	program[ 8] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >>  0);
-	program[ 9] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >>  8);
-	program[10] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >> 16);
-	program[11] = (uint8_t)(STM32WB_EEPROM_MAGIC_1 >> 24);
-	program[12] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >>  0);
-	program[13] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >>  8);
-	program[14] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >> 16);
-	program[15] = (uint8_t)(STM32WB_EEPROM_MAGIC_2 >> 24);
-
-	stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_PROGRAM;
-	stm32wb_eeprom_device.request.address = (uint32_t)stm32wb_eeprom_device.flash + stm32wb_eeprom_device.size - 16;
-	stm32wb_eeprom_device.request.count = 16;
-	stm32wb_eeprom_device.request.data = &stm32wb_eeprom_device.program[0];
-
-	if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
-	{
-	    return;
-	}
-
-	while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
-	{
-	    __WFE();
-	}
-
-	if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
-	{
-	    return;
-	}
-
-	memset((uint8_t*)&stm32wb_eeprom_device.data[0], 0xff, STM32WB_EEPROM_SIZE);
+        if (!__stm32wb_eeprom_reset())
+        {
+            return;
+        }
     }
     else
     {
@@ -209,94 +340,11 @@ void __stm32wb_eeprom_initialize(void)
 	    stm32wb_eeprom_device.sequence = sequence_2;
 	}
 
-	if (stm32wb_eeprom_device.sequence == 1)
-	{
-	    memset((uint8_t*)&stm32wb_eeprom_device.data[0], 0xff, STM32WB_EEPROM_SIZE);
-
-	    flash_s = (const uint32_t*)stm32wb_eeprom_device.flash;
-	}
-	else
-	{
-	    memcpy((uint8_t*)(&stm32wb_eeprom_device.data[0]), (const uint8_t*)stm32wb_eeprom_device.flash, STM32WB_EEPROM_SIZE);
-
-	    flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash + STM32WB_EEPROM_SIZE);
-	}
-
-	flash_e = (const uint32_t*)(stm32wb_eeprom_device.flash + (stm32wb_eeprom_device.size - 16));
-	
-	for (flash = flash_s; flash < flash_e; flash += 2)
-	{
-	    if ((flash[0] == 0xffffffff) && (flash[1] == 0xffffffff))
-	    {
-		break;
-	    }
-
-	    data = flash[0];
-	    index = (flash[1] >>  0) & ((STM32WB_EEPROM_SIZE / 4) - 1);
-	    crc16 = (flash[1] >> 16) & 0xffff;
-		    
-	    
-	    if (crc16 != stm32wb_eeprom_crc16((const uint8_t*)flash, 6))
-	    {
-		continue;
-	    }
-	    
-	    stm32wb_eeprom_device.data[index] = data;
-	}
-	
-	stm32wb_eeprom_device.offset = (uint32_t)flash - stm32wb_eeprom_device.flash;
-
-	if (stm32wb_system_reset_cause() != STM32WB_SYSTEM_RESET_STANDBY)
-	{
-	    if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start)
-	    {
-		flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash + stm32wb_eeprom_device.size);
-	    }
-	    else
-	    {
-		flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash - stm32wb_eeprom_device.size);
-	    }
-
-	    flash_e = (const uint32_t*)((uint32_t)flash_s + stm32wb_eeprom_device.size);
-
-	    for (flash = flash_s; flash < flash_e; flash += 2)
-	    {
-		if ((flash[0] != 0xffffffff) || (flash[1] != 0xffffffff))
-		{
-		    break;
-		}
-	    }
-
-	    if (flash != flash_e)
-	    {
-		stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_ERASE;
-		stm32wb_eeprom_device.request.address = (uint32_t)flash_s;
-		stm32wb_eeprom_device.request.count = stm32wb_eeprom_device.size;
-		stm32wb_eeprom_device.request.data = NULL;
-	    
-		if (!stm32wb_flash_request(&stm32wb_eeprom_device.request))
-		{
-		    return;
-		}
-	    
-		while (stm32wb_eeprom_device.request.status == STM32WB_FLASH_STATUS_BUSY)
-		{
-		    __WFE();
-		}
-
-		if (stm32wb_eeprom_device.request.status != STM32WB_FLASH_STATUS_SUCCESS)
-		{
-		    return;
-		}
-	    }
+        if (!__stm32wb_eeprom_flush(stm32wb_system_reset_cause() != STM32WB_SYSTEM_RESET_STANDBY))
+        {
+            return;
 	}
     }
-
-    stm32wb_eeprom_device.mask_1 = 0;
-    memset((uint8_t*)&stm32wb_eeprom_device.mask_2[0], 0x00, (STM32WB_EEPROM_SIZE / 128));
-    
-    stm32wb_eeprom_device.request.callback = stm32wb_eeprom_callback;
-    stm32wb_eeprom_device.request.context = NULL;
 
     stm32wb_eeprom_device.state = STM32WB_EEPROM_STATE_READY;
 }
@@ -445,7 +493,7 @@ static void stm32wb_eeprom_process(void)
 	    index = __builtin_ctz(stm32wb_eeprom_device.mask_2[slot]);
 	    
 	    armv7m_atomic_and(&stm32wb_eeprom_device.mask_2[slot], ~(1 << index));
-	    armv7m_atomic_andz(&stm32wb_eeprom_device.mask_1, ~(1 << slot), &stm32wb_eeprom_device.mask_2[slot], ~0);
+	    armv7m_atomic_andz(&stm32wb_eeprom_device.mask_1, ~(1 << slot), &stm32wb_eeprom_device.mask_2[slot]);
 
 	    index = (slot * 32) + index;
 
@@ -482,7 +530,7 @@ static void stm32wb_eeprom_process(void)
 	    }
 	    else
 	    {
-		if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start)
+		if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start__)
 		{
 		    stm32wb_eeprom_device.flash += stm32wb_eeprom_device.size;
 		}

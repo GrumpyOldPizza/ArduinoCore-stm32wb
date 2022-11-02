@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -61,12 +61,12 @@ enum {
 #define STM32WB_I2C_EVENT_ADDRESS_MASK               0xffff0000
 #define STM32WB_I2C_EVENT_ADDRESS_SHIFT              16
 
-#define STM32WB_I2C_STATUS_SUCCESS                   0
+#define STM32WB_I2C_STATUS_BUSY                      0
+#define STM32WB_I2C_STATUS_SUCCESS                   1
 #define STM32WB_I2C_STATUS_ADDRESS_NACK              2
 #define STM32WB_I2C_STATUS_DATA_NACK                 3
-#define STM32WB_I2C_STATUS_ARBITRATION_LOST          4
+#define STM32WB_I2C_STATUS_FAILURE                   4
 #define STM32WB_I2C_STATUS_TIMEOUT                   5
-#define STM32WB_I2C_STATUS_BUSY                      255
 
 #define STM32WB_I2C_CONTROL_RESTART                  0x01
 #define STM32WB_I2C_CONTROL_DIRECTION                0x02

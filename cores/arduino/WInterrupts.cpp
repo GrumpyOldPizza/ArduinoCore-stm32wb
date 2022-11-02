@@ -43,13 +43,13 @@ void attachInterrupt(uint32_t pin, Callback callback, uint32_t mode, int priorit
     if (g_APinDescription[pin].attr & PIN_ATTR_EXTI) {
         switch (mode) {
         case CHANGE:
-            control = (STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_PRIORITY_MEDIUM);
+            control = (STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_EDGE_RISING);
             break;
         case FALLING:
-            control = (STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_PRIORITY_MEDIUM);
+            control = (STM32WB_EXTI_CONTROL_EDGE_FALLING);
             break;
         case RISING:
-            control = (STM32WB_EXTI_CONTROL_EDGE_RISING | STM32WB_EXTI_CONTROL_PRIORITY_MEDIUM);
+            control = (STM32WB_EXTI_CONTROL_EDGE_RISING);
             break;
         default:
             return;
@@ -72,7 +72,7 @@ void attachInterrupt(uint32_t pin, Callback callback, uint32_t mode, int priorit
             return;
         }
         
-        stm32wb_exti_attach(g_APinDescription[pin].pin, control, (stm32wb_exti_callback_t)callback.callback(), callback.context());
+        stm32wb_exti_catch(g_APinDescription[pin].pin, control, (stm32wb_exti_callback_t)callback.callback(), callback.context());
     } else {
         switch (mode) {
         case FALLING:
@@ -85,7 +85,24 @@ void attachInterrupt(uint32_t pin, Callback callback, uint32_t mode, int priorit
             return;
         }
 
-        stm32wb_rtc_tamp_attach(g_APinDescription[pin].pin, control, (stm32wb_rtc_callback_t)callback.callback(), callback.context());
+        switch (priority) {
+        case 0:
+            control |= STM32WB_RTC_TAMP_CONTROL_PRIORITY_CRITICAL;
+            break;
+        case 1:
+            control |= STM32WB_RTC_TAMP_CONTROL_PRIORITY_HIGH;
+            break;
+        case 2:
+            control |= STM32WB_RTC_TAMP_CONTROL_PRIORITY_MEDIUM;
+            break;
+        case 3:
+            control |= STM32WB_RTC_TAMP_CONTROL_PRIORITY_LOW;
+            break;
+        default:
+            return;
+        }
+
+        stm32wb_rtc_tamp_catch(g_APinDescription[pin].pin, control, (stm32wb_rtc_tamp_callback_t)callback.callback(), callback.context());
     }
 }
 
@@ -101,9 +118,9 @@ void detachInterrupt(uint32_t pin) {
     }
 
     if (g_APinDescription[pin].attr & PIN_ATTR_EXTI) {
-        stm32wb_exti_detach(g_APinDescription[pin].pin);
+        stm32wb_exti_catch(g_APinDescription[pin].pin, 0, NULL, NULL);
     } else {
-        stm32wb_rtc_tamp_detach(g_APinDescription[pin].pin);
+        stm32wb_rtc_tamp_catch(g_APinDescription[pin].pin, 0, NULL, NULL);
     }
 }
 

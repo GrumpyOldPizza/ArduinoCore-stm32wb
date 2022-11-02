@@ -9,7 +9,7 @@ volatile bool bme280_done = false;
 
 uint8_t bme280_data[8];
 
-volatile uint8_t bme280_status;
+TwoWireTransaction bme280_async;
 
 TimerMillis bme280_sample;
 TimerMillis bme280_convert;
@@ -28,7 +28,7 @@ void sampleCallback(void)
 {
     static uint8_t tx_data[] = { 0xf4, 0x25 };
 
-    Wire.transfer(BME280_I2C_ADDRESS, &tx_data[0], 2, NULL, 0, true, bme280_status, convertCallback);
+    bme280_async.submit(Wire, BME280_I2C_ADDRESS, &tx_data[0], 2, NULL, 0, convertCallback);
 }
 
 void convertCallback(void)
@@ -40,7 +40,7 @@ void readyCallback(void)
 {
     static uint8_t tx_data[] = { 0xf7 };
 
-    Wire.transfer(BME280_I2C_ADDRESS, &tx_data[0], 1, &bme280_data[0], 8, true, bme280_status, doneCallback);
+    bme280_async.submit(Wire, BME280_I2C_ADDRESS, &tx_data[0], 1, &bme280_data[0], 8, doneCallback);
 }
 
 void doneCallback(void)

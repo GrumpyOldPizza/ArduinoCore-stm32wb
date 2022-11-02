@@ -39,7 +39,7 @@ void myReceiveCallback(int count)
 
 void myRequestCallback(void)
 {
-    for (int i = 0, n = tx_index; i < BUFFER_LENGTH; i++)
+    for (int i = 0, n = tx_index; i < WIRE_BUFFER_LENGTH; i++)
     {
         Wire.write(tx_data[n]);
         

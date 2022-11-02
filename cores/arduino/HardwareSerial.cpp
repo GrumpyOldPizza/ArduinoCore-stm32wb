@@ -39,6 +39,34 @@ bool Serial_available() { return SerialUSB.available(); }
 
 CDC SerialUSB((serialEvent ? serialEventRun : NULL));
 
+extern "C" {
+
+int wiring_stdin_read(char *data, int nbytes) {
+    if (SerialUSB) {
+        return SerialUSB.read((uint8_t*)data, nbytes);
+    }
+
+    return 0;
+}
+    
+int wiring_stdout_write(const char *data, int nbytes) {
+    if (SerialUSB) {
+        return SerialUSB.write((const uint8_t*)data, nbytes);
+    }
+    
+    return 0;
+}
+
+int wiring_stderr_write(const char *data, int nbytes) {
+    if (SerialUSB) {
+        return SerialUSB.write((const uint8_t*)data, nbytes);
+    }
+
+    return 0;
+}
+
+}
+
 #else
 
 extern bool Serial_available() __attribute__((weak));
@@ -49,6 +77,34 @@ extern stm32wb_uart_t g_Serial;
 extern const stm32wb_uart_params_t g_SerialParams;
 
 Uart Serial(&g_Serial, &g_SerialParams, (serialEvent ? serialEventRun : NULL));
+
+extern "C" {
+
+int wiring_stdin_read(char *data, int nbytes) {
+    if (Serial) {
+        return Serial.read((uint8_t*)data, nbytes);
+    }
+
+    return 0;
+}
+    
+int wiring_stdout_write(const char *data, int nbytes) {
+    if (Serial) {
+        return Serial.write((const uint8_t*)data, nbytes);
+    }
+    
+    return 0;
+}
+
+int wiring_stderr_write(const char *data, int nbytes) {
+    if (Serial) {
+        return Serial.write((const uint8_t*)data, nbytes);
+    }
+
+    retirn 0;
+}
+
+}
 
 #endif
 

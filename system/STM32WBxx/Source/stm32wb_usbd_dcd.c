@@ -29,7 +29,7 @@
 #include "armv7m.h"
 #include "stm32wb_gpio.h"
 #include "stm32wb_system.h"
-#include "stm32wb_rtc.h"
+#include "stm32wb_lptim.h"
 #include "stm32wb_hsem.h"
 #include "stm32wb_usbd.h"
 #include "stm32wb_usbd_dcd.h"
@@ -137,6 +137,11 @@ typedef struct __stm32wb_usbd_dcd_device_t {
     stm32wb_usbd_dcd_iso_in_routine_t  iso_in_routine;
     stm32wb_usbd_dcd_iso_out_routine_t iso_out_routine;
 #endif /* (STM32WB_USBD_DCD_ISO_SUPPORTED == 1) */
+#if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
+    volatile uint8_t                   set_resume;
+    volatile uint8_t                   unset_resume;
+    stm32wb_lptim_timeout_t            timeout;
+#endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 } stm32wb_usbd_dcd_device_t;
 
 static stm32wb_usbd_dcd_device_t stm32wb_usbd_dcd_device;
@@ -207,6 +212,10 @@ static const uint16_t stm32wb_usbd_dcd_xlate_ep_type[4] = {
 #define USB_PMA_RX_1_SIZE(_pma_index, _size)        (*((volatile uint16_t*)(USB_PMA_BASE + ((_pma_index) * 8) + 6)) = (_size))
 #define USB_PMA_RX_0_COUNT(_pma_index)              (*((volatile uint16_t*)(USB_PMA_BASE + ((_pma_index) * 8) + 2)) & 0x03ff)
 #define USB_PMA_RX_1_COUNT(_pma_index)              (*((volatile uint16_t*)(USB_PMA_BASE + ((_pma_index) * 8) + 6)) & 0x03ff)
+
+#if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
+static void stm32wb_usbd_dcd_wakeup_routine(void *context);
+#endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 
 static void __attribute__((optimize("O3"), noinline)) stm32wb_usbd_dcd_pma_write(uint32_t pma_address, const uint8_t *data, uint32_t count)
 {
@@ -354,6 +363,10 @@ bool stm32wb_usbd_dcd_configure(void)
     stm32wb_usbd_dcd_device.clk48_on = false;
     stm32wb_usbd_dcd_device.clk48_sync = false;
 
+#if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
+    stm32wb_usbd_dcd_device.timeout = STM32WB_LPTIM_TIMEOUT_INIT();
+#endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
+    
     return true;
 }
 
@@ -478,7 +491,7 @@ bool stm32wb_usbd_dcd_disconnect(void)
     }
 
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
-    stm32wb_rtc_wakeup_stop();
+    stm32wb_lptim_timeout_cancel(&stm32wb_usbd_dcd_device.timeout);
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 
     NVIC_DisableIRQ(CRS_IRQn);
@@ -617,51 +630,55 @@ bool stm32wb_usbd_dcd_address(uint8_t address)
 
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
 
-static void stm32wb_usbd_dcd_wakeup_unset_resume(void)
+static void stm32wb_usbd_dcd_wakeup_routine(void *context)
 {
     uint16_t usb_cntr;
     
-    // armv7m_rtt_printf("DCD_WAKEUP_UNSET_RESUME(cntr=%04x, istr=%04x)\n", USB->CNTR, USB->ISTR);
-
     if (stm32wb_usbd_dcd_device.lpm_state == STM32WB_USBD_DCD_LPM_STATE_L0)
     {
-        do
+        if (stm32wb_usbd_dcd_device.set_resume)
         {
-            usb_cntr = USB->CNTR;
+            // armv7m_rtt_printf("DCD_WAKEUP_SET_RESUME(cntr=%04x, istr=%04x)\n", USB->CNTR, USB->ISTR);
+
+            stm32wb_usbd_dcd_device.set_resume = 0;
             
-            if (!(usb_cntr & USB_CNTR_FSUSP))
+            do
             {
-                return;
+                usb_cntr = USB->CNTR;
+                
+                if (!(usb_cntr & USB_CNTR_FSUSP))
+                {
+                    return;
+                }
             }
+            while (armv7m_atomic_cash(&USB->CNTR, usb_cntr, (usb_cntr | USB_CNTR_RESUME)) != usb_cntr);
+
+            stm32wb_usbd_dcd_device.unset_resume = 1;
+            
+            stm32wb_lptim_timeout_relative(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(5), stm32wb_usbd_dcd_wakeup_routine, NULL);
         }
-        while (armv7m_atomic_cash(&USB->CNTR, usb_cntr, (usb_cntr & ~USB_CNTR_RESUME)) != usb_cntr);
         
-        armv7m_atomic_or(&stm32wb_usbd_dcd_device.events, STM32WB_USBD_DCD_EVENT_RESUME);
-        
-        armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_USBD_DCD);
-    }
-}
-
-static void stm32wb_usbd_dcd_wakeup_set_resume(void)
-{
-    uint16_t usb_cntr;
-    
-    // armv7m_rtt_printf("DCD_WAKEUP_SET_RESUME(cntr=%04x, istr=%04x)\n", USB->CNTR, USB->ISTR);
-
-    if (stm32wb_usbd_dcd_device.lpm_state == STM32WB_USBD_DCD_LPM_STATE_L0)
-    {
-        do
+        if (stm32wb_usbd_dcd_device.unset_resume)
         {
-            usb_cntr = USB->CNTR;
-            
-            if (!(usb_cntr & USB_CNTR_FSUSP))
+            // armv7m_rtt_printf("DCD_WAKEUP_UNSET_RESUME(cntr=%04x, istr=%04x)\n", USB->CNTR, USB->ISTR);
+
+            stm32wb_usbd_dcd_device.unset_resume = 0;
+
+            do
             {
-                return;
+                usb_cntr = USB->CNTR;
+                
+                if (!(usb_cntr & USB_CNTR_FSUSP))
+                {
+                    return;
+                }
             }
+            while (armv7m_atomic_cash(&USB->CNTR, usb_cntr, (usb_cntr & ~USB_CNTR_RESUME)) != usb_cntr);
+            
+            armv7m_atomic_or(&stm32wb_usbd_dcd_device.events, STM32WB_USBD_DCD_EVENT_RESUME);
+            
+            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_USBD_DCD);
         }
-        while (armv7m_atomic_cash(&USB->CNTR, usb_cntr, (usb_cntr | USB_CNTR_RESUME)) != usb_cntr);
-        
-        stm32wb_rtc_wakeup_start(stm32wb_rtc_millis_to_ticks(5), (stm32wb_rtc_wakeup_callback_t)stm32wb_usbd_dcd_wakeup_unset_resume, NULL);
     }
 }
 
@@ -689,8 +706,11 @@ bool stm32wb_usbd_dcd_wakeup(void)
             // armv7m_rtt_printf("DCD_LOCK\n");
 
             stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+
+            stm32wb_usbd_dcd_device.set_resume = 1;
+            stm32wb_usbd_dcd_device.unset_resume = 0;
             
-            stm32wb_rtc_wakeup_start(stm32wb_rtc_millis_to_ticks(2), (stm32wb_rtc_wakeup_callback_t)stm32wb_usbd_dcd_wakeup_set_resume, NULL);
+            stm32wb_lptim_timeout_relative(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(2), stm32wb_usbd_dcd_wakeup_routine, NULL);
         }
     }
 
@@ -754,7 +774,7 @@ void stm32wb_usbd_dcd_lpm_unreference(uint32_t reference)
 {
     if (armv7m_atomic_and(&stm32wb_usbd_dcd_device.reference, ~reference) == reference)
     {
-        armv7m_atomic_orhz(&USB->LPMCSR, USB_LPMCSR_LPMACK, &stm32wb_usbd_dcd_device.reference, ~0ul);
+        armv7m_atomic_orhz(&USB->LPMCSR, USB_LPMCSR_LPMACK, &stm32wb_usbd_dcd_device.reference);
     }
 
     // armv7m_rtt_printf("DCD_LPM_UNREFERENCE(reference=%08x) = %s\n", reference, ((USB->LPMCSR & USB_LPMCSR_LPMACK) ? "ACK" : "NYET"));
@@ -1310,7 +1330,7 @@ bool stm32wb_usbd_dcd_ep_transmit(uint8_t ep_addr, const uint8_t *data, uint16_t
 #endif /* STM32WB_USBD_DCD_DBL_SUPPORTED == 1 */
     stm32wb_usbd_dcd_ep_in_t *ep_in;
 
-    // armv7m_rtt_printf("DCD_EP_TRANSMIT(ep_addr=%02x, data=%08x, legnth=%d, callback=%08x, context=%0x)\n", ep_addr, data, length, callback, context);
+    // armv7m_rtt_printf("DCD_EP_TRANSMIT(ep_addr=%02x, data=%08x, length=%d, callback=%08x, context=%0x)\n", ep_addr, data, length, callback, context);
 
     if (stm32wb_usbd_dcd_device.state < STM32WB_USBD_DCD_STATE_CONNECTED)
     {
@@ -1550,7 +1570,7 @@ static void stm32wb_usbd_dcd_event(void)
         {
             if (!stm32wb_hsem_lock(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_USBD_DCD))
             {
-                if (!stm32wb_hsem_is_locked(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_RANDOM))
+                if (!stm32wb_hsem_is_locked(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_RNG))
                 {
                     armv7m_atomic_or(&stm32wb_usbd_dcd_device.events, events);
 
@@ -1576,7 +1596,7 @@ static void stm32wb_usbd_dcd_event(void)
         {
             if (!stm32wb_hsem_lock(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_USBD_DCD))
             {
-                if (!stm32wb_hsem_is_locked(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_RANDOM))
+                if (!stm32wb_hsem_is_locked(STM32WB_HSEM_INDEX_RNG, STM32WB_HSEM_PROCID_RNG))
                 {
                     armv7m_atomic_or(&stm32wb_usbd_dcd_device.events, events);
 
@@ -2649,7 +2669,7 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_dcd_interrupt()
             }
 
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
-            stm32wb_rtc_wakeup_stop();
+            stm32wb_lptim_timeout_cancel(&stm32wb_usbd_dcd_device.timeout);
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 
 	    events |= STM32WB_USBD_DCD_EVENT_RESET;

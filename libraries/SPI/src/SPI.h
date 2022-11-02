@@ -83,11 +83,6 @@ protected:
     friend class SPIClass;
 };
 
-
-#define SPI_STATUS_SUCCESS 0
-#define SPI_STATUS_FAILURE 1
-#define SPI_STATUS_BUSY    255
-
 class SPIClass {
 public:
     SPIClass(struct _stm32wb_spi_t *spi, const struct _stm32wb_spi_params_t *params);
@@ -110,21 +105,21 @@ public:
     virtual void begin();
     virtual void end();
 
-    // STM32WB EXTENSION: transfer with separate read/write buffer
+    // STM32WB EXTENSION: synchronous transfer with separate read/write buffer
     void transfer(const void *txBuffer, void *rxBuffer, size_t count);
     
     // STM32WB EXTENSTION: asynchronous transfer with separate read/write buffer
-    bool transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status);
-    bool transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status, void(*callback)(void));
-    bool transfer(const void *txBuffer, void *rxBuffer, size_t count, volatile uint8_t &status, Callback callback);
-    size_t cancel(void);
-    
+    bool transfer(const void *txBuffer, void *rxBuffer, size_t count, void(*callback)(void));
+    bool transfer(const void *txBuffer, void *rxBuffer, size_t count, Callback callback);
+    size_t cancel();
+    bool busy();
+  
 private:
     struct _stm32wb_spi_t * const m_spi;
     const struct SPIInterface * const m_interface;
     bool m_transaction;
-
-    Callback m_done_callback;
+    volatile uint8_t m_busy;
+    Callback m_callback;
     k_work_t m_work;
 
     uint8_t (*m_data_8)(struct _stm32wb_spi_t *spi, uint8_t data);
@@ -133,8 +128,8 @@ private:
     static uint8_t null_data_8(struct _stm32wb_spi_t *spi, uint8_t data);
     static uint16_t null_data_16(struct _stm32wb_spi_t *spi, uint16_t data);
     
-    static void workCallback(class SPIClass *self);
-    static void doneCallback(class SPIClass *self);
+    static void done(class SPIClass *self);
+    static void notify(class SPIClass *self);
 };
 
 #if SPI_INTERFACES_COUNT > 0

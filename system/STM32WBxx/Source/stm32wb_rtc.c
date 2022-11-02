@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,71 +35,44 @@
 
 /*******************************************************************************************************************/
 
-typedef void (*stm32wb_rtc_modify_routine_t)(void);
+typedef void (*stm32wb_rtc_sync_routine_t)(void);
 typedef void (*stm32wb_rtc_alarm_routine_t)(void);
-typedef void (*stm32wb_rtc_timer_routine_t)(void);
-typedef void (*stm32wb_rtc_wakeup_routine_t)(void);
-
-typedef struct _stm32wb_rtc_time_t {
-    volatile uint32_t                      seconds_offset; 
-    volatile uint16_t                      ticks_offset;
-    volatile int8_t                        utc_offset;
-    volatile uint8_t                       status;
-} stm32wb_rtc_time_t;
-
-typedef struct _stm32wb_rtc_alarm_t {
-    volatile uint32_t                      seconds;
-    volatile uint32_t                      ticks;
-    volatile stm32wb_rtc_alarm_callback_t  callback;
-    void * volatile                        context;
-} stm32wb_rtc_alarm_t;
 
 typedef struct _stm32wb_rtc_device_t {
     uint64_t                               clock_offset;
-    stm32wb_rtc_time_t                     time_current; 
-    stm32wb_rtc_time_t                     time_next; 
-    volatile uint32_t                      time_sequence;
-    uint64_t                               alarm_clock;
-    stm32wb_rtc_alarm_t                    alarm_current;
-    stm32wb_rtc_alarm_t                    alarm_next;
-    volatile uint32_t                      alarm_sequence[2];
-    volatile uint8_t                       alarm_active;
+    volatile uint64_t                      time_offset; 
+    volatile int32_t                       zone;
+    volatile uint16_t                      dst;
+    volatile int8_t                        leap_seconds;
+    volatile uint8_t                       status;
+    volatile stm32wb_rtc_event_callback_t  event_callback;
+    void * volatile                        event_context;
+    volatile uint32_t                      events;
     volatile uint8_t                       alarm_busy;
-    volatile uint8_t                       alarm_continue;
+    volatile uint8_t                       alarm_modify;
     volatile uint8_t                       alarm_event;
-    uint64_t                               timer_clock;
-    stm32wb_rtc_timer_t                    *timer_queue;
-    stm32wb_rtc_timer_t * volatile         timer_modify;
-    volatile uint8_t                       timer_busy;
-    volatile uint8_t                       wakeup_busy;
-    volatile uint8_t                       wakeup_modify;    
-    volatile uint8_t                       wakeup_event;    
-    volatile uint32_t                      wakeup_ticks;    
-    volatile stm32wb_rtc_wakeup_callback_t wakeup_callback;
-    void * volatile                        wakeup_context;
-    volatile stm32wb_rtc_callback_t        tamp1_callback;
-    void * volatile                        tamp1_context;
-    volatile stm32wb_rtc_callback_t        tamp2_callback;
-    void * volatile                        tamp2_context;
-    volatile stm32wb_rtc_callback_t        tamp3_callback;
-    void * volatile                        tamp3_context;
-    volatile stm32wb_rtc_modify_routine_t  modify_routine;
+    volatile uint64_t                      alarm_clock;
+    volatile stm32wb_rtc_alarm_callback_t  alarm_callback;
+    void * volatile                        alarm_context;
+    volatile stm32wb_rtc_sync_routine_t    sync_routine;
     volatile stm32wb_rtc_alarm_routine_t   alarm_routine;
-    volatile stm32wb_rtc_timer_routine_t   timer_routine;
-    volatile stm32wb_rtc_wakeup_routine_t  wakeup_routine;
 } stm32wb_rtc_device_t;
 
 static stm32wb_rtc_device_t stm32wb_rtc_device;
 
-#define STM32WB_RTC_TIMER_SENTINEL ((stm32wb_rtc_timer_t*)0xffffffff)
-#define STM32WB_RTC_TIMER_INVALID  (0x80000000)
+typedef struct _stm32wb_rtc_info_t {
+    uint32_t                               epoch;
+    int32_t                                zone;
+    uint16_t                               dst;
+    int16_t                                leap_seconds;
+} stm32wb_rtc_info_t;
 
-static void stm32wb_rtc_modify_routine();
+extern const stm32wb_rtc_info_t __rtc_info__;
+
+static uint64_t __attribute__((section(".noinit2"))) __stm32wb_rtc_alarm_clock;
+
+static void stm32wb_rtc_sync_routine();
 static void stm32wb_rtc_alarm_routine();
-static void stm32wb_rtc_timer_routine();
-static void stm32wb_rtc_wakeup_routine();
-
-extern uint8_t __RTC_EPOCH__;
 
 /*******************************************************************************************************************/
 
@@ -155,13 +128,14 @@ static const uint8_t stm32wb_rtc_days_in_month[4][16] = {
     {   0,  31,  28,  31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  0,  0,  0 },
 };
 
+
 /*
  * https://github.com/eggert/tz/blob/master/leap-seconds.list
  *
  * GPS Time 0 in terms of TAI: 2524521600 + 432000
  */
 
-static const uint32_t stm32wb_rtc_utc_offset_table[] = {
+static const uint32_t stm32wb_rtc_leap_seconds_table[] = {
     0,          // [ 0]  1 Jan 1980
     46828800,   // [ 1]  1 Jul 1981
     78364801,   // [ 2]  1 Jul 1982
@@ -185,8 +159,8 @@ static const uint32_t stm32wb_rtc_utc_offset_table[] = {
 
 #define STM32WB_RTC_SECONDS_OFFSET_DEFAULT      1167264018 //  1 Jan 2017 00:00:00 in GPS TIME
 #define STM32WB_RTC_TICKS_OFFSET_DEFAULT        0
-#define STM32WB_RTC_UTC_OFFSET_DEFAULT          18
-#define STM32WB_RTC_UTC_OFFSET_EXPIRATION       1293494417 // 31 Dec 2020 23:59:59 in GPS TIME
+#define STM32WB_RTC_LEAP_SECONDS_DEFAULT        18
+#define STM32WB_RTC_LEAP_SECONDS_EXPIRATION     1293494417 // 31 Dec 2020 23:59:59 in GPS TIME
 
 void __stm32wb_rtc_initialize(void)
 {
@@ -214,15 +188,18 @@ void __stm32wb_rtc_initialize(void)
         
         RTC->CR = RTC_CR_BYPSHAD;
 	RTC->TAMPCR = RTC_TAMPCR_TAMP1NOERASE | RTC_TAMPCR_TAMP2NOERASE | RTC_TAMPCR_TAMP3NOERASE | RTC_TAMPCR_TAMPPUDIS;
-        
+
         RTC->PRER = (STM32WB_RTC_PREDIV_S -1) << RTC_PRER_PREDIV_S_Pos;
         RTC->PRER |= (STM32WB_RTC_PREDIV_A -1) << RTC_PRER_PREDIV_A_Pos;
-
+        
         RTC->ISR = ~RTC_ISR_INIT;
 
-	RTC->BKP16R = (STM32WB_RTC_BKP16R_NOT_DATA_MASK & ~(STM32WB_RTC_BKP16R_REVISION_CURRENT << STM32WB_RTC_BKP16R_REVISION_SHIFT)) | STM32WB_RTC_BKP16R_REVISION_CURRENT;
-	RTC->BKP17R = (((uint32_t)&__RTC_EPOCH__ - 315964800 + STM32WB_RTC_UTC_OFFSET_DEFAULT) << STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT);
-	RTC->BKP18R = (STM32WB_RTC_UTC_OFFSET_DEFAULT << STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT) | (hseclk ? STM32WB_RTC_BKP18R_HSECLK : 0);
+	RTC->BKP16R = (STM32WB_RTC_BKP16R_NOT_DATA_MASK & ~(STM32WB_RTC_BKP16R_REVISION_CURRENT << STM32WB_RTC_BKP16R_NOT_DATA_SHIFT)) | STM32WB_RTC_BKP16R_REVISION_CURRENT;
+	RTC->BKP17R = hseclk ? STM32WB_RTC_BKP17R_HSECLK : 0;
+	RTC->BKP18R = __rtc_info__.epoch ? (__rtc_info__.epoch - 315964800 + __rtc_info__.leap_seconds) : 0;
+	RTC->BKP19R = ((((__rtc_info__.zone / 900) << STM32WB_RTC_BKP19R_ZONE_SHIFT) & STM32WB_RTC_BKP19R_ZONE_MASK) |
+                       (((__rtc_info__.dst / 3600) << STM32WB_RTC_BKP19R_DST_SHIFT) & STM32WB_RTC_BKP19R_DST_MASK) |
+                       ((__rtc_info__.leap_seconds << STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT) & STM32WB_RTC_BKP19R_LEAP_SECONDS_MASK));
 
         if (lseclk)
         {
@@ -248,6 +225,11 @@ void __stm32wb_rtc_initialize(void)
             }
         }
     }
+    else
+    {
+	RTC->WPR = 0xca;
+	RTC->WPR = 0x53;
+    }
     
     EXTI->IMR1 &= ~(EXTI_IMR1_IM17 | EXTI_IMR1_IM18 | EXTI_IMR1_IM19);
     
@@ -263,16 +245,14 @@ void __stm32wb_rtc_initialize(void)
 
     stm32wb_rtc_clock_capture(&capture);
     stm32wb_rtc_device.clock_offset = stm32wb_rtc_clock_convert(&capture);
-    stm32wb_rtc_device.time_current.seconds_offset = (RTC->BKP17R & STM32WB_RTC_BKP17R_SECONDS_OFFSET_MASK) >> STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.ticks_offset = (RTC->BKP18R & STM32WB_RTC_BKP18R_TICKS_OFFSET_MASK) >> STM32WB_RTC_BKP18R_TICKS_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.utc_offset = (RTC->BKP18R & STM32WB_RTC_BKP18R_UTC_OFFSET_MASK) >> STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT;
-    stm32wb_rtc_device.time_current.status = (((RTC->BKP18R & STM32WB_RTC_BKP18R_TIME_WRITTEN) ? STM32WB_RTC_STATUS_TIME_INTERNAL : 0) |
-					      ((RTC->BKP18R & STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN) ? STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL : 0));
-
-    stm32wb_rtc_device.time_next = stm32wb_rtc_device.time_current;
-    
-    stm32wb_rtc_device.timer_queue = NULL;
-    stm32wb_rtc_device.timer_modify = STM32WB_RTC_TIMER_SENTINEL;
+    stm32wb_rtc_device.time_offset = ((uint64_t)RTC->BKP18R * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) + ((RTC->BKP19R & STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK) >> STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT);
+    stm32wb_rtc_device.zone = ((int32_t)(RTC->BKP19R << (32 - STM32WB_RTC_BKP19R_ZONE_SHIFT - STM32WB_RTC_BKP19R_ZONE_SIZE)) >> (32 - STM32WB_RTC_BKP19R_ZONE_SIZE)) * 900;
+    stm32wb_rtc_device.dst = ((RTC->BKP19R & STM32WB_RTC_BKP19R_DST_MASK) >> STM32WB_RTC_BKP19R_DST_SHIFT) * 3600;
+    stm32wb_rtc_device.leap_seconds = (int32_t)(RTC->BKP19R << (32 - STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT - STM32WB_RTC_BKP19R_LEAP_SECONDS_SIZE)) >> (32 - STM32WB_RTC_BKP19R_LEAP_SECONDS_SIZE);
+    stm32wb_rtc_device.status = (((RTC->BKP19R & STM32WB_RTC_BKP19R_TIME_WRITTEN) ? STM32WB_RTC_STATUS_TIME_WRITTEN : 0) |
+                                 ((RTC->BKP19R & STM32WB_RTC_BKP19R_ZONE_WRITTEN) ? STM32WB_RTC_STATUS_ZONE_WRITTEN : 0) |
+                                 ((RTC->BKP19R & STM32WB_RTC_BKP19R_DST_WRITTEN) ? STM32WB_RTC_STATUS_DST_WRITTEN : 0) |
+                                 ((RTC->BKP19R & STM32WB_RTC_BKP19R_LEAP_SECONDS_WRITTEN) ? STM32WB_RTC_STATUS_LEAP_SECONDS_WRITTEN : 0));
 
     RTC->CR = (RTC->CR & ~RTC_CR_WUCKSEL);
 
@@ -282,7 +262,14 @@ void __stm32wb_rtc_initialize(void)
 
 uint32_t stm32wb_rtc_status(void)
 {
-    return stm32wb_rtc_device.time_current.status;
+    return stm32wb_rtc_device.status;
+}
+
+void stm32wb_rtc_notify(stm32wb_rtc_event_callback_t callback, void *context)
+{
+    stm32wb_rtc_device.event_callback = NULL;
+    stm32wb_rtc_device.event_context = context;
+    stm32wb_rtc_device.event_callback = callback;
 }
 
 int32_t stm32wb_rtc_get_calibration(void)
@@ -327,97 +314,63 @@ void stm32wb_rtc_set_calibration(int32_t calibration)
     }
 }
 
-int32_t stm32wb_rtc_get_utc_offset(void)
+static void stm32wb_rtc_sync_routine(void)
 {
-    return stm32wb_rtc_device.time_current.utc_offset;
-}
+    stm32wb_rtc_event_callback_t callback;
+    void *context;
+    uint32_t events;
+    uint64_t time_offset, time_offset_previous;
+    int32_t zone, zone_previous;
+    uint16_t dst, dst_previous;
+    int8_t leap_seconds, leap_seconds_previous;
+    uint8_t status, status_previous;
 
-static void stm32wb_rtc_modify_routine(void)
-{
-    stm32wb_rtc_alarm_routine_t routine;
-    uint32_t sequence, n_seconds, n_ticks;
-    int8_t n_utc_offset;
-    uint8_t n_status;
+    events = armv7m_atomic_swap(&stm32wb_rtc_device.events, 0);
 
+    armv7m_atomic_orb(&stm32wb_rtc_device.status, events);
+
+    time_offset = stm32wb_rtc_device.time_offset;
+    zone = stm32wb_rtc_device.zone;
+    dst = stm32wb_rtc_device.dst;
+    leap_seconds = stm32wb_rtc_device.leap_seconds;
+    status = stm32wb_rtc_device.status;
+    
     do
     {
-	sequence = stm32wb_rtc_device.time_sequence;
+        time_offset_previous = time_offset;
+        zone_previous = zone;
+        dst_previous = dst;
+        leap_seconds_previous = leap_seconds;
+        status_previous = status;
 
-	n_seconds = stm32wb_rtc_device.time_next.seconds_offset;
-	n_ticks = stm32wb_rtc_device.time_next.ticks_offset;
-	n_utc_offset = stm32wb_rtc_device.time_next.utc_offset;
-	n_status = stm32wb_rtc_device.time_next.status;
+        time_offset = stm32wb_rtc_device.time_offset;
+        zone = stm32wb_rtc_device.zone;
+        dst = stm32wb_rtc_device.dst;
+        leap_seconds = stm32wb_rtc_device.leap_seconds;
+        status = stm32wb_rtc_device.status;
     }
-    while (stm32wb_rtc_device.time_sequence != sequence);
+    while ((time_offset != time_offset_previous) ||
+           (zone != zone_previous) ||
+           (dst != dst_previous) ||
+           (leap_seconds != leap_seconds_previous) ||
+           (status != status_previous));
+           
+    RTC->BKP18R = (uint32_t)(time_offset / STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
+    RTC->BKP19R = ((((time_offset & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - 1)) << STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT) & STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK) |
+                   (((zone / 900) << STM32WB_RTC_BKP19R_ZONE_SHIFT) & STM32WB_RTC_BKP19R_ZONE_MASK) |
+                   (((dst / 3600) << STM32WB_RTC_BKP19R_DST_SHIFT) & STM32WB_RTC_BKP19R_DST_MASK) |
+                   ((leap_seconds << STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT) & STM32WB_RTC_BKP19R_LEAP_SECONDS_MASK) |
+                   ((status & STM32WB_RTC_STATUS_TIME_WRITTEN) ? STM32WB_RTC_BKP19R_TIME_WRITTEN : 0) |
+                   ((status & STM32WB_RTC_STATUS_ZONE_WRITTEN) ? STM32WB_RTC_BKP19R_ZONE_WRITTEN : 0) |
+                   ((status & STM32WB_RTC_STATUS_DST_WRITTEN) ? STM32WB_RTC_BKP19R_DST_WRITTEN : 0) |
+                   ((status & STM32WB_RTC_STATUS_LEAP_SECONDS_WRITTEN) ? STM32WB_RTC_BKP19R_LEAP_SECONDS_WRITTEN : 0));
+
+    callback = stm32wb_rtc_device.event_callback;
+    context = stm32wb_rtc_device.event_context;
     
-    stm32wb_rtc_device.time_current.seconds_offset = n_seconds;
-    stm32wb_rtc_device.time_current.ticks_offset = n_ticks;
-    stm32wb_rtc_device.time_current.utc_offset = n_utc_offset;
-    stm32wb_rtc_device.time_current.status = n_status; 
-
-    armv7m_atomic_modify(&RTC->BKP17R, STM32WB_RTC_BKP17R_SECONDS_OFFSET_MASK, (n_seconds << STM32WB_RTC_BKP17R_SECONDS_OFFSET_SHIFT));
-    armv7m_atomic_modify(&RTC->BKP18R, (STM32WB_RTC_BKP18R_UTC_OFFSET_MASK | STM32WB_RTC_BKP18R_TICKS_OFFSET_MASK | STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN_MASK | STM32WB_RTC_BKP18R_TIME_WRITTEN_MASK),
-                         ((n_status & (STM32WB_RTC_STATUS_TIME_INTERNAL | STM32WB_RTC_STATUS_TIME_EXTERNAL)) ? STM32WB_RTC_BKP18R_TIME_WRITTEN : 0) |
-                         ((n_status & (STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL | STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL)) ? STM32WB_RTC_BKP18R_UTC_OFFSET_WRITTEN : 0) |
-                         (n_ticks << STM32WB_RTC_BKP18R_TICKS_OFFSET_SHIFT) |
-                         (n_utc_offset << STM32WB_RTC_BKP18R_UTC_OFFSET_SHIFT));
-
-    routine = stm32wb_rtc_device.alarm_routine;
-    
-    if (routine)
+    if (callback)
     {
-        (*routine)();
-    }
-}
-
-static void __svc_stm32wb_rtc_set_utc_offset(int32_t utc_offset, bool external)
-{
-    uint32_t sequence;
-    int8_t o_utc_offset, n_utc_offset;
-    uint8_t o_status, n_status;
-
-    do
-    {
-	o_utc_offset = stm32wb_rtc_device.time_next.utc_offset;
-	o_status = stm32wb_rtc_device.time_next.status;
-    }
-    while ((stm32wb_rtc_device.time_next.utc_offset != o_utc_offset) || (stm32wb_rtc_device.time_next.status != o_status));
-
-    if ((o_status & STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL) && !external)
-    {
-        return;
-    }
-    
-    n_utc_offset = utc_offset;
-    n_status = ((o_status & ~(STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL | STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL)) |
-		(external ? STM32WB_RTC_STATUS_UTC_OFFSET_EXTERNAL : STM32WB_RTC_STATUS_UTC_OFFSET_INTERNAL));
-
-    if ((n_utc_offset != o_utc_offset) || (n_status != o_status))
-    {
-	stm32wb_rtc_device.modify_routine = stm32wb_rtc_modify_routine;
-
-	do
-	{
-	    sequence = stm32wb_rtc_device.time_sequence;
-
-	    stm32wb_rtc_device.time_next.utc_offset = n_utc_offset;
-	    stm32wb_rtc_device.time_next.status = n_status;
-	}
-	while (armv7m_atomic_cas(&stm32wb_rtc_device.time_sequence, sequence, (sequence + 1)) != sequence);
-
-	armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_MODIFY);
-    }
-}
-
-void stm32wb_rtc_set_utc_offset(int32_t utc_offset, bool external)
-{
-    if (armv7m_core_is_in_thread())
-    {
-	armv7m_svcall_2((uint32_t)&__svc_stm32wb_rtc_set_utc_offset, (uint32_t)utc_offset, (uint32_t)external);
-    }
-    else
-    {
-        __svc_stm32wb_rtc_set_utc_offset(utc_offset, external);
+        (*callback)(context, events);
     }
 }
 
@@ -551,28 +504,17 @@ uint64_t __attribute__((optimize("O3"))) stm32wb_rtc_clock_read()
 
 void stm32wb_rtc_clock_to_time(uint64_t clock, uint32_t *p_seconds, uint32_t *p_ticks)
 {
-    uint32_t seconds, ticks, o_seconds, o_ticks;
+    uint64_t time_offset;
+    uint32_t seconds, ticks, time_offset_l, time_offset_h;
 
-    do
-    {
-	o_seconds = stm32wb_rtc_device.time_current.seconds_offset;
-	o_ticks = stm32wb_rtc_device.time_current.ticks_offset;
-    }
-    while ((stm32wb_rtc_device.time_current.seconds_offset != o_seconds) || (stm32wb_rtc_device.time_current.ticks_offset != o_ticks));
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
 
-    clock += stm32wb_rtc_device.clock_offset;
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
+
+    clock += (stm32wb_rtc_device.clock_offset + time_offset);
 
     seconds = clock / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
     ticks = clock & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - 1);
-
-    seconds += o_seconds;
-    ticks += o_ticks;
-
-    if (ticks >= STM32WB_RTC_CLOCK_TICKS_PER_SECOND)
-    {
-        seconds++;
-        ticks -= STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    }
 
     *p_seconds = seconds;
     *p_ticks = ticks;
@@ -580,28 +522,16 @@ void stm32wb_rtc_clock_to_time(uint64_t clock, uint32_t *p_seconds, uint32_t *p_
 
 uint64_t stm32wb_rtc_time_to_clock(uint32_t seconds, uint32_t ticks)
 {
-    uint64_t clock;
-    uint32_t o_seconds, o_ticks;
+    uint64_t clock, time_offset;
+    uint32_t time_offset_l, time_offset_h;
+
+    clock = ((uint64_t)seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) + ticks;
+
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
+
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
     
-    do
-    {
-	o_seconds = stm32wb_rtc_device.time_current.seconds_offset;
-	o_ticks = stm32wb_rtc_device.time_current.ticks_offset;
-    }
-    while ((stm32wb_rtc_device.time_current.seconds_offset != o_seconds) || (stm32wb_rtc_device.time_current.ticks_offset != o_ticks));
-
-    if (ticks < o_ticks)
-    {
-        seconds--;
-        ticks += STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    }
-
-    seconds -= o_seconds;
-    ticks -= o_ticks;
-
-    clock = ((uint64_t)seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) | (uint64_t)ticks;
-
-    clock -= stm32wb_rtc_device.clock_offset;
+    clock -= (stm32wb_rtc_device.clock_offset + time_offset);
 
     return clock;
 }
@@ -609,1136 +539,229 @@ uint64_t stm32wb_rtc_time_to_clock(uint32_t seconds, uint32_t ticks)
 void stm32wb_rtc_time_read(uint32_t *p_seconds, uint32_t *p_ticks)
 {
     stm32wb_rtc_capture_t capture;
-    uint64_t clock;
-    uint32_t seconds, ticks, o_seconds, o_ticks;
+    uint64_t clock, time_offset;
+    uint32_t seconds, ticks, time_offset_l, time_offset_h;
     
     __stm32wb_rtc_clock_capture(&capture);
 
     clock = __stm32wb_rtc_clock_convert(&capture, NULL);
 
-    do
-    {
-	o_seconds = stm32wb_rtc_device.time_current.seconds_offset;
-	o_ticks = stm32wb_rtc_device.time_current.ticks_offset;
-    }
-    while ((stm32wb_rtc_device.time_current.seconds_offset != o_seconds) || (stm32wb_rtc_device.time_current.ticks_offset != o_ticks));
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
+    
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
+
+    clock += time_offset;
 
     seconds = clock / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
     ticks = clock & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND -1);
-
-    seconds += o_seconds;
-    ticks += o_ticks;
-
-    if (ticks >= STM32WB_RTC_CLOCK_TICKS_PER_SECOND)
-    {
-        seconds++;
-        ticks -= STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    }
 
     *p_seconds = seconds;
     *p_ticks = ticks;
 }
 
-static void __svc_stm32wb_rtc_time_write(uint32_t clock_l, uint32_t clock_h, uint32_t seconds, uint32_t ticks)
-{
-    uint64_t clock;
-    uint32_t sequence, i_seconds, c_seconds, t_seconds, o_seconds, n_seconds, i_ticks, c_ticks, t_ticks, o_ticks, n_ticks;
-    uint8_t o_status, n_status;
-    bool external;
-
-    external = !!(ticks & 0x00008000);
-    ticks = ticks & 0x00007fff;
-    clock = (((uint64_t)clock_l << 0) | ((uint64_t)clock_h << 32));
-    
-    do
-    {
-	o_seconds = stm32wb_rtc_device.time_next.seconds_offset;
-	o_ticks = stm32wb_rtc_device.time_next.ticks_offset;
-	o_status = stm32wb_rtc_device.time_next.status;
-    }
-    while ((stm32wb_rtc_device.time_next.seconds_offset != o_seconds) || (stm32wb_rtc_device.time_next.ticks_offset != o_ticks) || (stm32wb_rtc_device.time_next.status != o_status));
-
-    if ((o_status & STM32WB_RTC_STATUS_TIME_EXTERNAL) && !external)
-    {
-        return;
-    }
-
-    c_seconds = clock / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    c_ticks = clock & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND -1);
-
-    i_seconds = c_seconds + o_seconds;
-    i_ticks = c_ticks + o_ticks;
-
-    if (i_ticks >= STM32WB_RTC_CLOCK_TICKS_PER_SECOND)
-    {
-        i_seconds++;
-        i_ticks -= STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    }
-
-    t_seconds = seconds;
-    t_ticks = ticks;
-
-    if (t_ticks < c_ticks)
-    {
-        t_seconds--;
-        t_ticks += STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-    }
-
-    n_seconds = t_seconds - c_seconds;
-    n_ticks = t_ticks - c_ticks;
-    n_status = ((o_status & ~(STM32WB_RTC_STATUS_TIME_INTERNAL | STM32WB_RTC_STATUS_TIME_EXTERNAL)) |
-		(external ? STM32WB_RTC_STATUS_TIME_EXTERNAL : STM32WB_RTC_STATUS_TIME_INTERNAL));
-
-    if ((o_seconds != n_seconds) || (o_ticks != n_ticks) || (o_status != n_status))
-    {
-	stm32wb_rtc_device.modify_routine = stm32wb_rtc_modify_routine;
-
-	do
-	{
-	    sequence = stm32wb_rtc_device.time_sequence;
-
-	    stm32wb_rtc_device.time_next.seconds_offset = n_seconds;
-	    stm32wb_rtc_device.time_next.ticks_offset = n_ticks;
-	    stm32wb_rtc_device.time_next.status = n_status;
-	}
-	while (armv7m_atomic_cas(&stm32wb_rtc_device.time_sequence, sequence, (sequence + 1)) != sequence);
-
-	armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_MODIFY);
-    }
-}
-
-void stm32wb_rtc_time_write(uint64_t clock, uint32_t seconds, uint32_t ticks, bool external)
+static void __svc_stm32wb_rtc_time_write(uint32_t seconds)
 {
     stm32wb_rtc_capture_t capture;
-    uint32_t clock_l, clock_h;
+    uint64_t o_clock, n_clock, time_offset;
+    uint32_t ticks, time_offset_l, time_offset_h;
     
-    if (clock == 0)
-    {
-        __stm32wb_rtc_clock_capture(&capture);
+    stm32wb_rtc_device.sync_routine = stm32wb_rtc_sync_routine;
 
-        clock = __stm32wb_rtc_clock_convert(&capture, NULL);
-    }
-    else
-    {
-        clock += stm32wb_rtc_device.clock_offset;
-    }
-
-    clock_l = (clock >> 0);
-    clock_h = (clock >> 32);
-    ticks = (ticks & 0x7fff) | (external ? 0x8000 : 0x0000);
-    
-    if (armv7m_core_is_in_thread())
-    {
-	armv7m_svcall_4((uint32_t)&__svc_stm32wb_rtc_time_write, (uint32_t)clock_l, (uint32_t)clock_h, (uint32_t)seconds, (uint32_t)ticks);
-    }
-    else
-    {
-	__svc_stm32wb_rtc_time_write(clock_l, clock_h, seconds, ticks);
-    }
-}
-
-int32_t stm32wb_rtc_time_to_utc_offset(uint32_t seconds)
-{
-    int32_t utc_offset;
-    
-    if (seconds > STM32WB_RTC_UTC_OFFSET_EXPIRATION)
-    {
-        return stm32wb_rtc_device.time_current.utc_offset;
-    }
-
-    for (utc_offset = STM32WB_RTC_UTC_OFFSET_DEFAULT; utc_offset >= 0; utc_offset--)
-    {
-        if (seconds >= stm32wb_rtc_utc_offset_table[utc_offset])
-        {
-            break;
-        }
-    }
-    
-    return utc_offset;
-}
-
-int32_t stm32wb_rtc_utc_to_utc_offset(uint32_t seconds)
-{
-    int32_t utc_offset;
-
-    if ((seconds + STM32WB_RTC_UTC_OFFSET_DEFAULT) > STM32WB_RTC_UTC_OFFSET_EXPIRATION)
-    {
-        return stm32wb_rtc_device.time_current.utc_offset;
-    }
-
-    for (utc_offset = STM32WB_RTC_UTC_OFFSET_DEFAULT; utc_offset >= 0; utc_offset--)
-    {
-        if ((seconds + utc_offset) >= stm32wb_rtc_utc_offset_table[utc_offset])
-        {
-            break;
-        }
-    }
-
-    return utc_offset;
-}
-
-static void  __attribute__((optimize("O3"))) stm32wb_rtc_alarm_routine(void)
-{
-    stm32wb_rtc_capture_t capture;
-    stm32wb_rtc_tod_t tod;
-    stm32wb_rtc_callback_t callback;
-    void *context;
-    uint32_t sequence, seconds, ticks, o_seconds, o_ticks, c_seconds, c_ticks, alrmr, alrmssr;
-    uint64_t alarm_clock, clock, timeout;
-    uint8_t alarm_continue;
-
-retry:
-    do
-    {
-        sequence = stm32wb_rtc_device.alarm_sequence[1];
-
-        seconds = stm32wb_rtc_device.alarm_next.seconds;
-	ticks = stm32wb_rtc_device.alarm_next.ticks;
-	callback = stm32wb_rtc_device.alarm_next.callback;
-	context = stm32wb_rtc_device.alarm_next.context;
-    }
-    while (stm32wb_rtc_device.alarm_sequence[1] != sequence);
-    
-    if (stm32wb_rtc_device.alarm_sequence[0] != sequence)
-    {
-        if (stm32wb_rtc_device.alarm_busy)
-        {
-            armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-            
-            RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-            
-            stm32wb_rtc_device.alarm_busy = 0;
-        }
-            
-        stm32wb_rtc_device.alarm_clock = 0;
-
-        stm32wb_rtc_device.alarm_active = 0;
-        stm32wb_rtc_device.alarm_continue = 0;
-        stm32wb_rtc_device.alarm_event = 0;
-        
-        stm32wb_rtc_device.alarm_current.seconds = seconds;
-        stm32wb_rtc_device.alarm_current.ticks = ticks;
-        stm32wb_rtc_device.alarm_current.callback = callback;
-        stm32wb_rtc_device.alarm_current.context = context;
-
-        stm32wb_rtc_device.alarm_sequence[0] = sequence;
-    }
-    
-    if (!armv7m_pendsv_is_pending(ARMV7M_PENDSV_SWI_RTC_ALARM))
-    {
-	seconds = stm32wb_rtc_device.alarm_current.seconds;
-	ticks = stm32wb_rtc_device.alarm_current.ticks;
-            
-	if (seconds || ticks)
-	{
-	    stm32wb_rtc_device.alarm_active = 1;
-	    
-	    __stm32wb_rtc_clock_capture(&capture);
-	    
-	    clock = __stm32wb_rtc_clock_convert(&capture, &tod);
-	    
-	    do
-	    {
-		o_seconds = stm32wb_rtc_device.time_current.seconds_offset;
-		o_ticks = stm32wb_rtc_device.time_current.ticks_offset;
-	    }
-	    while ((stm32wb_rtc_device.time_current.seconds_offset != o_seconds) || (stm32wb_rtc_device.time_current.ticks_offset != o_ticks));
-	    
-	    c_seconds = clock / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-	    c_ticks = clock & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND -1);
-	    
-	    c_seconds += o_seconds;
-	    c_ticks += o_ticks;
-	    
-	    if (c_ticks >= STM32WB_RTC_CLOCK_TICKS_PER_SECOND)
-	    {
-		c_seconds++;
-		c_ticks -= STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-	    }
-	    
-	    c_seconds -= stm32wb_rtc_time_to_utc_offset(c_seconds);
-	    
-	    if ((seconds < c_seconds) || ((seconds == c_seconds) && (ticks <= c_ticks)))
-	    {
-		if (stm32wb_rtc_device.alarm_busy)
-		{
-		    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                    
-		    RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-                    
-		    stm32wb_rtc_device.alarm_busy = 0;
-		}
-                
-		stm32wb_rtc_device.alarm_clock = 0;
-
-		stm32wb_rtc_device.alarm_event = 1;
-                
-		NVIC_SetPendingIRQ(RTC_Alarm_IRQn);
-	    }
-	    else
-	    {
-		if (ticks < c_ticks)
-		{
-		    ticks += STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-		    seconds--;
-		}
-                
-		seconds -= c_seconds;
-		ticks -= c_ticks;
-                
-		timeout = ((uint64_t)seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) + ticks; 
-                
-		if (timeout > (2419200ull * STM32WB_RTC_CLOCK_TICKS_PER_SECOND))
-		{
-		    timeout = (2419200ull * STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
-                    
-		    alarm_continue = 1;
-		}
-		else
-		{
-		    if (timeout <= 2)
-		    {
-			timeout = 2;
-		    }
-                    
-		    alarm_continue = 0;
-		}
-                
-		alarm_clock = clock + timeout;
-                
-		if (stm32wb_rtc_device.alarm_clock != alarm_clock)
-		{
-		    if (stm32wb_rtc_device.alarm_busy)
-		    {
-			armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                        
-			RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-                        
-			stm32wb_rtc_device.alarm_busy = 0;
-		    }
-                    
-		    stm32wb_rtc_device.alarm_clock = alarm_clock;
-		    stm32wb_rtc_device.alarm_continue = alarm_continue;
-                    
-		    seconds = timeout / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-		    ticks   = timeout & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - 1);
-                    
-		    __stm32wb_rtc_clock_offset(&tod, seconds, ticks);
-                    
-		    alrmr = ((stm32wb_rtc_int_to_bcd[tod.seconds] << RTC_ALRMAR_SU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.minutes] << RTC_ALRMAR_MNU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.hours] << RTC_ALRMAR_HU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.day] << RTC_ALRMAR_DU_Pos));
-		    
-		    alrmssr = ((STM32WB_RTC_PREDIV_S - 1) - tod.ticks) | STM32WB_RTC_ALRMSSR_MASKSS;
-                    
-		    while (!(RTC->ISR & RTC_ISR_ALRAWF))
-		    {
-			__NOP();
-			__NOP();
-			__NOP();
-			__NOP();
-		    }
-                    
-		    RTC->ALRMAR = alrmr;
-		    RTC->ALRMASSR = alrmssr;
-                    
-		    stm32wb_rtc_device.alarm_busy = 1;
-                    
-		    armv7m_atomic_or(&RTC->CR, (RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                    
-		    if (stm32wb_rtc_device.alarm_busy)
-		    {
-			__stm32wb_rtc_clock_capture(&capture);
-                        
-			if (stm32wb_rtc_device.alarm_busy)
-			{
-			    clock = __stm32wb_rtc_clock_convert(&capture, NULL);
-                            
-			    if (alarm_clock <= (clock + 1))
-			    {
-				if (stm32wb_rtc_device.alarm_busy)
-				{
-				    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                                    
-				    RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-                                    
-				    stm32wb_rtc_device.alarm_busy = 0;
-                                    
-				    stm32wb_rtc_device.alarm_clock = 0;
-                                    
-				    if (!armv7m_pendsv_is_pending(ARMV7M_PENDSV_SWI_RTC_ALARM))
-				    {
-					goto retry;
-				    }
-				}
-			    }
-			}
-		    }
-		}
-	    }
-	}
-	else
-	{
-	    if (stm32wb_rtc_device.alarm_busy)
-	    {
-		armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-                
-		RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-                
-		stm32wb_rtc_device.alarm_busy = 0;
-	    }
-            
-	    stm32wb_rtc_device.alarm_clock = 0;
-	}
-    }
-}
-
-static void __svc_stm32wb_rtc_alarm_modify(const stm32wb_rtc_alarm_t *alarm)
-{
-    uint32_t sequence;
-
-    stm32wb_rtc_device.alarm_routine = stm32wb_rtc_alarm_routine;
-    
-    do
-    {
-	sequence = stm32wb_rtc_device.alarm_sequence[1];
-
-	stm32wb_rtc_device.alarm_next.seconds = alarm->seconds;
-	stm32wb_rtc_device.alarm_next.ticks = alarm->ticks;
-	stm32wb_rtc_device.alarm_next.callback = alarm->callback;
-	stm32wb_rtc_device.alarm_next.context = alarm->context;
-    }
-    while (armv7m_atomic_cas(&stm32wb_rtc_device.alarm_sequence[1], sequence, (sequence + 1)) != sequence);
-
-    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
-}
-
-void stm32wb_rtc_alarm_start(uint32_t seconds, uint32_t ticks, stm32wb_rtc_alarm_callback_t callback, void *context)
-{
-    stm32wb_rtc_alarm_t alarm;
-    
-    alarm.seconds = seconds;
-    alarm.ticks = ticks;
-    alarm.callback = callback;
-    alarm.context = context;
-
-    if (armv7m_core_is_in_thread())
-    {
-	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_alarm_modify, (uint32_t)&alarm);
-    }
-    else
-    {
-        __svc_stm32wb_rtc_alarm_modify(&alarm);
-    }
-}
-
-void stm32wb_rtc_alarm_stop(void)
-{
-    stm32wb_rtc_alarm_t alarm;
-    
-    alarm.seconds = 0;
-    alarm.ticks = 0;
-    alarm.callback = NULL;
-    alarm.context = NULL;
-
-    if (armv7m_core_is_in_thread())
-    {
-	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_alarm_modify, (uint32_t)&alarm);
-    }
-    else
-    {
-        __svc_stm32wb_rtc_alarm_modify(&alarm);
-    }
-}
-
-bool stm32wb_rtc_alarm_done(void)
-{
-    return !stm32wb_rtc_device.alarm_active;
-}
-
-static void stm32wb_rtc_timer_remove(stm32wb_rtc_timer_t *timer)
-{
-    if (timer->next == timer)
-    {
-	stm32wb_rtc_device.timer_queue = NULL;
-    }
-    else
-    {
-	if (timer == stm32wb_rtc_device.timer_queue)
-	{
-	    stm32wb_rtc_device.timer_queue = timer->next;
-	}
-	
-	timer->next->previous = timer->previous;
-	timer->previous->next = timer->next;
-    }
-    
-    timer->next = NULL;
-    timer->previous = NULL;
-}
-
-static void stm32wb_rtc_timer_insert(stm32wb_rtc_timer_t *timer, uint64_t clock)
-{
-    stm32wb_rtc_timer_t *timer_element, *timer_next;
-    uint64_t timeout_clock;
-
-    if (stm32wb_rtc_device.timer_queue == NULL)
-    {
-	timer->next = timer;
-	timer->previous = timer;
-
-	stm32wb_rtc_device.timer_queue = timer;
-    }
-    else
-    {
-	timer_element = stm32wb_rtc_device.timer_queue;
-
-	do
-	{
-	    timer_next = timer_element->next;
-
-            timeout_clock = (((uint64_t)timer_element->clock[0] << 0) | ((uint64_t)timer_element->clock[1] << 32));
-
-	    if (!timer_element->modify)
-	    {
-		if (clock < timeout_clock)
-		{
-		    if (timer_element == stm32wb_rtc_device.timer_queue)
-		    {
-			stm32wb_rtc_device.timer_queue = timer;
-		    }
-		    break;
-		}
-	    }
-	    else
-	    {
-		stm32wb_rtc_timer_remove(timer_element);
-	    }
-
-	    timer_element = timer_next;
-	}
-	while (timer_element != stm32wb_rtc_device.timer_queue);
-
-	if (stm32wb_rtc_device.timer_queue == NULL)
-	{
-	    timer->next = timer;
-	    timer->previous = timer;
-	    
-	    stm32wb_rtc_device.timer_queue = timer;
-	}
-	else
-	{
-	    timer->previous = timer_element->previous;
-	    timer->next = timer_element;
-	    
-	    timer->previous->next = timer;
-	    timer->next->previous = timer;
-	}
-    }
-}
-
-static __attribute__((optimize("O3"))) void stm32wb_rtc_timer_routine(void)
-{
-    stm32wb_rtc_capture_t capture;
-    stm32wb_rtc_tod_t tod;
-    stm32wb_rtc_timer_t *timer, *timer_previous, *timer_next;
-    uint64_t reference, clock, timeout;
-    uint32_t seconds, ticks, alrmr, alrmssr;
-    
-retry:
     __stm32wb_rtc_clock_capture(&capture);
-        
-    reference = __stm32wb_rtc_clock_convert(&capture, &tod);
-	    
-    if (stm32wb_rtc_device.timer_modify != STM32WB_RTC_TIMER_SENTINEL)
-    {
-	timer = (stm32wb_rtc_timer_t*)__armv7m_atomic_swap((volatile uint32_t*)&stm32wb_rtc_device.timer_modify, (uint32_t)STM32WB_RTC_TIMER_SENTINEL);
 
-	/* Revert the modify queue, and process it.
-	 */
-	for (timer_previous = STM32WB_RTC_TIMER_SENTINEL; timer != STM32WB_RTC_TIMER_SENTINEL; timer = timer_next)
-	{
-	    timer_next = timer->modify;
-		
-	    armv7m_atomic_store((volatile uint32_t*)&timer->modify, (uint32_t)timer_previous);
-		
-	    timer_previous = timer;
-	}
+    o_clock = __stm32wb_rtc_clock_convert(&capture, NULL);
 
-	timer = timer_previous;
-	    
-	while (timer != STM32WB_RTC_TIMER_SENTINEL)
-	{
-	    timer_next = timer->modify;
-
-	    if (timer->next)
-	    {
-		stm32wb_rtc_timer_remove(timer);
-	    }
-
-	    clock = (((uint64_t)timer->clock[0] << 0) | ((uint64_t)timer->clock[1] << 32));
-		
-	    armv7m_atomic_store((volatile uint32_t*)&timer->modify, (uint32_t)NULL);
-
-	    if (!timer->modify)
-	    {
-		if (clock)
-		{
-		    stm32wb_rtc_timer_insert(timer, clock);
-		}
-		else
-		{
-		    (*timer->callback)(timer->context, 0);
-		}
-	    }
-		
-	    timer = timer_next;
-	}
-    }
-	
-    if (stm32wb_rtc_device.timer_queue)
-    {
-	do
-	{
-	    timer = stm32wb_rtc_device.timer_queue;
-		
-	    clock = (((uint64_t)timer->clock[0] << 0) | ((uint64_t)timer->clock[1] << 32));
-		
-	    if (!timer->modify)
-	    {
-		if (clock > reference)
-		{
-		    break;
-		}
-
-		stm32wb_rtc_timer_remove(timer);
-			
-		(*timer->callback)(timer->context, clock - stm32wb_rtc_device.clock_offset);
-	    }
-	    else
-	    {
-		stm32wb_rtc_timer_remove(timer);
-	    }
-	}
-	while (stm32wb_rtc_device.timer_queue);
-    }
-
-    if (!armv7m_pendsv_is_pending(ARMV7M_PENDSV_SWI_RTC_TIMER))
-    {
-	if (stm32wb_rtc_device.timer_queue)
-	{
-	    timer = stm32wb_rtc_device.timer_queue;
-	    
-	    clock = (((uint64_t)timer->clock[0] << 0) | ((uint64_t)timer->clock[1] << 32));
-	    
-	    if (!timer->modify)
-	    {
-		timeout = clock - reference;
-                
-		if (timeout > (2419200ull * STM32WB_RTC_CLOCK_TICKS_PER_SECOND))
-		{
-		    timeout = (2419200ull * STM32WB_RTC_CLOCK_TICKS_PER_SECOND);
-		}
-		else
-		{
-		    if (timeout <= 2)
-		    {
-			timeout = 2;
-		    }
-		}
-                
-		clock = timeout + reference;
-		
-		if (clock != stm32wb_rtc_device.timer_clock)
-		{
-		    if (stm32wb_rtc_device.timer_busy)
-		    {
-			armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRBIE | RTC_CR_ALRBE));
-                        
-			RTC->ISR = ~(RTC_ISR_ALRBF | RTC_ISR_INIT);
-                        
-			if (stm32wb_rtc_device.timer_busy)
-			{
-			    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_STOP_2);
-                            
-			    stm32wb_rtc_device.timer_busy = false;
-			}
-		    }
-                    
-		    stm32wb_rtc_device.timer_clock = clock;
-                    
-		    seconds = timeout / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
-		    ticks   = timeout & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - 1);
-                    
-		    __stm32wb_rtc_clock_offset(&tod, seconds, ticks);
-                    
-		    alrmr = ((stm32wb_rtc_int_to_bcd[tod.seconds] << RTC_ALRMAR_SU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.minutes] << RTC_ALRMAR_MNU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.hours] << RTC_ALRMAR_HU_Pos) |
-			     (stm32wb_rtc_int_to_bcd[tod.day] << RTC_ALRMAR_DU_Pos));
-                    
-		    alrmssr = ((STM32WB_RTC_PREDIV_S - 1) - tod.ticks) | STM32WB_RTC_ALRMSSR_MASKSS;
-                    
-		    while (!(RTC->ISR & RTC_ISR_ALRBWF))
-		    {
-			__NOP();
-			__NOP();
-			__NOP();
-			__NOP();
-		    }
-                    
-		    RTC->ALRMBR = alrmr;
-		    RTC->ALRMBSSR = alrmssr;
-                    
-		    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_2);
-                    
-		    stm32wb_rtc_device.timer_busy = true;
-		    
-		    armv7m_atomic_or(&RTC->CR, (RTC_CR_ALRBIE | RTC_CR_ALRBE));
-		    
-		    if (stm32wb_rtc_device.timer_busy)
-		    {
-			__stm32wb_rtc_clock_capture(&capture);
-                        
-			if (stm32wb_rtc_device.timer_busy)
-			{
-			    reference = __stm32wb_rtc_clock_convert(&capture, &tod);
-                            
-			    if (clock <= (reference + 1))
-			    {
-				if (stm32wb_rtc_device.timer_busy)
-				{
-				    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRBIE | RTC_CR_ALRBE));
-                                    
-				    RTC->ISR = ~(RTC_ISR_ALRBF | RTC_ISR_INIT);
-                                    
-				    if (stm32wb_rtc_device.timer_busy)
-				    {
-					stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_STOP_2);
-					
-					stm32wb_rtc_device.timer_busy = false;
-				    }
-                                    
-				    goto retry;
-				}
-			    }
-			}
-		    }
-		}
-	    }
-	}
-	else
-	{
-	    if (stm32wb_rtc_device.timer_busy)
-	    {
-		armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRBIE | RTC_CR_ALRBE));
-		
-		RTC->ISR = ~(RTC_ISR_ALRBF | RTC_ISR_INIT);
-		
-		if (stm32wb_rtc_device.timer_busy)
-		{
-		    stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_STOP_2);
-		    
-		    stm32wb_rtc_device.timer_busy = false;
-		}
-	    }
-	    
-	    stm32wb_rtc_device.timer_clock = 0;
-	}
-    }
-}
-
-static void __svc_stm32wb_rtc_timer_modify(stm32wb_rtc_timer_t *timer, uint32_t clock_l, uint32_t clock_h)
-{
-    stm32wb_rtc_timer_t *timer_modify;
-
-    stm32wb_rtc_device.timer_routine = stm32wb_rtc_timer_routine;
-
-    armv7m_atomic_store_2_restart(&timer->clock[0], clock_l, clock_h);
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
     
-    if (__armv7m_atomic_cas((volatile uint32_t*)&timer->modify, (uint32_t)NULL, (uint32_t)STM32WB_RTC_TIMER_SENTINEL) == (uint32_t)NULL)
-    {
-	do
-	{
-	    timer_modify = stm32wb_rtc_device.timer_modify;
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
 
-	    armv7m_atomic_store((volatile uint32_t*)&timer->modify, (uint32_t)timer_modify);
-	}
-	while ((stm32wb_rtc_timer_t*)__armv7m_atomic_cas((volatile uint32_t*)&stm32wb_rtc_device.timer_modify, (uint32_t)timer_modify, (uint32_t)timer) != timer_modify);
+    o_clock += time_offset;
 
-	if (timer_modify == STM32WB_RTC_TIMER_SENTINEL)
-	{
-	    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_TIMER);
-	}
-    }
+    ticks = o_clock & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND -1);
+
+    n_clock = ((uint64_t)seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) + ticks;
+
+    time_offset += (n_clock - o_clock);
+
+    time_offset_l = (time_offset >> 0);
+    time_offset_h = (time_offset >> 32);
+
+    armv7m_atomic_store_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, time_offset_l, time_offset_h);
+    
+    armv7m_atomic_or(&stm32wb_rtc_device.events, STM32WB_RTC_EVENT_TIME_WRITTEN);
+    
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_SYNC);
 }
 
-void stm32wb_rtc_timer_create(stm32wb_rtc_timer_t *timer, stm32wb_rtc_timer_callback_t callback, void *context)
-{
-    timer->next = NULL;
-    timer->previous = NULL;
-    timer->modify = NULL;
-    timer->callback = callback;
-    timer->context = context;
-    timer->clock[0] = 0;
-    timer->clock[1] = 0;
-}
-
-bool stm32wb_rtc_timer_destroy(stm32wb_rtc_timer_t *timer)
-{
-    return stm32wb_rtc_timer_done(timer);
-}
-
-bool stm32wb_rtc_timer_start(stm32wb_rtc_timer_t *timer, uint64_t clock)
-{
-    if (clock == 0)
-    {
-	return false;
-    }
-
-    clock = clock + stm32wb_rtc_device.clock_offset;
-
-    if (armv7m_core_is_in_thread())
-    {
-	armv7m_svcall_3((uint32_t)&__svc_stm32wb_rtc_timer_modify, (uint32_t)timer, (uint32_t)(clock >> 0), (uint32_t)(clock >> 32));
-    }
-    else
-    {
-        __svc_stm32wb_rtc_timer_modify(timer, (uint32_t)(clock >> 0), (uint32_t)(clock >> 32));
-    }
-
-    return true;
-}
-
-void stm32wb_rtc_timer_stop(stm32wb_rtc_timer_t *timer)
+void stm32wb_rtc_time_write(uint32_t seconds)
 {
     if (armv7m_core_is_in_thread())
     {
-	armv7m_svcall_3((uint32_t)&__svc_stm32wb_rtc_timer_modify, (uint32_t)timer, 0, 0);
+	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_time_write, seconds);
     }
     else
     {
-        __svc_stm32wb_rtc_timer_modify(timer, 0, 0);
+	__svc_stm32wb_rtc_time_write(seconds);
     }
 }
 
-bool stm32wb_rtc_timer_done(stm32wb_rtc_timer_t *timer)
+static void __svc_stm32wb_rtc_time_adjust(int32_t ticks)
 {
-    return (timer->next == NULL) && (timer->modify == NULL);
-}
+    uint64_t time_offset;
+    uint32_t time_offset_l, time_offset_h;
 
-static void stm32wb_rtc_wakeup_routine(void)
-{
-    stm32wb_rtc_wakeup_callback_t callback;
-    void *context;
-    uint32_t ticks, lseclk;
-    bool modify, event;
-
-    if (stm32wb_rtc_device.wakeup_busy)
-    {
-        armv7m_atomic_and(&RTC->CR, ~(RTC_CR_WUTIE | RTC_CR_WUTE));
-
-        RTC->ISR = ~(RTC_ISR_WUTF | RTC_ISR_INIT);
-
-        EXTI->PR1 = EXTI_PR1_PIF19;
-
-        stm32wb_rtc_device.wakeup_busy = 0;
-    }
-
-    armv7m_atomic_load_3((volatile uint32_t*)&stm32wb_rtc_device.wakeup_ticks, (uint32_t*)&ticks, (uint32_t*)&callback, (uint32_t*)&context);
-
-    modify = armv7m_atomic_swapb(&stm32wb_rtc_device.wakeup_modify, 0);
-
-    if (modify)
-    {
-        stm32wb_rtc_device.wakeup_event = 0;
-
-        if (ticks)
-        {
-            lseclk = stm32wb_system_lseclk();
-
-            if (lseclk)
-            {
-                ticks = (ticks * 32768 + (lseclk -1)) / lseclk;
-            }
-            
-            while (!(RTC->ISR & RTC_ISR_WUTWF))
-            {
-                __NOP();
-                __NOP();
-                __NOP();
-                __NOP();
-            }
-            
-            RTC->WUTR = ticks -1;
-            
-            stm32wb_rtc_device.wakeup_busy = 1;
-            
-            armv7m_atomic_or(&RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
-        }
-    }
+    stm32wb_rtc_device.sync_routine = stm32wb_rtc_sync_routine;
     
-    event = armv7m_atomic_swapb(&stm32wb_rtc_device.wakeup_event, 0);
-
-    if (event)
-    {
-        if (callback)
-        {
-            (*callback)(context);
-        }
-    }
-}
-
-static void __svc_stm32wb_rtc_wakeup_modify(uint32_t ticks, stm32wb_rtc_wakeup_callback_t callback, void *context)
-{
-    stm32wb_rtc_device.wakeup_modify = 1;
-
-    armv7m_atomic_store_3_restart((volatile uint32_t *)&stm32wb_rtc_device.wakeup_ticks, (uint32_t)ticks, (uint32_t)callback, (uint32_t)context);
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
     
-    stm32wb_rtc_device.wakeup_routine = stm32wb_rtc_wakeup_routine;
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
 
-    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_WAKEUP);
-}
+    time_offset += ticks;
 
-bool stm32wb_rtc_wakeup_start(uint32_t ticks, stm32wb_rtc_wakeup_callback_t callback, void *context)
-{
-    if ((ticks == 0) || (ticks > 65536))
-    {
-	return false;
-    }
+    time_offset_l = (time_offset >> 0);
+    time_offset_h = (time_offset >> 32);
+
+    armv7m_atomic_store_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, time_offset_l, time_offset_h);
     
-    if (armv7m_core_is_in_thread())
-    {
-        armv7m_svcall_3((uint32_t)&__svc_stm32wb_rtc_wakeup_modify, (uint32_t)ticks, (uint32_t)callback, (uint32_t)context);
-    }
-    else
-    {
-        __svc_stm32wb_rtc_wakeup_modify(ticks, callback, context);
-    }
-
-    return true;
+    armv7m_atomic_or(&stm32wb_rtc_device.events, STM32WB_RTC_EVENT_TIME_WRITTEN);
+    
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_SYNC);
 }
 
-void stm32wb_rtc_wakeup_stop()
+void stm32wb_rtc_time_adjust(int32_t ticks)
 {
     if (armv7m_core_is_in_thread())
     {
-        armv7m_svcall_3((uint32_t)&__svc_stm32wb_rtc_wakeup_modify, (uint32_t)0, (uint32_t)NULL, (uint32_t)NULL);
+	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_time_adjust, (uint32_t)ticks);
     }
     else
     {
-        __svc_stm32wb_rtc_wakeup_modify(0, NULL, NULL);
+	__svc_stm32wb_rtc_time_adjust(ticks);
     }
 }
 
-bool stm32wb_rtc_wakeup_done()
+int32_t stm32wb_rtc_time_to_leap_seconds(uint32_t seconds)
 {
-    return !stm32wb_rtc_device.wakeup_busy;
-}
-
-bool stm32wb_rtc_tamp_attach(uint16_t pin, uint32_t control, stm32wb_rtc_callback_t callback, void *context)
-{
-    pin &= STM32WB_GPIO_PIN_IO_MASK;
-
-    if (pin == STM32WB_GPIO_PIN_PC13)
+    int32_t leap_seconds;
+    
+    if (seconds > STM32WB_RTC_LEAP_SECONDS_EXPIRATION)
     {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1TRG | RTC_TAMPCR_TAMP1E));
+        return stm32wb_rtc_device.leap_seconds;
+    }
 
-        RTC->ISR = ~(RTC_ISR_TAMP1F | RTC_ISR_INIT);
-
-        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
+    for (leap_seconds = STM32WB_RTC_LEAP_SECONDS_DEFAULT; leap_seconds >= 0; leap_seconds--)
+    {
+        if (seconds >= stm32wb_rtc_leap_seconds_table[leap_seconds])
         {
-            stm32wb_rtc_device.tamp1_callback = NULL;
-            stm32wb_rtc_device.tamp1_context = context;
-            stm32wb_rtc_device.tamp1_callback = callback;
-
-            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP1TRG : 0)));;
+            break;
         }
+    }
+    
+    return leap_seconds;
+}
 
-        return true;
+int32_t stm32wb_rtc_utc_to_leap_seconds(uint32_t seconds)
+{
+    int32_t leap_seconds;
+
+    if ((seconds + STM32WB_RTC_LEAP_SECONDS_DEFAULT) > STM32WB_RTC_LEAP_SECONDS_EXPIRATION)
+    {
+        return stm32wb_rtc_device.leap_seconds;
     }
 
-    if (pin == STM32WB_GPIO_PIN_PA0)
+    for (leap_seconds = STM32WB_RTC_LEAP_SECONDS_DEFAULT; leap_seconds >= 0; leap_seconds--)
     {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2TRG | RTC_TAMPCR_TAMP2E));
-
-        RTC->ISR = ~(RTC_ISR_TAMP2F | RTC_ISR_INIT);
-
-        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
+        if ((seconds + leap_seconds) >= stm32wb_rtc_leap_seconds_table[leap_seconds])
         {
-            stm32wb_rtc_device.tamp2_callback = NULL;
-            stm32wb_rtc_device.tamp2_context = context;
-            stm32wb_rtc_device.tamp2_callback = callback;
-
-            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP2TRG : 0)));;
+            break;
         }
-
-        return true;
     }
 
-    if (pin == STM32WB_GPIO_PIN_PC12)
-    {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3TRG | RTC_TAMPCR_TAMP3E));
-
-        RTC->ISR = ~(RTC_ISR_TAMP3F | RTC_ISR_INIT);
-
-        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
-        {
-	    stm32wb_rtc_device.tamp3_callback = NULL;
-            stm32wb_rtc_device.tamp3_context = context;
-            stm32wb_rtc_device.tamp3_callback = callback;
-
-            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP3TRG : 0)));;
-        }
-
-        return true;
-    }
-    
-    return false;
+    return leap_seconds;
 }
 
-bool stm32wb_rtc_tamp_detach(uint16_t pin)
+int32_t stm32wb_rtc_get_leap_seconds(void)
 {
-    pin &= STM32WB_GPIO_PIN_IO_MASK;
-
-    if (pin == STM32WB_GPIO_PIN_PC13)
-    {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E));
-
-        RTC->ISR = ~(RTC_ISR_TAMP1F | RTC_ISR_INIT);
-
-        return true;
-    }
-
-    if (pin == STM32WB_GPIO_PIN_PA0)
-    {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E));
-
-        RTC->ISR = ~(RTC_ISR_TAMP2F | RTC_ISR_INIT);
-
-        return true;
-    }
-
-    if (pin == STM32WB_GPIO_PIN_PC12)
-    {
-        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E));
-
-        RTC->ISR = ~(RTC_ISR_TAMP3F | RTC_ISR_INIT);
-
-        return true;
-    }
-    
-    return false;
+    return stm32wb_rtc_device.leap_seconds;
 }
 
-void stm32wb_rtc_stamp_attach(uint32_t control, stm32wb_rtc_callback_t callback, void *context)
+static void __svc_stm32wb_rtc_set_leap_seconds(int32_t leap_seconds)
 {
-    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_TSIE | RTC_CR_TSE | RTC_CR_TSEDGE));
+    stm32wb_rtc_device.sync_routine = stm32wb_rtc_sync_routine;
 
-    RTC->ISR = ~(RTC_ISR_TSF | RTC_ISR_INIT);
+    stm32wb_rtc_device.leap_seconds = leap_seconds;
     
-    if (control & (STM32WB_RTC_STAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_STAMP_CONTROL_EDGE_RISING))
-    {
-        stm32wb_rtc_device.tamp1_callback = NULL;
-        stm32wb_rtc_device.tamp1_context = context;
-        stm32wb_rtc_device.tamp1_callback = callback;
+    armv7m_atomic_or(&stm32wb_rtc_device.events, STM32WB_RTC_EVENT_LEAP_SECONDS_WRITTEN);
 
-        armv7m_atomic_or(&RTC->CR, (RTC_CR_TSIE | RTC_CR_TSE | ((control & STM32WB_RTC_STAMP_CONTROL_EDGE_FALLING) ? RTC_CR_TSEDGE : 0)));
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_SYNC);
+}
+
+void stm32wb_rtc_set_leap_seconds(int32_t leap_seconds)
+{
+    if (armv7m_core_is_in_thread())
+    {
+      armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_set_leap_seconds, (uint32_t)leap_seconds);
+    }
+    else
+    {
+        __svc_stm32wb_rtc_set_leap_seconds(leap_seconds);
     }
 }
 
-void stm32wb_rtc_stamp_detach()
+int32_t stm32wb_rtc_get_zone(void)
 {
-    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_TSIE | RTC_CR_TSE));
-
-    RTC->ISR = ~(RTC_ISR_TSF | RTC_ISR_INIT);
+    return stm32wb_rtc_device.zone;
 }
 
-uint64_t stm32wb_rtc_stamp_read()
+static void __svc_stm32wb_rtc_set_zone(int32_t zone)
 {
-    stm32wb_rtc_capture_t ts, capture;
+    stm32wb_rtc_device.sync_routine = stm32wb_rtc_sync_routine;
 
-    ts.ssr = RTC->TSSSR;
-    ts.tr = RTC->TSTR;
-    ts.dr = RTC->TSDR;
+    stm32wb_rtc_device.zone = zone;
+
+    armv7m_atomic_or(&stm32wb_rtc_device.events, STM32WB_RTC_EVENT_ZONE_WRITTEN);
     
-    stm32wb_rtc_clock_capture(&capture);
-        
-    if ((stm32wb_rtc_bcd_to_int[(ts.dr >> RTC_DR_MU_Pos) & ((RTC_DR_MU_Msk | RTC_DR_MT_Msk) >> RTC_DR_MU_Pos)] == 12) &&
-        (stm32wb_rtc_bcd_to_int[(capture.dr >> RTC_DR_MU_Pos) & ((RTC_DR_MU_Msk | RTC_DR_MT_Msk) >> RTC_DR_MU_Pos)] != 12))
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_SYNC);
+}
+
+void stm32wb_rtc_set_zone(int32_t zone)
+{
+    if (armv7m_core_is_in_thread())
     {
-        ts.dr = capture.dr;
+	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_set_zone, (uint32_t)zone);
     }
-
-    return stm32wb_rtc_clock_convert(&ts);
-}
-
-void stm32wb_rtc_standby(uint32_t timeout)
-{
-    stm32wb_rtc_capture_t capture;
-    stm32wb_rtc_tod_t tod;
-    uint32_t seconds, ticks;
-    
-    /* Called with interrupts disabled.
-     */
-
-    RTC->CR &= ~(RTC_CR_TSIE | RTC_CR_WUTIE | RTC_CR_ALRBIE | RTC_CR_ALRAIE | RTC_CR_TSE | RTC_CR_WUTE | RTC_CR_ALRBE | RTC_CR_ALRAE);
-    RTC->TAMPCR &= ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E);
-    RTC->ISR = 0;
-    
-    if (timeout != 0xffffffff)
+    else
     {
-        
-        if (timeout > 2419200000)
-        {
-            seconds = 2419200000;
-        }
-
-        seconds = timeout / 1000;
-        ticks = ((timeout - seconds * 1000) * STM32WB_RTC_CLOCK_TICKS_PER_SECOND + 999) / 1000;
-        
-        __stm32wb_rtc_clock_capture(&capture);
-        __stm32wb_rtc_clock_convert(&capture, &tod);
-        __stm32wb_rtc_clock_offset(&tod, seconds, ticks);
-        
-        while (!(RTC->ISR & RTC_ISR_ALRAWF))
-        {
-            __NOP();
-            __NOP();
-            __NOP();
-            __NOP();
-        }
-        
-        RTC->ALRMAR = ((stm32wb_rtc_int_to_bcd[tod.seconds] << RTC_ALRMAR_SU_Pos) |
-                       (stm32wb_rtc_int_to_bcd[tod.minutes] << RTC_ALRMAR_MNU_Pos) |
-                       (stm32wb_rtc_int_to_bcd[tod.hours] << RTC_ALRMAR_HU_Pos) |
-                       (stm32wb_rtc_int_to_bcd[tod.day] << RTC_ALRMAR_DU_Pos));
-        
-        RTC->ALRMASSR = ((STM32WB_RTC_PREDIV_S - 1) - tod.ticks) | STM32WB_RTC_ALRMSSR_MASKSS;
-        
-        RTC->CR |= (RTC_CR_ALRAIE | RTC_CR_ALRAE);
+        __svc_stm32wb_rtc_set_zone(zone);
     }
-
-    EXTI->PR1 = EXTI_PR1_PIF17 | EXTI_PR1_PIF18 | EXTI_PR1_PIF19;
-    
-    /* Lock RTC throu reset */
-    RTC->WPR = 0x00;
 }
 
-void stm32wb_rtc_reset(void)
+uint32_t stm32wb_rtc_get_dst(void)
 {
-    /* Called with interrupts disabled.
-     */
+    return stm32wb_rtc_device.dst;
+}
 
-    RTC->CR &= ~(RTC_CR_TSIE | RTC_CR_WUTIE | RTC_CR_ALRBIE | RTC_CR_ALRAIE | RTC_CR_TSE | RTC_CR_WUTE | RTC_CR_ALRBE | RTC_CR_ALRAE);
-    RTC->TAMPCR &= ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E);
-    RTC->ISR = 0;
+static void __svc_stm32wb_rtc_set_dst(uint32_t dst)
+{
+    stm32wb_rtc_device.sync_routine = stm32wb_rtc_sync_routine;
 
-    EXTI->PR1 = EXTI_PR1_PIF17 | EXTI_PR1_PIF18 | EXTI_PR1_PIF19;
+    stm32wb_rtc_device.dst = dst;
 
-    /* Lock RTC throu reset */
-    RTC->WPR = 0x00;
+    armv7m_atomic_or(&stm32wb_rtc_device.events, STM32WB_RTC_EVENT_DST_WRITTEN);
+
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_SYNC);
+}
+
+void stm32wb_rtc_set_dst(uint32_t dst)
+{
+    if (armv7m_core_is_in_thread())
+    {
+	armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_set_dst, (uint32_t)dst);
+    }
+    else
+    {
+        __svc_stm32wb_rtc_set_dst(dst);
+    }
 }
 
 void stm32wb_rtc_time_to_tod(uint32_t seconds, uint32_t ticks, stm32wb_rtc_tod_t *p_tod)
@@ -1784,163 +807,446 @@ void stm32wb_rtc_tod_to_time(const stm32wb_rtc_tod_t *tod, uint32_t *p_seconds, 
     *p_ticks = tod->ticks;
 }
 
+static void  __attribute__((optimize("O3"))) stm32wb_rtc_alarm_routine(void)
+{
+    stm32wb_rtc_capture_t capture;
+    stm32wb_rtc_tod_t tod;
+    stm32wb_rtc_alarm_callback_t callback;
+    void *context;
+    uint64_t clock, reference, timeout;
+    uint32_t seconds, ticks, alrmr, alrmssr;
+
+    if (stm32wb_rtc_device.alarm_modify)
+    {
+        if (stm32wb_rtc_device.alarm_busy)
+        {
+            armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
+            
+            RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+            
+            stm32wb_rtc_device.alarm_busy = false;
+            stm32wb_rtc_device.alarm_event = false;
+        }
+
+        stm32wb_rtc_device.alarm_modify = false;
+
+        clock = stm32wb_rtc_device.alarm_clock;
+
+        if (!stm32wb_rtc_device.alarm_modify)
+        {
+            __stm32wb_rtc_alarm_clock = clock;
+
+            if (clock)
+            {
+                __stm32wb_rtc_clock_capture(&capture);
+                
+                reference = __stm32wb_rtc_clock_convert(&capture, &tod);
+                
+                if (clock <= reference)
+                {
+                    stm32wb_rtc_device.alarm_event = true;
+                }
+                else
+                {
+                    timeout = clock - reference;
+                    
+                    if (timeout < 2)
+                    {
+                        timeout = 2;
+                    }
+                    
+                    clock = reference + timeout;
+
+                    seconds = timeout / STM32WB_RTC_CLOCK_TICKS_PER_SECOND;
+                    ticks   = timeout & (STM32WB_RTC_CLOCK_TICKS_PER_SECOND - 1);
+
+                    __stm32wb_rtc_clock_offset(&tod, seconds, ticks);
+                    
+                    alrmr = ((stm32wb_rtc_int_to_bcd[tod.seconds] << RTC_ALRMAR_SU_Pos) |
+                             (stm32wb_rtc_int_to_bcd[tod.minutes] << RTC_ALRMAR_MNU_Pos) |
+                             (stm32wb_rtc_int_to_bcd[tod.hours] << RTC_ALRMAR_HU_Pos) |
+                             (stm32wb_rtc_int_to_bcd[tod.day] << RTC_ALRMAR_DU_Pos));
+                    
+                    alrmssr = ((STM32WB_RTC_PREDIV_S - 1) - tod.ticks) | STM32WB_RTC_ALRMSSR_MASKSS;
+
+                    while (!(RTC->ISR & RTC_ISR_ALRAWF))
+                    {
+                        __NOP();
+                        __NOP();
+                        __NOP();
+                        __NOP();
+                    }
+                    
+                    RTC->ALRMAR = alrmr;
+                    RTC->ALRMASSR = alrmssr;
+                    
+                    stm32wb_rtc_device.alarm_busy = true;
+
+                    armv7m_atomic_or(&RTC->CR, (RTC_CR_ALRAIE | RTC_CR_ALRAE));
+            
+                    if (!stm32wb_rtc_device.alarm_event)
+                    {
+                        __stm32wb_rtc_clock_capture(&capture);
+                        
+                        if (!stm32wb_rtc_device.alarm_event)
+                        {
+                            reference = __stm32wb_rtc_clock_convert(&capture, NULL);
+                            
+                            if (clock <= (reference + 1))
+                            {
+                                if (!stm32wb_rtc_device.alarm_event)
+                                {
+                                    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
+                                    
+                                    RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+                                    
+                                    stm32wb_rtc_device.alarm_busy = false;
+                                    stm32wb_rtc_device.alarm_event = false;
+                                    
+                                    // retry
+                                    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if (stm32wb_rtc_device.alarm_event)
+    {
+        stm32wb_rtc_device.alarm_event = false;
+        
+        clock = stm32wb_rtc_device.alarm_clock;
+        callback = stm32wb_rtc_device.alarm_callback;
+        context = stm32wb_rtc_device.alarm_context;
+        
+        if (!stm32wb_rtc_device.alarm_modify)
+        {
+            __stm32wb_rtc_clock_capture(&capture);
+            
+            reference = __stm32wb_rtc_clock_convert(&capture, NULL);
+            
+            if (clock <= reference)
+            {
+                armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
+                
+                RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+                
+                stm32wb_rtc_device.alarm_busy = false;
+                stm32wb_rtc_device.alarm_event = false;
+
+                __stm32wb_rtc_alarm_clock = 0;
+                
+                if (callback)
+                {
+                    (*callback)(context);
+                }
+            }
+        }
+    }
+}
+
+static void __svc_stm32wb_rtc_alarm_start(uint32_t seconds, uint32_t ticks, stm32wb_rtc_alarm_callback_t callback, void *context)
+{
+    uint64_t clock, time_offset;
+    uint32_t clock_l, clock_h, time_offset_l, time_offset_h;
+    
+    if (stm32wb_rtc_device.alarm_busy)
+    {
+        armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
+        
+        RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+        
+        stm32wb_rtc_device.alarm_busy = false;
+        stm32wb_rtc_device.alarm_event = false;
+    }
+
+    armv7m_atomic_load_2_restart((volatile uint32_t *)&stm32wb_rtc_device.time_offset, &time_offset_l, &time_offset_h);
+
+    time_offset = (((uint64_t)time_offset_l << 0) | ((uint64_t)time_offset_h << 32));
+
+    clock = (((uint64_t)seconds * STM32WB_RTC_CLOCK_TICKS_PER_SECOND) + (uint64_t)ticks) - time_offset;
+
+    clock_l = (uint32_t)(clock >> 0);
+    clock_h = (uint32_t)(clock >> 32);
+
+    stm32wb_rtc_device.alarm_modify = true;
+
+    armv7m_atomic_store_4_restart((volatile uint32_t *)&stm32wb_rtc_device.alarm_clock, clock_l, clock_h, (uint32_t)callback, (uint32_t)context);
+    
+    stm32wb_rtc_device.alarm_routine = stm32wb_rtc_alarm_routine;
+
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
+}
+
+static void __svc_stm32wb_rtc_alarm_stop(void)
+{
+    if (stm32wb_rtc_device.alarm_busy)
+    {
+        armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
+        
+        RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+        
+        stm32wb_rtc_device.alarm_busy = false;
+        stm32wb_rtc_device.alarm_event = false;
+    }
+
+    stm32wb_rtc_device.alarm_modify = true;
+
+    armv7m_atomic_store_2_restart((volatile uint32_t *)&stm32wb_rtc_device.alarm_clock, 0, 0);
+    
+    stm32wb_rtc_device.alarm_routine = stm32wb_rtc_alarm_routine;
+
+    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
+}
+
+void stm32wb_rtc_alarm_start(uint32_t seconds, uint32_t ticks, stm32wb_rtc_alarm_callback_t callback, void *context)
+{
+    if (armv7m_core_is_in_thread())
+    {
+	armv7m_svcall_4((uint32_t)&__svc_stm32wb_rtc_alarm_start, seconds, ticks, (uint32_t)callback, (uint32_t)context);
+    }
+    else
+    {
+        __svc_stm32wb_rtc_alarm_start(seconds, ticks, callback, context);
+    }
+}
+
+void stm32wb_rtc_alarm_stop(void)
+{
+    if (armv7m_core_is_in_thread())
+    {
+	armv7m_svcall_0((uint32_t)&__svc_stm32wb_rtc_alarm_stop);
+    }
+    else
+    {
+        __svc_stm32wb_rtc_alarm_stop();
+    }
+}
+
+bool stm32wb_rtc_alarm_busy(void)
+{
+    return stm32wb_rtc_device.alarm_busy;
+}
+
+bool stm32wb_rtc_tamp_catch(uint16_t pin, uint32_t control, stm32wb_rtc_tamp_callback_t callback, void *context)
+{
+    pin &= STM32WB_GPIO_PIN_IO_MASK;
+
+    if (pin == STM32WB_GPIO_PIN_PC13_RTC_TAMP1)
+    {
+        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1TRG | RTC_TAMPCR_TAMP1E));
+
+        RTC->ISR = ~(RTC_ISR_TAMP1F | RTC_ISR_INIT);
+
+        __stm32wb_exti_catch(STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP1, ((control & STM32WB_RTC_TAMP_CONTROL_PRIORITY_MASK) >> STM32WB_RTC_TAMP_CONTROL_PRIORITY_SHIFT), callback, context);
+
+        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
+        {
+            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP1TRG : 0)));
+        }
+
+        return true;
+    }
+
+    if (pin == STM32WB_GPIO_PIN_PA0_RTC_TAMP2)
+    {
+        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2TRG | RTC_TAMPCR_TAMP2E));
+
+        RTC->ISR = ~(RTC_ISR_TAMP2F | RTC_ISR_INIT);
+
+        __stm32wb_exti_catch(STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP2, ((control & STM32WB_RTC_TAMP_CONTROL_PRIORITY_MASK) >> STM32WB_RTC_TAMP_CONTROL_PRIORITY_SHIFT), callback, context);
+
+        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
+        {
+            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP2TRG : 0)));
+        }
+
+        return true;
+    }
+
+    if (pin == STM32WB_GPIO_PIN_PC12_RTC_TAMP3)
+    {
+        armv7m_atomic_and(&RTC->TAMPCR, ~(RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3TRG | RTC_TAMPCR_TAMP3E));
+
+        RTC->ISR = ~(RTC_ISR_TAMP3F | RTC_ISR_INIT);
+
+        __stm32wb_exti_catch(STM32WB_EXTI_CHANNEL_INDEX_RTC_TAMP3, ((control & STM32WB_RTC_TAMP_CONTROL_PRIORITY_MASK) >> STM32WB_RTC_TAMP_CONTROL_PRIORITY_SHIFT), callback, context);
+
+        if (control & (STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING | STM32WB_RTC_TAMP_CONTROL_EDGE_RISING))
+        {
+            armv7m_atomic_or(&RTC->TAMPCR, (RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E | ((control & STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING) ? RTC_TAMPCR_TAMP3TRG : 0)));
+        }
+
+        return true;
+    }
+    
+    return false;
+}
+
+void stm32wb_rtc_standby_enter(uint32_t timeout)
+{
+    stm32wb_rtc_capture_t capture;
+    stm32wb_rtc_tod_t tod;
+    uint32_t seconds, ticks;
+    
+    /* Called with interrupts disabled.
+     */
+
+    RTC->CR &= ~(RTC_CR_TSIE | RTC_CR_WUTIE | RTC_CR_ALRBIE | RTC_CR_TSE | RTC_CR_WUTE | RTC_CR_ALRBE);
+    RTC->TAMPCR &= ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E);
+    RTC->ISR = 0;
+    
+    if (timeout != 0xffffffff)
+    {
+        if (timeout > 2419200000)
+        {
+            seconds = 2419200000;
+        }
+
+        seconds = timeout / 1000;
+        ticks = ((timeout - seconds * 1000) * STM32WB_RTC_CLOCK_TICKS_PER_SECOND + 999) / 1000;
+        
+        __stm32wb_rtc_clock_capture(&capture);
+        __stm32wb_rtc_clock_convert(&capture, &tod);
+        __stm32wb_rtc_clock_offset(&tod, seconds, ticks);
+        
+        while (!(RTC->ISR & RTC_ISR_ALRBWF))
+        {
+            __NOP();
+            __NOP();
+            __NOP();
+            __NOP();
+        }
+        
+        RTC->ALRMBR = ((stm32wb_rtc_int_to_bcd[tod.seconds] << RTC_ALRMAR_SU_Pos) |
+                       (stm32wb_rtc_int_to_bcd[tod.minutes] << RTC_ALRMAR_MNU_Pos) |
+                       (stm32wb_rtc_int_to_bcd[tod.hours] << RTC_ALRMAR_HU_Pos) |
+                       (stm32wb_rtc_int_to_bcd[tod.day] << RTC_ALRMAR_DU_Pos));
+        
+        RTC->ALRMBSSR = ((STM32WB_RTC_PREDIV_S - 1) - tod.ticks) | STM32WB_RTC_ALRMSSR_MASKSS;
+        
+        RTC->CR |= (RTC_CR_ALRBIE | RTC_CR_ALRBE);
+    }
+
+    EXTI->PR1 = EXTI_PR1_PIF18 | EXTI_PR1_PIF19;
+    
+    /* Lock RTC throu reset */
+    RTC->WPR = 0x00;
+}
+
+uint32_t stm32wb_rtc_standby_leave(uint32_t wakeup)
+{
+    stm32wb_rtc_capture_t capture;
+    uint64_t reference;
+
+    if (RTC->ISR & RTC_ISR_ALRAF)
+    {
+        __stm32wb_rtc_clock_capture(&capture);
+            
+        reference = __stm32wb_rtc_clock_convert(&capture, NULL);
+            
+        if (__stm32wb_rtc_alarm_clock <= reference)
+        {
+            wakeup |= STM32WB_SYSTEM_WAKEUP_ALARM;
+        }
+    }
+
+    if (RTC->ISR & RTC_ISR_ALRBF)
+    {
+        wakeup |= STM32WB_SYSTEM_WAKEUP_TIMEOUT;
+    }
+
+    if (wakeup)
+    {
+	RTC->WPR = 0xca;
+	RTC->WPR = 0x53;
+
+        RTC->CR &= ~(RTC_CR_ALRBIE | RTC_CR_ALRAIE | RTC_CR_ALRBE | RTC_CR_ALRAE);
+        RTC->ISR = 0;
+
+        RTC->WPR = 0x00;
+    }
+
+    return wakeup;
+}
+
+void stm32wb_rtc_reset(void)
+{
+    /* Called with interrupts disabled.
+     */
+
+    RTC->CR &= ~(RTC_CR_TSIE | RTC_CR_WUTIE | RTC_CR_ALRBIE | RTC_CR_ALRAIE | RTC_CR_TSE | RTC_CR_WUTE | RTC_CR_ALRBE | RTC_CR_ALRAE);
+    RTC->TAMPCR &= ~(RTC_TAMPCR_TAMP1IE | RTC_TAMPCR_TAMP1E | RTC_TAMPCR_TAMP2IE | RTC_TAMPCR_TAMP2E | RTC_TAMPCR_TAMP3IE | RTC_TAMPCR_TAMP3E);
+    RTC->ISR = 0;
+
+    EXTI->PR1 = EXTI_PR1_PIF17 | EXTI_PR1_PIF18 | EXTI_PR1_PIF19;
+
+    /* Lock RTC throu reset */
+    RTC->WPR = 0x00;
+}
+
 /*******************************************************************************************************************/
+
+void RTC_Alarm_IRQHandler(void)
+{
+    do
+    {
+        EXTI->PR1 = EXTI_PR1_PIF17;
+        
+        if (RTC->ISR & RTC_ISR_ALRAF)
+        {
+            RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
+
+            stm32wb_rtc_device.alarm_event = 1;
+                
+            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
+        }
+    }
+    while (RTC->ISR & RTC_ISR_ALRAF);
+    
+    __DSB();
+}
 
 void TAMP_STAMP_LSECSS_IRQHandler(void)
 {
-    stm32wb_rtc_callback_t callback;
-    void *context;
-    
     do
     {
 	EXTI->PR1 = EXTI_PR1_PIF18;
 
-	if (RTC->ISR & (RTC_ISR_TAMP1F | RTC_ISR_TSF))
+	if (RTC->ISR & RTC_ISR_TAMP1F)
 	{
-	    RTC->ISR = ~(RTC_ISR_TAMP1F | RTC_ISR_TSF | RTC_ISR_INIT);
+	    RTC->ISR = ~(RTC_ISR_TAMP1F | RTC_ISR_INIT);
 
-	    callback = stm32wb_rtc_device.tamp1_callback;
-	    context = stm32wb_rtc_device.tamp1_context;
-	    
-	    if (callback)
-	    {
-		(*callback)(context);
-	    }
+            __stm32wb_exti_interrupt(STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP1);
 	}
             
 	if (RTC->ISR & RTC_ISR_TAMP2F)
 	{
 	    RTC->ISR = ~(RTC_ISR_TAMP2F | RTC_ISR_INIT);
 
-	    callback = stm32wb_rtc_device.tamp2_callback;
-	    context = stm32wb_rtc_device.tamp2_context;
-
-	    if (callback)
-	    {
-		(*callback)(context);
-	    }
+            __stm32wb_exti_interrupt(STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP2);
 	}
 
 	if (RTC->ISR & RTC_ISR_TAMP3F)
 	{
 	    RTC->ISR = ~(RTC_ISR_TAMP3F | RTC_ISR_INIT);
 
-	    callback = stm32wb_rtc_device.tamp3_callback;
-	    context = stm32wb_rtc_device.tamp3_context;
-
-	    if (callback)
-	    {
-		(*callback)(context);
-	    }
+            __stm32wb_exti_interrupt(STM32WB_EXTI_CHANNEL_MASK_RTC_TAMP3);
 	}
     }
-    while (RTC->ISR & (RTC_ISR_TAMP1F | RTC_ISR_TAMP2F | RTC_ISR_TAMP3F | RTC_ISR_TSF));
+    while (RTC->ISR & (RTC_ISR_TAMP1F | RTC_ISR_TAMP2F | RTC_ISR_TAMP3F));
 
     __DSB();
 }
 
-void RTC_WKUP_IRQHandler(void)
+void RTC_SYNC_SWIHandler(void)
 {
-    EXTI->PR1 = EXTI_PR1_PIF19;
+    stm32wb_rtc_sync_routine_t routine;
 
-    if (RTC->ISR & RTC_ISR_WUTF)
-    {
-        if (stm32wb_rtc_device.wakeup_busy)
-        {
-            armv7m_atomic_and(&RTC->CR, ~(RTC_CR_WUTIE | RTC_CR_WUTE));
-
-            stm32wb_rtc_device.wakeup_event = 1;
-            
-            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_WAKEUP);
-        }
-
-	RTC->ISR = ~(RTC_ISR_WUTF | RTC_ISR_INIT);
-    }
-
-    __DSB();
-}
-
-void RTC_Alarm_IRQHandler(void)
-{
-    stm32wb_rtc_callback_t callback;
-    void *context;
-
-    do
-    {
-	EXTI->PR1 = EXTI_PR1_PIF17;
-
-	if (RTC->ISR & RTC_ISR_ALRAF)
-	{
-	    if (stm32wb_rtc_device.alarm_busy)
-	    {
-		armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRAIE | RTC_CR_ALRAE));
-
-		RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-
-		stm32wb_rtc_device.alarm_busy = 0;
-		stm32wb_rtc_device.alarm_clock = 0;
-
-		if (stm32wb_rtc_device.alarm_continue)
-		{
-		    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_ALARM);
-		}
-		else
-		{
-		    stm32wb_rtc_device.alarm_event = true;
-		}
-	    }
-	    else
-	    {
-		RTC->ISR = ~(RTC_ISR_ALRAF | RTC_ISR_INIT);
-	    }
-	}
-
-	if (RTC->ISR & RTC_ISR_ALRBF)
-	{
-	    if (stm32wb_rtc_device.timer_busy)
-	    {
-		armv7m_atomic_and(&RTC->CR, ~(RTC_CR_ALRBIE | RTC_CR_ALRBE));
-
-		RTC->ISR = ~(RTC_ISR_ALRBF | RTC_ISR_INIT);
-
-		stm32wb_system_unlock(STM32WB_SYSTEM_LOCK_STOP_2);
-
-		stm32wb_rtc_device.timer_busy = false;
-		stm32wb_rtc_device.timer_clock = 0;
-		
-		armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_TIMER);
-	    }
-	    else
-	    {
-		RTC->ISR = ~(RTC_ISR_ALRBF | RTC_ISR_INIT);
-	    }
-	}
-    }
-    while (RTC->ISR & (RTC_ISR_ALRAF | RTC_ISR_ALRBF));
-
-    if (stm32wb_rtc_device.alarm_event)
-    {
-        stm32wb_rtc_device.alarm_event = 0;
-
-        callback = stm32wb_rtc_device.alarm_current.callback;
-	context = stm32wb_rtc_device.alarm_current.context;
-
-	stm32wb_rtc_device.alarm_active = 0;
-	    
-        if (callback)
-        {
-            (*callback)(context);
-        }
-    }
-
-    __DSB();
-}
-
-void RTC_MODIFY_SWIHandler(void)
-{
-    stm32wb_rtc_modify_routine_t routine;
-
-    routine = stm32wb_rtc_device.modify_routine;
+    routine = stm32wb_rtc_device.sync_routine;
     
     if (routine)
     {
@@ -1953,30 +1259,6 @@ void RTC_ALARM_SWIHandler(void)
     stm32wb_rtc_alarm_routine_t routine;
 
     routine = stm32wb_rtc_device.alarm_routine;
-    
-    if (routine)
-    {
-        (*routine)();
-    }
-}
-
-void RTC_TIMER_SWIHandler(void)
-{
-    stm32wb_rtc_timer_routine_t routine;
-    
-    routine = stm32wb_rtc_device.timer_routine;
-    
-    if (routine)
-    {
-        (*routine)();
-    }
-}
-
-void RTC_WAKEUP_SWIHandler(void)
-{
-    stm32wb_rtc_wakeup_routine_t routine;
-
-    routine = stm32wb_rtc_device.wakeup_routine;
     
     if (routine)
     {

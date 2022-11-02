@@ -28,7 +28,7 @@ compiler.ar.flags=rcs
 compiler.elf2hex.bin.flags=-O binary
 compiler.elf2hex.hex.flags=-O ihex
 compiler.elf2hex.cmd=arm-none-eabi-objcopy
-compiler.ldflags=-mcpu={build.mcu} -march={build.architecture} -mfpu={build.fpu} -mthumb -mabi=aapcs -mfloat-abi={build.float-abi} -Wl,--cref -Wl,--check-sections -Wl,--gc-sections -Wl,--unresolved-symbols=report-all -Wl,--warn-common -Wl,--warn-section-align -Wl,--defsym=__RTC_EPOCH__={extra.time.utc} -Wl,--defsym=__RTC_ZONE__={extra.time.zone} -Wl,--defsym=__RTC_DST__={extra.time.dst}
+compiler.ldflags=-mcpu={build.mcu} -march={build.architecture} -mfpu={build.fpu} -mthumb -mabi=aapcs -mfloat-abi={build.float-abi} -Wl,--cref -Wl,--check-sections -Wl,--gc-sections -Wl,--unresolved-symbols=report-all -Wl,--warn-common -Wl,--warn-section-align -Wl,--defsym=__RTC_EPOCH__={extra.time.utc} -Wl,--defsym=__RTC_ZONE__={extra.time.zone} -Wl,--defsym=__RTC_DST__={extra.time.dst} -Wl,--defsym=__RTC_LEAP_SECONDS=18
 compiler.size.cmd=arm-none-eabi-size
 compiler.define=-DARDUINO=
 
@@ -42,6 +42,7 @@ compiler.cpp.extra_flags=
 compiler.S.extra_flags=
 compiler.ar.extra_flags=
 compiler.elf2hex.extra_flags=
+compiler.libraries.ldflags=
 
 # USB Flags
 # ---------
@@ -69,7 +70,7 @@ archive_file_path={build.path}/{archive_file}
 recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compiler.ar.extra_flags} "{archive_file_path}" "{object_file}"
 
 ## Combine gc-sections, archives, and objects
-recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}"  "-L{build.path}" {compiler.c.elf.flags} {compiler.c.elf.extra_flags} {build.extra_flags} "-T{runtime.platform.path}/system/STM32WBxx/Lib/{build.ldscript}" "-Wl,-Map,{build.path}/{build.project_name}.map" --specs=nano.specs --specs=nosys.specs {compiler.ldflags} -o "{build.path}/{build.project_name}.elf" {object_files} -Wl,--start-group "{build.path}/{archive_file}"  -Wl,--end-group {build.variant_system_libs} -lc -lm
+recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}"  "-L{build.path}" {compiler.c.elf.flags} {compiler.c.elf.extra_flags} {build.extra_flags} "-T{runtime.platform.path}/system/STM32WBxx/LinkScripts/{build.ldscript}" "-Wl,-Map,{build.path}/{build.project_name}.map" --specs=nano.specs --specs=nosys.specs {compiler.ldflags} -o "{build.path}/{build.project_name}.elf" {object_files} -Wl,--start-group "{build.path}/{archive_file}"  -Wl,--end-group {build.variant_system_libs} {compiler.libraries.ldflags} -lc -lm 
 
 ## Create output (bin file)
 recipe.objcopy.bin.pattern="{compiler.path}{compiler.elf2hex.cmd}" {compiler.elf2hex.bin.flags} {compiler.elf2hex.extra_flags} "{build.path}/{build.project_name}.elf" "{build.path}/{build.project_name}.bin"
@@ -81,7 +82,7 @@ recipe.output.save_file={build.project_name}.{build.variant}.bin
 ## Compute size
 recipe.size.pattern="{compiler.path}{compiler.size.cmd}" -A "{build.path}/{build.project_name}.elf"
 recipe.size.regex=^(?:\.text|\.rodata|\.data)\s+([0-9]+).*
-recipe.size.regex.data=^(?:\.data|\.bss|\.noinit)\s+([0-9]+).*
+recipe.size.regex.data=^(?:\.data|\.bss|\.noinit|\.dma)\s+([0-9]+).*
 
 # GDB
 debug.executable={build.path}/{build.project_name}.elf

@@ -33,13 +33,13 @@
 extern "C" {
 #endif
 
-#define ARMV7M_IRQ_PRIORITY_FAULT      0  // MemManage, BusFault, UsageFault
-#define ARMV7M_IRQ_PRIORITY_CRITICAL   1  // EXTI with time stamping, DebugMon
-#define ARMV7M_IRQ_PRIORITY_REALTIME   2  // SYSTICK, SERVO, TONE, short but low jitter
-#define ARMV7M_IRQ_PRIORITY_HIGH       3  // UART
-#define ARMV7M_IRQ_PRIORITY_SAI        4  // SAI
+#define ARMV7M_IRQ_PRIORITY_FAULT      0  // MemManage, BusFault, UsageFault, DebugMon
+#define ARMV7M_IRQ_PRIORITY_CRITICAL   1  // EXTI, RTC
+#define ARMV7M_IRQ_PRIORITY_REALTIME   2  // SYSTICK, LPTIM
+#define ARMV7M_IRQ_PRIORITY_SAI        3  // SAI
+#define ARMV7M_IRQ_PRIORITY_HIGH       4  // UART
 #define ARMV7M_IRQ_PRIORITY_USB        5  // USB
-#define ARMV7M_IRQ_PRIORITY_MEDIUM     6  // HSEM, IPCC, I2C, SPI, RTC, LPTIM, RANDOM, QSPI
+#define ARMV7M_IRQ_PRIORITY_MEDIUM     6  // HSEM, IPCC, I2C, SPI, RTC, RANDOM, QSPI
 #define ARMV7M_IRQ_PRIORITY_LOW        7  // SVCALL, PENDSV
 
 #define ARMV7M_IRQ_PRIORITY_UART       ARMV7M_IRQ_PRIORITY_HIGH
@@ -47,8 +47,8 @@ extern "C" {
 #define ARMV7M_IRQ_PRIORITY_IPCC       ARMV7M_IRQ_PRIORITY_MEDIUM
 #define ARMV7M_IRQ_PRIORITY_I2C        ARMV7M_IRQ_PRIORITY_MEDIUM
 #define ARMV7M_IRQ_PRIORITY_SPI        ARMV7M_IRQ_PRIORITY_MEDIUM
-#define ARMV7M_IRQ_PRIORITY_RTC        ARMV7M_IRQ_PRIORITY_MEDIUM
-#define ARMV7M_IRQ_PRIORITY_LPTIM      ARMV7M_IRQ_PRIORITY_MEDIUM
+#define ARMV7M_IRQ_PRIORITY_RTC        ARMV7M_IRQ_PRIORITY_CRITICAL
+#define ARMV7M_IRQ_PRIORITY_LPTIM      ARMV7M_IRQ_PRIORITY_REALTIME
 #define ARMV7M_IRQ_PRIORITY_RANDOM     ARMV7M_IRQ_PRIORITY_MEDIUM
   
 #define ARMV7M_IRQ_PRIORITY_MEMMANAGE  ARMV7M_IRQ_PRIORITY_FAULT
@@ -118,7 +118,7 @@ typedef struct _armv7m_exception_t {
     uint32_t            xpsr;
 } armv7m_exception_t;
 
-#if defined (__VFP_FP__) && !defined(__SOFTFP__)
+#if (__FPU_PRESENT == 1)
 
 typedef struct _armv7m_exception_fpu_t {
     uint32_t            r0;
@@ -141,7 +141,7 @@ typedef struct _armv7m_exception_fpu_t {
     uint32_t            reserved;
 } armv7m_exception_fpu_t;
 
-#endif /* __VFP_FP__ && !__SOFTFP__ */
+#endif /* __FPU_PRESENT == 1 */
   
 typedef struct _armv7m_core_state_t {
     uint32_t            r0;
@@ -167,7 +167,7 @@ typedef struct _armv7m_core_state_t {
     uint8_t             basepri;
     uint8_t             faultmask;
     uint8_t             control;
-#if defined (__VFP_FP__) && !defined(__SOFTFP__)
+#if (__FPU_PRESENT == 1)
     uint64_t            d0;
     uint64_t            d1;
     uint64_t            d2;
@@ -185,21 +185,15 @@ typedef struct _armv7m_core_state_t {
     uint64_t            d14;
     uint64_t            d15;
     uint32_t            fpscr;
-#endif /* __VFP_FP__ && !__SOFTFP__ */
+#endif /* __FPU_PRESENT == 1 */
 } armv7m_core_state_t;
 
-typedef void (*armv7m_core_fault_callback_t)(armv7m_core_state_t *state);  
-  
-typedef struct _armv7m_core_info_t {
-    uint32_t                  code;
-    const char                *file;
-    uint32_t                  line;
-    const armv7m_core_state_t *state;
-} armv7m_core_info_t;
-    
-static inline bool armv7m_interrupt_is_in_progress(void)
+static inline bool armv7m_core_is_in_interrupt(void)
 {
-    return (__get_IPSR() != ThreadMode_EXCn);
+    uint32_t ipsr = __get_IPSR();
+    uint32_t primask = __get_PRIMASK();
+    
+    return (ipsr != ThreadMode_EXCn) || (primask & 1);
 }
   
 static inline bool armv7m_core_is_in_thread(void)
@@ -223,7 +217,7 @@ static inline bool armv7m_core_is_in_svcall(void)
     return (ipsr == SVCall_EXCn);
 }
 
-static inline bool armv7m_core_is_in_pendsv_or_svcall(void)
+static inline bool armv7m_core_is_in_svcall_or_pendsv(void)
 {
     uint32_t ipsr = __get_IPSR();
 
@@ -234,15 +228,28 @@ extern void __armv7m_core_initialize(void);
 extern void armv7m_core_configure(void);
 extern void armv7m_core_udelay(uint32_t udelay);
 
-extern void armv7m_core_fault_callback(armv7m_core_fault_callback_t callback);
-extern void armv7m_core_hardfault_try(const void *epilogue);
-extern uint32_t armv7m_core_hardfault_catch(void);
-  
 typedef void (*armv7m_core_callback_t)(void *context);  
 
 extern void armv7m_core_cxx_method(const void *method, const void *object, armv7m_core_callback_t *p_callback_return, void **p_context_return);
 
-extern void armv7m_core_fatal(uint32_t code, const char *file, uint32_t line, const armv7m_core_state_t *state) __attribute__((noreturn));
+#define ARMV7M_CORE_FATAL_SIGNATURE_STACK_OVERFLOW 0xdead0000
+#define ARMV7M_CORE_FATAL_SIGNATURE_ASSERT         0xdead0001
+#define ARMV7M_CORE_FATAL_SIGNATURE_NMI            0xdead0002
+#define ARMV7M_CORE_FATAL_SIGNATURE_HARD_FAULT     0xdead0003
+#define ARMV7M_CORE_FATAL_SIGNATURE_MEM_FAULT      0xdead0004
+#define ARMV7M_CORE_FATAL_SIGNATURE_BUS_FAULT      0xdead0005
+#define ARMV7M_CORE_FATAL_SIGNATURE_USAGE_FAULT    0xdead0006
+
+typedef struct _armv7m_core_fatal_info_t {
+    uint32_t                    signature;
+    uint32_t                    pc;
+    uint32_t                    lr;
+    uint32_t                    sp;
+} armv7m_core_fatal_info_t;
+
+extern armv7m_core_fatal_info_t armv7m_core_fatal_info;
+
+extern void armv7m_core_fatal(uint32_t code, uint32_t pc, uint32_t lr, uint32_t sp) __attribute__((noreturn));
     
 #ifdef __cplusplus
 }

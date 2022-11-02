@@ -33,8 +33,10 @@
 #include "stm32wbxx.h"
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
+
+#define FLASH_PAGE_SIZE                         4096
 
 typedef void (*stm32wb_flash_done_callback_t)(void *context);
 
@@ -60,8 +62,9 @@ typedef struct _stm32wb_flash_request_t {
 extern void __stm32wb_flash_initialize(void);
 
 extern bool stm32wb_flash_request(stm32wb_flash_request_t *request);
-extern bool stm32wb_flash_suspend(void);
-extern bool stm32wb_flash_resume(void);
+extern void stm32wb_flash_suspend(void);
+extern void stm32wb_flash_resume(void);
+extern bool stm32wb_flash_is_suspended(void);
 
 #ifdef __cplusplus
 }

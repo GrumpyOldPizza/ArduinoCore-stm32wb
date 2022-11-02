@@ -33,8 +33,10 @@
 class Callback {
 public:
     Callback() : m_callback(nullptr), m_context(nullptr) {  }
-
     Callback(void (*function)(void)) : m_callback((void (*)(void*))function), m_context(nullptr) { }
+    Callback(const Callback &other) : m_callback(other.m_callback), m_context(other.m_context) { }
+
+    Callback &operator=(const Callback &other);
 
     template<typename T>
     Callback(void (T::*method)(), T *object) { bind(&method, object); }
@@ -59,8 +61,6 @@ public:
 
     template<typename T>
     Callback(void (T::*method)() const volatile, const volatile T &object) { bind(&method, &object); }
-
-    Callback &operator=(const Callback &other);
 
     void (*callback())(void*) { return m_callback; }
     void *context() { return m_context; }

@@ -89,12 +89,13 @@ enum {
 #define STM32WB_SYSTEM_OPTION_SMPS_CURRENT_200mA    0x00000600
 #define STM32WB_SYSTEM_OPTION_SMPS_CURRENT_220mA    0x00000700
 
-#define STM32WB_SYSTEM_LOCK_SLEEP                   0
-#define STM32WB_SYSTEM_LOCK_STOP_0                  1
-#define STM32WB_SYSTEM_LOCK_STOP_1                  2
-#define STM32WB_SYSTEM_LOCK_STOP_2                  3
-#define STM32WB_SYSTEM_LOCK_STANDBY                 4
-#define STM32WB_SYSTEM_LOCK_COUNT                   5
+#define STM32WB_SYSTEM_LOCK_CLOCKS                  0
+#define STM32WB_SYSTEM_LOCK_SLEEP                   1
+#define STM32WB_SYSTEM_LOCK_STOP_0                  2
+#define STM32WB_SYSTEM_LOCK_STOP_1                  3
+#define STM32WB_SYSTEM_LOCK_STOP_2                  4
+#define STM32WB_SYSTEM_LOCK_STANDBY                 5
+#define STM32WB_SYSTEM_LOCK_COUNT                   6
 
 #define STM32WB_SYSTEM_FREQUENCY_LPRUN              2000000
 #define STM32WB_SYSTEM_FREQUENCY_RANGE_2            16000000
@@ -105,28 +106,23 @@ enum {
 #define STM32WB_SYSTEM_REFERENCE_WIRELESS           0x00000004 /* HSE vs MSI */
 #define STM32WB_SYSTEM_REFERENCE_USB                0x00000008 /* RANGE 1, PCLK1 >= 16MHz */
 #define STM32WB_SYSTEM_REFERENCE_RNG                0x00000010 /* RANGE 1 */
-#define STM32WB_SYSTEM_REFERENCE_USART1             0x00000020
-#define STM32WB_SYSTEM_REFERENCE_SPI1               0x00000040
-#define STM32WB_SYSTEM_REFERENCE_SPI2               0x00000080
-#define STM32WB_SYSTEM_REFERENCE_TIM1               0x00000100
-#define STM32WB_SYSTEM_REFERENCE_TIM2               0x00000200
-#define STM32WB_SYSTEM_REFERENCE_TIM16              0x00000400
-#define STM32WB_SYSTEM_REFERENCE_TIM17              0x00000800
 #define STM32WB_SYSTEM_REFERENCE_SWD                0x08000000
 #define STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_1     0x10000000 /* RANGE 1 */ 
 #define STM32WB_SYSTEM_REFERENCE_SYSCLK_RANGE_2     0x20000000 /* RANGE 2 */
 #define STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_1     0x40000000 /* RANGE 1 */
 #define STM32WB_SYSTEM_REFERENCE_SAICLK_RANGE_2     0x80000000 /* RANGE 2 */
 
-#define STM32WB_SYSTEM_NOTIFY_CLOCKS                0x00000001
-#define STM32WB_SYSTEM_NOTIFY_STOP_PREPARE          0x00000002
-#define STM32WB_SYSTEM_NOTIFY_STOP_ENTER            0x00000004
-#define STM32WB_SYSTEM_NOTIFY_STOP_LEAVE            0x00000008
-#define STM32WB_SYSTEM_NOTIFY_STANDBY               0x00000010
-#define STM32WB_SYSTEM_NOTIFY_SHUTDOWN              0x00000020
-#define STM32WB_SYSTEM_NOTIFY_FATAL                 0x00000040
-#define STM32WB_SYSTEM_NOTIFY_RESET                 0x00000080
+#define STM32WB_SYSTEM_NOTIFY_CLOCKS_PROLOGUE       0x00000001
+#define STM32WB_SYSTEM_NOTIFY_CLOCKS_EPILOGUE       0x00000002
+#define STM32WB_SYSTEM_NOTIFY_STOP_PREPARE          0x00000004
+#define STM32WB_SYSTEM_NOTIFY_STOP_ENTER            0x00000008
+#define STM32WB_SYSTEM_NOTIFY_STOP_LEAVE            0x00000010
+#define STM32WB_SYSTEM_NOTIFY_STANDBY               0x00000020
+#define STM32WB_SYSTEM_NOTIFY_SHUTDOWN              0x00000040
+#define STM32WB_SYSTEM_NOTIFY_FATAL                 0x00000080
 #define STM32WB_SYSTEM_NOTIFY_DFU                   0x00000100
+#define STM32WB_SYSTEM_NOTIFY_OTA                   0x00000200
+#define STM32WB_SYSTEM_NOTIFY_RESET                 0x00000400
 
 typedef void (*stm32wb_system_pvm1_callback_t)(void *context);
 
@@ -169,14 +165,18 @@ typedef struct _stm32wb_system_notify_t {
 #define STM32WB_SYSTEM_LSCO_SOURCE_LSI           0x00000001 /* LSI1/LSI2 */
 #define STM32WB_SYSTEM_LSCO_SOURCE_LSE           0x00000002
 
-#define STM32WB_SYSTEM_RESET_POWERON             0
-#define STM32WB_SYSTEM_RESET_EXTERNAL            1
+#define STM32WB_SYSTEM_RESET_PIN                 0
+#define STM32WB_SYSTEM_RESET_POWERON             1
 #define STM32WB_SYSTEM_RESET_INTERNAL            2
 #define STM32WB_SYSTEM_RESET_SOFTWARE            3
 #define STM32WB_SYSTEM_RESET_FIREWALL            4
 #define STM32WB_SYSTEM_RESET_WATCHDOG            5
-#define STM32WB_SYSTEM_RESET_CRASH               6
-#define STM32WB_SYSTEM_RESET_STANDBY             7
+#define STM32WB_SYSTEM_RESET_STANDBY             6
+#define STM32WB_SYSTEM_RESET_SHUTDOWN            7
+#define STM32WB_SYSTEM_RESET_FATAL               8
+#define STM32WB_SYSTEM_RESET_DFU                 9
+#define STM32WB_SYSTEM_RESET_OTA                 10
+
 
 #define STM32WB_SYSTEM_WAKEUP_NONE               0x00000000
 #define STM32WB_SYSTEM_WAKEUP_PIN_1              0x00000001
@@ -185,18 +185,21 @@ typedef struct _stm32wb_system_notify_t {
 #define STM32WB_SYSTEM_WAKEUP_PIN_4              0000000008
 #define STM32WB_SYSTEM_WAKEUP_PIN_5              0x00000010
 #define STM32WB_SYSTEM_WAKEUP_TIMEOUT            0x00000100
-#define STM32WB_SYSTEM_WAKEUP_WATCHDOG           0x00000200
-#define STM32WB_SYSTEM_WAKEUP_RESET              0x00000400
+#define STM32WB_SYSTEM_WAKEUP_ALARM              0x00000200
+#define STM32WB_SYSTEM_WAKEUP_WATCHDOG           0x00000400
+#define STM32WB_SYSTEM_WAKEUP_RESET              0x00000800
 
-#define STM32WB_SYSTEM_POLICY_RUN                0
-#define STM32WB_SYSTEM_POLICY_SLEEP              1
-#define STM32WB_SYSTEM_POLICY_STOP               2
+#define STM32WB_SYSTEM_POLICY_RUN                1
+#define STM32WB_SYSTEM_POLICY_SLEEP              2
+#define STM32WB_SYSTEM_POLICY_STOP               3
   
+#define STM32WB_SYSTEM_WAKEUP_PIN_RISING_SHIFT   0
 #define STM32WB_SYSTEM_WAKEUP_PIN_1_RISING       0x00000001
 #define STM32WB_SYSTEM_WAKEUP_PIN_2_RISING       0x00000002
 #define STM32WB_SYSTEM_WAKEUP_PIN_3_RISING       0x00000004
 #define STM32WB_SYSTEM_WAKEUP_PIN_4_RISING       0x00000008
 #define STM32WB_SYSTEM_WAKEUP_PIN_5_RISING       0x00000010
+#define STM32WB_SYSTEM_WAKEUP_PIN_FALLING_SHIFT  8
 #define STM32WB_SYSTEM_WAKEUP_PIN_1_FALLING      0x00000100
 #define STM32WB_SYSTEM_WAKEUP_PIN_2_FALLING      0x00000200
 #define STM32WB_SYSTEM_WAKEUP_PIN_3_FALLING      0x00000400
@@ -238,7 +241,6 @@ extern void     stm32wb_system_uid(uint32_t *uid);
 extern void     stm32wb_system_periph_reset(uint32_t periph);
 extern void     stm32wb_system_periph_enable(uint32_t periph);
 extern void     stm32wb_system_periph_disable(uint32_t periph);
-extern bool     stm32wb_system_swd_attached(void);
 extern void     stm32wb_system_swd_enable(void);
 extern void     stm32wb_system_swd_disable(void);
 extern void     stm32wb_system_register(stm32wb_system_notify_t *notify, stm32wb_system_callback_t callback, void *context, uint32_t mask); 
@@ -248,11 +250,11 @@ extern void     stm32wb_system_lock(uint32_t lock);
 extern void     stm32wb_system_unlock(uint32_t lock);
 extern void     stm32wb_system_reference(uint32_t reference); 
 extern void     stm32wb_system_unreference(uint32_t reference); 
-extern uint32_t stm32wb_system_sleep(uint32_t policy, uint32_t mask, uint32_t timeout);
-extern void     stm32wb_system_wakeup(uint32_t mask);
+extern void     stm32wb_system_sleep(uint32_t policy);
+extern void     stm32wb_system_wakeup(void);
 extern void     stm32wb_system_standby(uint32_t wakeup, uint32_t timeout);
 extern void     stm32wb_system_shutdown(uint32_t wakeup);
-extern void     stm32wb_system_fatal(const armv7m_core_info_t *info) __attribute__((noreturn));
+extern void     stm32wb_system_fatal(void) __attribute__((noreturn));
 extern void     stm32wb_system_reset(void) __attribute__((noreturn));
 extern void     stm32wb_system_dfu(void) __attribute__((noreturn));
 

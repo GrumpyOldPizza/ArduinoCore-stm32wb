@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,11 +35,11 @@ typedef struct _stm32wb_exti_t {
 } stm32wb_exti_t;
 
 typedef struct _stm32wb_exti_device_t {
-    uint16_t                events;
-    uint16_t                mask;
-    volatile uint16_t       pending;
-    volatile uint16_t       priority[4];
-    stm32wb_exti_t          channels[16];
+    volatile uint32_t       events;
+    volatile uint32_t       mask;
+    volatile uint32_t       pending;
+    volatile uint32_t       priority[4];
+    stm32wb_exti_t          channels[21];
 } stm32wb_exti_device_t;
 
 static stm32wb_exti_device_t stm32wb_exti_device;
@@ -75,7 +75,80 @@ void __stm32wb_exti_initialize(void)
     NVIC_EnableIRQ(SPI2_IRQn);
 }
 
-__attribute__((optimize("O3"))) bool stm32wb_exti_attach(uint16_t pin, uint32_t control, stm32wb_exti_callback_t callback, void *context)
+void __attribute__((optimize("O3"))) __stm32wb_exti_catch(uint32_t index, uint32_t priority, stm32wb_exti_callback_t callback, void *context)
+{
+    unsigned int mask;
+
+    mask = 1ul << index;
+
+    armv7m_atomic_and(&stm32wb_exti_device.events, ~mask);
+    armv7m_atomic_and(&stm32wb_exti_device.pending, ~mask);
+
+    stm32wb_exti_device.channels[index].callback = NULL;
+    
+    if (callback)
+    {
+        stm32wb_exti_device.channels[index].context = context;
+        stm32wb_exti_device.channels[index].callback = callback;
+        
+        armv7m_atomic_and(&stm32wb_exti_device.priority[0], ~mask);
+        armv7m_atomic_and(&stm32wb_exti_device.priority[1], ~mask);
+        armv7m_atomic_and(&stm32wb_exti_device.priority[2], ~mask);
+        armv7m_atomic_and(&stm32wb_exti_device.priority[3], ~mask);
+        armv7m_atomic_or(&stm32wb_exti_device.priority[priority], mask);
+        armv7m_atomic_or(&stm32wb_exti_device.events, mask);
+    }
+}
+
+void __attribute__((optimize("O3"))) __stm32wb_exti_interrupt(uint32_t mask)
+{
+    uint32_t mask_0, mask_1, mask_2, index;
+    stm32wb_exti_callback_t callback;
+    void *context;
+
+    mask_0 = (mask | stm32wb_exti_device.pending) & stm32wb_exti_device.mask;
+    
+    if (mask_0)
+    {
+        mask_1 = mask & stm32wb_exti_device.priority[0];
+        mask_2 = mask & ~mask_1;
+        
+        if (mask_1)
+        {
+            do
+            {
+                index = __builtin_ctz(mask_1);
+                
+                mask_1 &= ~(1ul << index); 
+
+                callback = stm32wb_exti_device.channels[index].callback;
+                context = stm32wb_exti_device.channels[index].context;
+
+                if (callback)
+                {
+                    (*callback)(context);
+                }
+            }
+            while (mask_1);
+        }
+
+        if (mask_2)
+        {
+            __armv7m_atomic_or(&stm32wb_exti_device.pending, mask_2);
+            
+            NVIC_SetPendingIRQ(SPI1_IRQn);
+        }
+    }
+
+    mask &= stm32wb_exti_device.events;
+
+    if (mask)
+    {
+        __armv7m_atomic_or(&stm32wb_exti_device.pending, mask);
+    }
+}
+
+__attribute__((optimize("O3"))) bool stm32wb_exti_catch(uint16_t pin, uint32_t control, stm32wb_exti_callback_t callback, void *context)
 {
     unsigned int mask, index, group;
 
@@ -84,285 +157,112 @@ __attribute__((optimize("O3"))) bool stm32wb_exti_attach(uint16_t pin, uint32_t 
 
     mask = 1ul << index;
 
-    if (stm32wb_exti_device.events & mask)
-    {
-        return false;
-    }
-
-    stm32wb_exti_device.channels[index].callback = NULL;
-    stm32wb_exti_device.channels[index].context = context;
-    stm32wb_exti_device.channels[index].callback = callback;
-
-    armv7m_atomic_modify(&SYSCFG->EXTICR[index >> 2], (0x0000000f << ((index & 3) << 2)), (group << ((index & 3) << 2)));
-    
-    armv7m_atomic_modify(&EXTI->RTSR1, mask, ((control & STM32WB_EXTI_CONTROL_EDGE_RISING)  ? mask : 0));
-    armv7m_atomic_modify(&EXTI->FTSR1, mask, ((control & STM32WB_EXTI_CONTROL_EDGE_FALLING) ? mask : 0));
-    
-    armv7m_atomic_andh(&stm32wb_exti_device.priority[0], ~mask);
-    armv7m_atomic_andh(&stm32wb_exti_device.priority[1], ~mask);
-    armv7m_atomic_andh(&stm32wb_exti_device.priority[2], ~mask);
-    armv7m_atomic_andh(&stm32wb_exti_device.priority[3], ~mask);
-    armv7m_atomic_orh(&stm32wb_exti_device.priority[(control & STM32WB_EXTI_CONTROL_PRIORITY_MASK) >> STM32WB_EXTI_CONTROL_PRIORITY_SHIFT], mask);
-    armv7m_atomic_orh(&stm32wb_exti_device.events, mask);
-
-    if (stm32wb_exti_device.mask & mask)
-    {
-	armv7m_atomic_or(&EXTI->IMR1, mask);
-    }
-
-    return true;
-}
-
-__attribute__((optimize("O3"))) void stm32wb_exti_detach(uint16_t pin)
-{
-    unsigned int mask, index;
-
-    index = (pin & STM32WB_GPIO_PIN_INDEX_MASK) >> STM32WB_GPIO_PIN_INDEX_SHIFT;
-
-    mask = 1ul << index;
-
     armv7m_atomic_and(&EXTI->IMR1, ~mask);
+
+    __stm32wb_exti_catch(index, ((control & STM32WB_EXTI_CONTROL_PRIORITY_MASK) >> STM32WB_EXTI_CONTROL_PRIORITY_SHIFT), callback, context);
+
+    if (control & (STM32WB_EXTI_CONTROL_EDGE_FALLING | STM32WB_EXTI_CONTROL_EDGE_RISING))
+    {
+        armv7m_atomic_modify(&SYSCFG->EXTICR[index >> 2], (0x0000000f << ((index & 3) << 2)), (group << ((index & 3) << 2)));
+        armv7m_atomic_modify(&EXTI->RTSR1, mask, ((control & STM32WB_EXTI_CONTROL_EDGE_RISING)  ? mask : 0));
+        armv7m_atomic_modify(&EXTI->FTSR1, mask, ((control & STM32WB_EXTI_CONTROL_EDGE_FALLING) ? mask : 0));
+
+        armv7m_atomic_or(&EXTI->IMR1, mask);
+    }
     
-    armv7m_atomic_andh(&stm32wb_exti_device.events, ~mask);
+    return true;
 }
 
 __attribute__((optimize("O3"))) void stm32wb_exti_block(uint32_t mask)
 {
     mask &= stm32wb_exti_device.events;
 
-    if (mask)
-    {
-        armv7m_atomic_and(&EXTI->IMR1, ~mask);
-    }
-
-    armv7m_atomic_andh(&stm32wb_exti_device.mask, ~mask);
+    armv7m_atomic_and(&stm32wb_exti_device.mask, ~mask);
 }
 
-__attribute__((optimize("O3"))) void stm32wb_exti_unblock(uint32_t mask, bool cancel)
+__attribute__((optimize("O3"))) void stm32wb_exti_unblock(uint32_t mask)
 {
     mask &= stm32wb_exti_device.events;
 
-    armv7m_atomic_orh(&stm32wb_exti_device.mask, mask);
-
-    if (mask)
+    if (~armv7m_atomic_or(&stm32wb_exti_device.mask, mask) & mask)
     {
-	if (cancel)
-	{
-	    EXTI->PR1 = (mask & 0x0000ffff);
-	}
-
-	armv7m_atomic_or(&EXTI->IMR1, (mask & 0x0000ffff));
+        NVIC_SetPendingIRQ(EXTI0_IRQn);
     }
 }
 
-static inline void stm32wb_exti_interrupt_1(uint32_t mask, uint32_t index)
+static __attribute__((optimize("O3"),noinline)) void stm32wb_exti_interrupt(void)
 {
+    uint32_t mask;
+
+    NVIC_ClearPendingIRQ(EXTI0_IRQn); // stm32wb_exti_unblock() ...
+    
+    mask = (EXTI->PR1 & 0xffff);
+    
+    EXTI->PR1 = mask;
+
+    __stm32wb_exti_interrupt(mask);
+
+    __DSB();
+}
+
+void EXTI0_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI1_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI2_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI3_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI4_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI9_5_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+void EXTI15_10_IRQHandler(void) __attribute__ ((alias("stm32wb_exti_interrupt")));
+
+ __attribute__((optimize("O3"))) void SPI1_IRQHandler(void)
+{
+    uint32_t mask, mask_1, mask_2, index;
     stm32wb_exti_callback_t callback;
     void *context;
+
+    NVIC_ClearPendingIRQ(SPI1_IRQn);
     
-    if (mask & (1 << index))
-    {
-	armv7m_atomic_load_2((volatile uint32_t*)&stm32wb_exti_device.channels[index].callback, (uint32_t*)&callback, (uint32_t*)&context);
+    mask = (stm32wb_exti_device.pending & stm32wb_exti_device.mask);
 
-	if (callback)
-	{
-	    (*callback)(context);
-	}
-    }
-}
-
-static inline void stm32wb_exti_interrupt_2(uint32_t mask)
-{
     if (mask)
     {
-        __armv7m_atomic_orh(&stm32wb_exti_device.pending, mask);
+        mask_1 = mask & stm32wb_exti_device.priority[1];
+        mask_2 = mask & ~mask_1;
         
-        if (stm32wb_exti_device.priority[1] & mask)
+        if (mask_1)
         {
-            NVIC_SetPendingIRQ(SPI1_IRQn);
+            __armv7m_atomic_and(&stm32wb_exti_device.pending, ~mask_1);
+            
+            do
+            {
+                index = __builtin_ctz(mask_1);
+                
+                mask_1 &= ~(1ul << index); 
+                
+                callback = stm32wb_exti_device.channels[index].callback;
+                context = stm32wb_exti_device.channels[index].context;
+
+                if (callback)
+                {
+                    (*callback)(context);
+                }
+            }
+            while (mask_1);
         }
-        else
+        
+        if (mask_2)
         {
-            if (stm32wb_exti_device.priority[2] & mask)
+            if (mask_2 & stm32wb_exti_device.priority[2])
             {
                 NVIC_SetPendingIRQ(SPI2_IRQn);
             }
-            else
+            
+            if (mask_2 & stm32wb_exti_device.priority[3])
             {
                 armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_EXTI);
             }
         }
     }
-}
-
-__attribute__((optimize("O3"))) void EXTI0_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x0001;
     
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 0);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI1_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x0002;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 1);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI2_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x0004;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 2);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI3_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x0008;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 3);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI4_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x0010;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 4);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI9_5_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0x03e0;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 5);
-    stm32wb_exti_interrupt_1(mask_1, 6);
-    stm32wb_exti_interrupt_1(mask_1, 7);
-    stm32wb_exti_interrupt_1(mask_1, 8);
-    stm32wb_exti_interrupt_1(mask_1, 9);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
-__attribute__((optimize("O3"))) void EXTI15_10_IRQHandler(void)
-{
-    uint32_t mask, mask_1, mask_2;
-
-    mask = (EXTI->PR1 & stm32wb_exti_device.mask) & 0xfc00;
-    
-    EXTI->PR1 = mask;
-
-    mask_1 = mask & stm32wb_exti_device.priority[0];
-    
-    stm32wb_exti_interrupt_1(mask_1, 10);
-    stm32wb_exti_interrupt_1(mask_1, 11);
-    stm32wb_exti_interrupt_1(mask_1, 12);
-    stm32wb_exti_interrupt_1(mask_1, 13);
-    stm32wb_exti_interrupt_1(mask_1, 14);
-    stm32wb_exti_interrupt_1(mask_1, 15);
-
-    mask_2 = mask & ~stm32wb_exti_device.priority[0];
-
-    stm32wb_exti_interrupt_2(mask_2);
-
-    __DSB();
-}
-
- __attribute__((optimize("O3"))) void SPI1_IRQHandler(void)
-{
-    uint32_t mask, index;
-    stm32wb_exti_callback_t callback;
-    void *context;
-
-    NVIC_ClearPendingIRQ(SPI1_IRQn);
-
-    mask = (stm32wb_exti_device.pending & stm32wb_exti_device.mask) & stm32wb_exti_device.priority[1];
-
-    armv7m_atomic_andh(&stm32wb_exti_device.pending, ~mask);
-
-    while (mask) 
-    {
-        index = __builtin_ctz(mask);
-
-        mask &= ~(1ul << index); 
-
-	armv7m_atomic_load_2((volatile uint32_t*)&stm32wb_exti_device.channels[index].callback, (uint32_t*)&callback, (uint32_t*)&context);
-
-	if (callback)
-	{
-	    (*callback)(context);
-	}
-    }
-
     __DSB();
 }
 
@@ -373,23 +273,28 @@ __attribute__((optimize("O3"))) void EXTI15_10_IRQHandler(void)
     void *context;
 
     NVIC_ClearPendingIRQ(SPI2_IRQn);
-
+    
     mask = (stm32wb_exti_device.pending & stm32wb_exti_device.mask) & stm32wb_exti_device.priority[2];
-
-    armv7m_atomic_andh(&stm32wb_exti_device.pending, ~mask);
-
-    while (mask) 
+    
+    if (mask)
     {
-        index = __builtin_ctz(mask);
+        __armv7m_atomic_and(&stm32wb_exti_device.pending, ~mask);
+        
+        do
+        {
+            index = __builtin_ctz(mask);
+            
+            mask &= ~(1ul << index); 
+            
+            callback = stm32wb_exti_device.channels[index].callback;
+            context = stm32wb_exti_device.channels[index].context;
 
-        mask &= ~(1ul << index); 
-
-	armv7m_atomic_load_2((volatile uint32_t*)&stm32wb_exti_device.channels[index].callback, (uint32_t*)&callback, (uint32_t*)&context);
-
-	if (callback)
-	{
-	    (*callback)(context);
-	}
+            if (callback)
+            {
+                (*callback)(context);
+            }
+        }
+        while (mask);
     }
 
     __DSB();
@@ -402,20 +307,25 @@ __attribute__((optimize("O3"))) void EXTI15_10_IRQHandler(void)
     void *context;
 
     mask = (stm32wb_exti_device.pending & stm32wb_exti_device.mask) & stm32wb_exti_device.priority[3];
-    
-    armv7m_atomic_andh(&stm32wb_exti_device.pending, ~mask);
 
-    while (mask) 
+    if (mask)
     {
-        index = __builtin_ctz(mask);
+        armv7m_atomic_and(&stm32wb_exti_device.pending, ~mask);
 
-        mask &= ~(1ul << index); 
+        do
+        {
+            index = __builtin_ctz(mask);
+            
+            mask &= ~(1ul << index); 
 
-	armv7m_atomic_load_2((volatile uint32_t*)&stm32wb_exti_device.channels[index].callback, (uint32_t*)&callback, (uint32_t*)&context);
+            callback = stm32wb_exti_device.channels[index].callback;
+            context = stm32wb_exti_device.channels[index].context;
 
-	if (callback)
-	{
-	    (*callback)(context);
-	}
+            if (callback)
+            {
+                (*callback)(context);
+            }
+        }
+        while (mask);
     }
 }

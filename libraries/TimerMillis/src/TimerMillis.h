@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2016-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,11 +35,8 @@ class TimerMillis {
 public:
     TimerMillis();
     ~TimerMillis();
-
-    TimerMillis(const TimerMillis &other);
-    TimerMillis &operator=(const TimerMillis &other);
-    TimerMillis(TimerMillis &&other);
-    TimerMillis &operator=(TimerMillis &&other);
+    TimerMillis(const TimerMillis&) = delete;
+    TimerMillis& operator=(const TimerMillis&) = delete;
 
     operator bool() const;
     
@@ -50,7 +47,10 @@ public:
     bool active();
 
 private:
-    class TimerMillisInstance *m_instance;
+    k_alarm_t              m_alarm;
+    Callback               m_callback;
+
+    static void timeout(void *context);
 };
 
 #endif // _TIMERMILLIS_H

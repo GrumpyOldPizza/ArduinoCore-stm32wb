@@ -33,30 +33,13 @@
 #define SERIAL_SBUS     (STM32WB_UART_OPTION_DATA_SIZE_8 | STM32WB_UART_OPTION_PARITY_EVEN | STM32WB_UART_OPTION_STOP_2 | STM32WB_UART_OPTION_RX_INVERT | STM32WB_UART_OPTION_TX_INVERT)
 #define SERIAL_WAKEUP   (STM32WB_UART_OPTION_WAKEUP)
 
-#define SERIAL_STATUS_SUCCESS 0
-#define SERIAL_STATUS_FAILURE 1
-#define SERIAL_STATUS_BUSY    2
-
-
 #define UART_RX_BUFFER_SIZE 128
 #define UART_TX_BUFFER_SIZE 128
 #define UART_TX_PACKET_SIZE 32
 
-#define UART_STATUS_SUCCESS 0
-#define UART_STATUS_FAILURE 1
-#define UART_STATUS_BUSY    2
-
 class Uart : public HardwareSerial
 {
 public:
-    enum FlowControl: uint32_t {
-        DISABLED           = 0,
-        RTS                = 1,
-        CTS                = 2,
-        RTS_CTS            = 3,
-        XONOFF             = 4,
-    };
-  
     Uart(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *params, void (*serialEventRun)(void));
     void begin(unsigned long baudRate);
     void begin(unsigned long baudrate, uint32_t config);
@@ -69,57 +52,55 @@ public:
     virtual void flush();
     virtual size_t write(const uint8_t data);
     virtual size_t write(const uint8_t *buffer, size_t size);
+    virtual operator bool();
     using Print::write; // pull in write(str) and write(buf, size) from Print
-    operator bool() { return true; }
 
     // STM32WB EXTENSION: CTS state
     bool cts();
 
     // STM32WB EXTENSTION: asynchronous write with callback
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status);
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status, void(*callback)(void));
-    bool write(const uint8_t *buffer, size_t size, volatile uint8_t &status, Callback callback);
+    bool write(const uint8_t *buffer, size_t size, void(*callback)(void));
+    bool write(const uint8_t *buffer, size_t size, Callback callback);
+    bool busy();
     
     // STM32WB EXTENSION: enable/disable non-blocking writes
     void setNonBlocking(bool enable);
 
-    // STM32WB EXTENSION: configure flow control
-    void setFlowControl(enum FlowControl mode);
-
     // STM32WB EXTENSION: asynchronous receive
+    void onReceive(void(*callback)(void));
     void onReceive(Callback callback);
-    void onReceive(void(*callback)(void)) { onReceive(Callback(callback)); }
   
  private:
     struct _stm32wb_uart_t *m_uart;
-    uint32_t m_baudrate;
-    uint32_t m_option;
-    uint8_t m_rx_data[UART_RX_BUFFER_SIZE];
-    uint8_t m_tx_data[UART_TX_BUFFER_SIZE];
-    volatile uint16_t m_tx_write;
-    volatile uint16_t m_tx_read;
-    volatile uint32_t m_tx_count;
-    volatile uint32_t m_tx_size;
-
-    volatile uint8_t *m_tx_status2;
-    const uint8_t *m_tx_data2;
-    volatile uint32_t m_tx_size2;
 
     bool m_enabled;
     bool m_nonblocking;
-    volatile bool m_tx_busy;
-    volatile uint8_t m_tx_status;
+    volatile uint8_t m_tx_busy;
+    volatile uint8_t m_tx_lock;
+
+    uint8_t m_rx_data[UART_RX_BUFFER_SIZE];
+    uint8_t m_tx_data[UART_TX_BUFFER_SIZE];
+    uint32_t m_rx_size;
+    uint32_t m_tx_size;
+    volatile uint32_t m_tx_read;
+    volatile uint32_t m_tx_write;
+    volatile uint32_t m_tx_write_next;
+    volatile uint32_t m_tx_count;
+
+    const uint8_t * volatile m_tx2_data;
+    volatile uint32_t m_tx2_count;
+
+    volatile uint32_t m_mask;
     
-    volatile uint32_t m_events;
-    
-    Callback m_transmit_callback;
     Callback m_receive_callback;
+    Callback m_transmit_callback;
     
     k_work_t m_work;
+    k_event_t m_event;
 
-    static void workRoutine(class Uart *self);
     static void transmitCallback(class Uart *self);
     static void eventCallback(class Uart *self, uint32_t events);
+    static void notifyRoutine(class Uart *self);
 
     friend class GNSSClass;
 };

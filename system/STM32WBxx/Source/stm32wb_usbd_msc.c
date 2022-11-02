@@ -28,6 +28,7 @@
 
 
 #include "armv7m.h"
+#include "rtos_api.h"
 #include "stm32wb_usbd.h"
 #include "stm32wb_usbd_dcd.h"
 #include "stm32wb_usbd_msc.h"
@@ -171,7 +172,7 @@ static void SCSI_ProcessWrite(void);
 #define MSC_BOT_BUFFER_QUEUE_COUNT             2
 
 static void MSC_BOT_Event(uint32_t events);
-static void MSC_BOT_Routine(void *context, uint32_t argument);
+static void MSC_BOT_Routine(void *context) __attribute__((noreturn));
 
 static void MSC_BOT_Start(void);
 static void MSC_BOT_Stop(void);
@@ -249,6 +250,8 @@ typedef struct _stm32wb_usbd_msc_control_t {
 } stm32wb_usbd_msc_control_t;
 
 static stm32wb_usbd_msc_control_t stm32wb_usbd_msc_control;
+
+static k_event_t stm32wb_usbd_msc_event = K_EVENT_INIT();
 
 static k_task_t stm32wb_usbd_msc_task;
 
@@ -1204,16 +1207,16 @@ static void SCSI_ProcessWrite(void)
 
 static void MSC_BOT_Event(uint32_t events)
 {
-    k_event_send(&stm32wb_usbd_msc_task, events);
+    k_event_send(&stm32wb_usbd_msc_event, events);
 }
 
-static void MSC_BOT_Routine(void *context, uint32_t argument)
+static __attribute__((noreturn)) void MSC_BOT_Routine(void *context) 
 {
     uint32_t events;
 
     while (1)
     {
-	k_event_receive(~0, K_EVENT_ANY, K_TIMEOUT_FOREVER, &events);
+        k_event_receive(&stm32wb_usbd_msc_event, ~0, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, &events);
 
 	if (events & MSC_BOT_EVENT_CONFIGURE)
 	{
@@ -1487,10 +1490,9 @@ static void __svc_MSC_BOT_SetupTransmit(uint32_t length, uint8_t status)
     }
 
     stm32wb_usbd_msc_control.bot_index = 0;
-    armv7m_atomic_storeb(&stm32wb_usbd_msc_control.bot_count, 1);
+    stm32wb_usbd_msc_control.bot_count = 1;
 
-    armv7m_atomic_store(&stm32wb_usbd_msc_control.bot_tx_length, length);
-
+    stm32wb_usbd_msc_control.bot_tx_length = length;
     stm32wb_usbd_msc_control.bot_tx_busy = true;
 
     stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_transmit_data, NULL);
@@ -1520,10 +1522,9 @@ static void __svc_MSC_BOT_SetupReceive(uint32_t length)
     stm32wb_usbd_msc_control.bot_state = MSC_BOT_STATE_DATA_OUT;  
 
     stm32wb_usbd_msc_control.bot_index = 0;
-    armv7m_atomic_storeb(&stm32wb_usbd_msc_control.bot_count, 0);
+    stm32wb_usbd_msc_control.bot_count = 0;
 
-    armv7m_atomic_store(&stm32wb_usbd_msc_control.bot_rx_length, length);
-
+    stm32wb_usbd_msc_control.bot_rx_length = length;
     stm32wb_usbd_msc_control.bot_rx_busy = true;
     
     stm32wb_usbd_dcd_ep_receive(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_receive_data, NULL);
@@ -1723,8 +1724,7 @@ static void stm32wb_usbd_msc_configure(void *context, uint8_t interface)
     stm32wb_usbd_msc_control.storage = &dosfs_storage_interface;
     stm32wb_usbd_msc_control.interface = interface;
     
-    k_task_create(&stm32wb_usbd_msc_task, "USB/MSC", 15, &stm32wb_usbd_msc_stack[0], sizeof(stm32wb_usbd_msc_stack), 0);
-    k_task_start(&stm32wb_usbd_msc_task, MSC_BOT_Routine, NULL, 0);
+    k_task_create(&stm32wb_usbd_msc_task, "USB/MSC", MSC_BOT_Routine, NULL, 15, &stm32wb_usbd_msc_stack[0], sizeof(stm32wb_usbd_msc_stack), 0);
 
     stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK_DBL, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE, 0, &pma_address);
     stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK_DBL, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE, pma_address, NULL);

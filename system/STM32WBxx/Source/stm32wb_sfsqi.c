@@ -1398,7 +1398,15 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 
 		if (!(config2 & STM32WB_SFSQI_CONF2_HPM))
 		{
-		    stm32wb_sfsqi_device.clock = 8000000;
+		    status = stm32wb_sfsqi_write_enable();
+		    
+		    stm32wb_sfsqi_command_write_3(STM32WB_SFSQI_INSN_WRSR, status, config1, config2 | STM32WB_SFSQI_CONF2_HPM);
+		    
+		    do
+		    {
+			status = stm32wb_sfsqi_command_read_1(STM32WB_SFSQI_INSN_RDSR);
+		    } 
+		    while (status & (STM32WB_SFSQI_SR_WEL | STM32WB_SFSQI_SR_WIP));
 		}
 	    }
 	}
