@@ -14,8 +14,30 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 ### STMicroelectronics
  * [NUCLEO-WB55RG](https://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/stm32-nucleo-expansion-boards/p-nucleo-wb55.html)
 
+## Installing in PlatformIO (WIP)
 
-## Installing
+You can use this Arduino core in PlatformIO. 
+
+To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino Uno" + "Framework: Arduino), then overwrite the `platformio.ini` of the generated project with:
+
+```ini
+[env:nucleo_wb55rg_p]
+; use forked platform
+platform = https://github.com/maxgerhardt/platform-ststm32.git#stm32wb
+board = grumpypizza_nucleo_wb55rg_p
+board_build.core = stm32wb
+framework = arduino
+build_flags = 
+    -DSTORAGE_TYPE=0
+; if you need to source the core from a different repo
+;platform_packages = framework-arduinoststm32wb@https://github.com/maxgerhardt/ArduinoCore-stm32wb.git
+; if you need to source the core from the local filesystem
+;platform_packages = framework-arduinoststm32wb@symlink://C:\Users\User\Desktop\dev\ArduinoCore-stm32wb
+```
+
+Available boards, configuration options etc. are still subject to change at this point.
+
+## Installing in the Arduino IDE
 
 ### Board Manager
 
