@@ -24,8 +24,7 @@ To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino U
 [env:nucleo_wb55rg_p]
 ; use forked platform
 platform = https://github.com/maxgerhardt/platform-ststm32.git#stm32wb
-board = grumpypizza_nucleo_wb55rg_p
-board_build.core = stm32wb
+board = grumpyoldpizza_nucleo_wb55rg
 framework = arduino
 build_flags = 
     -DSTORAGE_TYPE=0
@@ -35,7 +34,49 @@ build_flags =
 ;platform_packages = framework-arduinoststm32wb@symlink://C:\Users\User\Desktop\dev\ArduinoCore-stm32wb
 ```
 
-Available boards, configuration options etc. are still subject to change at this point.
+Available `board` selection values:
+* grumpyoldpizza_firefly_wb55cg
+* grumpyoldpizza_katydid_wb55cg
+* grumpyoldpizza_mothra_wb5mmg
+* grumpyoldpizza_nucleo_wb55rg
+* grumpyoldpizza_snoopy6_wb5mmg
+
+CPU frequency selection example:
+```ini
+; 16 MHz (No USB)
+board_build.f_cpu = 16000000L
+```
+
+The default USB type is "Serial" if the board supports USB (currently all except Nucleo WB55RG).
+This can be changed by activating one of these macros through the `build_flags` of the `platformoi.ini`.
+Remember that to combine multiple flags into one `build_flags` expression if you want to activate multiple flags.
+
+```ini
+; USB: "Serial" (default if USB available)
+build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC
+; USB: "Serial + Mass Storage"
+build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC
+; USB: "No USB"
+build_flags = -D PIO_FRAMEWORK_ARDUINO_NO_USB
+```
+
+Configuration for "External Storage":
+
+```ini
+; Ext. Storage: None (default)
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_NONE
+; Ext. Storage: SFLASH
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SFLASH
+; Ext. Storage: SDCARD
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SDCARD
+```
+
+Example for combined values:
+```ini
+build_flags = 
+   -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SDCARD
+   -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC
+```
 
 ## Installing in the Arduino IDE
 
