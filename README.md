@@ -27,7 +27,7 @@ platform = https://github.com/maxgerhardt/platform-ststm32.git#stm32wb
 board = grumpyoldpizza_nucleo_wb55rg
 framework = arduino
 build_flags = 
-    -DSTORAGE_TYPE=0
+    -DPIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_NONE
 ; if you need to source the core from a different repo
 ;platform_packages = framework-arduinoststm32wb@https://github.com/maxgerhardt/ArduinoCore-stm32wb.git
 ; if you need to source the core from the local filesystem
