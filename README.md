@@ -78,6 +78,14 @@ build_flags =
    -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC
 ```
 
+In case of platform or package updates, use
+```
+pio pkg update -g -p "https://github.com/maxgerhardt/platform-ststm32.git#stm32wb"
+pio pkg update -g -t "https://github.com/maxgerhardt/ArduinoCore-stm32wb.git"
+```
+
+on [the CLI](https://docs.platformio.org/en/stable/integration/ide/vscode.html#platformio-core-cli).
+
 ## Installing in the Arduino IDE
 
 ### Board Manager
