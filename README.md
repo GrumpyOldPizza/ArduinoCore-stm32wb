@@ -21,7 +21,7 @@ You can use this Arduino core in PlatformIO.
 To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino Uno" + "Framework: Arduino), then overwrite the `platformio.ini` of the generated project with:
 
 ```ini
-[env:nucleo_wb55rg_p]
+[env:nucleo_wb55rg]
 ; use forked platform
 platform = https://github.com/maxgerhardt/platform-ststm32.git#stm32wb
 board = grumpyoldpizza_nucleo_wb55rg
