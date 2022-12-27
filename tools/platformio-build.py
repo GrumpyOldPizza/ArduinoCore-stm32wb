@@ -28,6 +28,7 @@ assert os.path.isdir(FRAMEWORK_DIR)
 
 # make RTC infos available
 # see https://github.com/arduino/arduino-cli/blob/63f1e1855aa4c91415480be40fc49fd50d597e35/legacy/builder/setup_build_properties.go#L121-L125
+# https://arduino.github.io/arduino-cli/0.29/platform-specification/#global-predefined-properties
 # in this core
 # -Wl,--defsym=__RTC_EPOCH__={extra.time.utc}
 # -Wl,--defsym=__RTC_ZONE__={extra.time.zone}
@@ -130,11 +131,47 @@ if not board.get("build.ldscript", ""):
     )
     env.Replace(LDSCRIPT_PATH="STM32WB55xx_FLASH.ld")
 
-if "build.usb_product" in board:
+# process USB flags
+cpp_defines = env.Flatten(env.get("CPPDEFINES", []))
+board_is_usb_capable = "build.usb_product" in board
+# if not already set externally and board is USB capable
+if board_is_usb_capable and "USB_TYPE" not in cpp_defines:
+    # default value: "Serial"
+    usb_type = 1
+    # "Serial"
+    if "PIO_FRAMEWORK_ARDUINO_ENABLE_CDC" in cpp_defines:
+        usb_type = 1
+    # "Serial + Mass Storage"
+    elif "PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC" in cpp_defines:
+        usb_type = 2
+    # "No USB"
+    elif "PIO_FRAMEWORK_ARDUINO_NO_USB" in cpp_defines:
+        usb_type = 0
+    env.Append(CPPDEFINES=[("USB_TYPE", usb_type)])
+
+# process storage type if not given externally:
+if "STORAGE_TYPE" not in cpp_defines:
+    # default value: "None"
+    storage_type = 0
+    # "None"
+    if "PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_NONE" in cpp_defines:
+        storage_type = 0
+    # "SFLASH"
+    elif "PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SFLASH" in cpp_defines:
+        storage_type = 1
+    # "SDCARD"
+    elif "PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SDCARD" in cpp_defines:
+        storage_type = 2
+    env.Append(CPPDEFINES=[("STORAGE_TYPE", storage_type)])
+
+if board_is_usb_capable:
     env.Append(
         CPPDEFINES=[
             ("USB_VID", board.get("build.hwids")[0][0]),
             ("USB_PID", board.get("build.hwids")[0][1]),
+            # default DID is 0x0100 unless given in board
+            # right now every board has the same DID
+            ("USB_DID", board.get("build.usb_did", "0x0100")),
             ("USB_PRODUCT", '\\"%s\\"' %
              board.get("build.usb_product", "").replace('"', "")),
             ("USB_MANUFACTURER", '\\"%s\\"' %
@@ -167,7 +204,7 @@ if "build.variant" in board:
     env.Append(
         CPPPATH=[os.path.join(variants_dir, board.get("build.variant"))]
     )
-    # explicitly build as source files so that weak functions are linked correctly
+    # explicitly use BuildSources so that weak functions are linked correctly with object files instead of archives
     env.BuildSources(
         os.path.join("$BUILD_DIR", "FrameworkArduinoVariant"),
         os.path.join(variants_dir, board.get("build.variant"))
