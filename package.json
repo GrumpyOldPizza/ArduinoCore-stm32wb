@@ -1,6 +1,6 @@
 {
   "name": "framework-arduinoststm32wb",
-  "version": "5.000104.221227",
+  "version": "0.1.5-dev",
   "description": "Arduino Core for STM32WB",
   "keywords": [
     "framework",
