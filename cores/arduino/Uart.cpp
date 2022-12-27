@@ -206,8 +206,8 @@ size_t Uart::write(const uint8_t *buffer, size_t size) {
                         tx_count = m_tx_size - tx_read;
                     }
 
-                    if (tx_count > CDC_TX_PACKET_SIZE) {
-                        tx_count = CDC_TX_PACKET_SIZE;
+                    if (tx_count > UART_TX_PACKET_SIZE/*CDC_TX_PACKET_SIZE*/) {
+                        tx_count = UART_TX_PACKET_SIZE/*CDC_TX_PACKET_SIZE*/;
                     }
                     
                     if (tx_count) {
@@ -270,8 +270,8 @@ finish:
                 tx_count = m_tx_size - tx_read;
             }
             
-            if (tx_count > CDC_TX_PACKET_SIZE) {
-                tx_count = CDC_TX_PACKET_SIZE;
+            if (tx_count > UART_TX_PACKET_SIZE/*CDC_TX_PACKET_SIZE*/) {
+                tx_count = UART_TX_PACKET_SIZE;
             }
             
             if (tx_count) {
@@ -381,8 +381,8 @@ void Uart::transmitCallback(class Uart *self) {
                 tx_count = (self->m_tx_size - tx_read);
             }
 
-            if (tx_count > CDC_TX_PACKET_SIZE) {
-                tx_count = CDC_TX_PACKET_SIZE;
+            if (tx_count > /*CDC_TX_PACKET_SIZE*/UART_TX_PACKET_SIZE) {
+                tx_count = UART_TX_PACKET_SIZE/*CDC_TX_PACKET_SIZE*/;
             }
             
             self->m_tx_count = tx_count;
