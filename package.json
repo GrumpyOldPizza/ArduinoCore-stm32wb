@@ -1,0 +1,16 @@
+{
+  "name": "framework-arduinoststm32wb",
+  "version": "5.000104.221227",
+  "description": "Arduino Core for STM32WB",
+  "keywords": [
+    "framework",
+    "arduino",
+    "stmicroelectronics",
+    "stm32",
+    "stm32wb"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GrumpyOldPizza/ArduinoCore-stm32wb"
+  }
+}
