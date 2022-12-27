@@ -18,7 +18,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 
 You can use this Arduino core in PlatformIO. 
 
-To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino Uno" + "Framework: Arduino), then overwrite the `platformio.ini` of the generated project with:
+To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino Uno" + "Framework: Arduino"), then overwrite the `platformio.ini` of the generated project with:
 
 ```ini
 [env:nucleo_wb55rg]
