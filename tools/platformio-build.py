@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import time    
 from SCons.Script import DefaultEnvironment
 
 env = DefaultEnvironment()
@@ -24,6 +25,21 @@ FRAMEWORK_DIR = platform.get_package_dir(framework_package)
 BUILD_CORE = "arduino"
 
 assert os.path.isdir(FRAMEWORK_DIR)
+
+# make RTC infos available
+# see https://github.com/arduino/arduino-cli/blob/63f1e1855aa4c91415480be40fc49fd50d597e35/legacy/builder/setup_build_properties.go#L121-L125
+# in this core
+# -Wl,--defsym=__RTC_EPOCH__={extra.time.utc}
+# -Wl,--defsym=__RTC_ZONE__={extra.time.zone}
+# -Wl,--defsym=__RTC_DST__={extra.time.dst}
+# -Wl,--defsym=__RTC_LEAP_SECONDS=18
+# extra.time.utc
+time_utc = int(time.time())
+# extra.time.zone
+time_zone = -time.timezone
+is_dst = time.daylight and time.localtime().tm_isdst > 0
+# extra.time.dst
+time_dst = - (time.altzone if is_dst else 0)
 
 variants_dir = os.path.join(
     "$PROJECT_DIR", board.get("build.variants_dir")) if board.get(
@@ -73,7 +89,7 @@ env.Append(
     CPPPATH=[
         os.path.join(FRAMEWORK_DIR, "cores", BUILD_CORE),
         os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "Core", "Include"), 
-        os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "DSP" ,"Include"),
+        os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "DSP", "Include"),
         os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "Device", "ST", "STM32WBxx", "Include"),
         os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "Include") 
     ],
@@ -95,7 +111,11 @@ env.Append(
         "-Wl,--check-sections",
         "-Wl,--unresolved-symbols=report-all",
         "-Wl,--warn-common",
-        "-Wl,--warn-section-align"
+        "-Wl,--warn-section-align",
+        "-Wl,--defsym=__RTC_EPOCH__=%d" % time_utc,
+        "-Wl,--defsym=__RTC_ZONE__=%d" % time_zone,
+        "-Wl,--defsym=__RTC_DST__=%d" % time_dst,
+        "-Wl,--defsym=__RTC_LEAP_SECONDS=18" # constant
     ],
 
     LIBS=["m", "stm32wb55xx"],
