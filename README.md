@@ -34,6 +34,8 @@ build_flags =
 ;platform_packages = framework-arduinoststm32wb@symlink://C:\Users\User\Desktop\dev\ArduinoCore-stm32wb
 ```
 
+Also see example at https://github.com/maxgerhardt/pio-grumpyoldpizza-stm32wb-test.
+
 Available `board` selection values:
 * grumpyoldpizza_firefly_wb55cg
 * grumpyoldpizza_katydid_wb55cg
