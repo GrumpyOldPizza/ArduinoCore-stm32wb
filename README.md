@@ -14,7 +14,7 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 ### STMicroelectronics
  * [NUCLEO-WB55RG](https://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/stm32-nucleo-expansion-boards/p-nucleo-wb55.html)
 
-## Installing in PlatformIO (WIP)
+## Installing in PlatformIO
 
 You can use this Arduino core in PlatformIO. 
 
