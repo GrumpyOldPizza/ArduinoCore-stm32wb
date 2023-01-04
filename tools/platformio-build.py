@@ -92,7 +92,9 @@ env.Append(
         os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "Core", "Include"), 
         os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "DSP", "Include"),
         os.path.join(FRAMEWORK_DIR, "system", "CMSIS", "Device", "ST", "STM32WBxx", "Include"),
-        os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "Include") 
+        os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "Include"),
+        # make it possible to follow function implementation in IDE by making source explorable
+        os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "Source")
     ],
 
     LIBSOURCE_DIRS=[
