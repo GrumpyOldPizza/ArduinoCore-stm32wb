@@ -14,8 +14,81 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 ### STMicroelectronics
  * [NUCLEO-WB55RG](https://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/stm32-nucleo-expansion-boards/p-nucleo-wb55.html)
 
+## Installing in PlatformIO
 
-## Installing
+You can use this Arduino core in PlatformIO. 
+
+To do so, create any new project in the PIO Home screen (e.g., "Board: Arduino Uno" + "Framework: Arduino"), then overwrite the `platformio.ini` of the generated project with:
+
+```ini
+[env:nucleo_wb55rg]
+; use forked platform
+platform = https://github.com/maxgerhardt/platform-ststm32.git#stm32wb
+board = grumpyoldpizza_nucleo_wb55rg
+framework = arduino
+build_flags = 
+    -DPIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_NONE
+; if you need to source the core from a different repo
+;platform_packages = framework-arduinoststm32wb@https://github.com/maxgerhardt/ArduinoCore-stm32wb.git
+; if you need to source the core from the local filesystem
+;platform_packages = framework-arduinoststm32wb@symlink://C:\Users\User\Desktop\dev\ArduinoCore-stm32wb
+```
+
+Also see example at https://github.com/maxgerhardt/pio-grumpyoldpizza-stm32wb-test.
+
+Available `board` selection values:
+* grumpyoldpizza_firefly_wb55cg
+* grumpyoldpizza_katydid_wb55cg
+* grumpyoldpizza_mothra_wb5mmg
+* grumpyoldpizza_nucleo_wb55rg
+* grumpyoldpizza_snoopy6_wb5mmg
+
+CPU frequency selection example:
+```ini
+; 16 MHz (No USB)
+board_build.f_cpu = 16000000L
+```
+
+The default USB type is "Serial" if the board supports USB (currently all except Nucleo WB55RG).
+This can be changed by activating one of these macros through the `build_flags` of the `platformoi.ini`.
+Remember that to combine multiple flags into one `build_flags` expression if you want to activate multiple flags.
+
+```ini
+; USB: "Serial" (default if USB available)
+build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC
+; USB: "Serial + Mass Storage"
+build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC
+; USB: "No USB"
+build_flags = -D PIO_FRAMEWORK_ARDUINO_NO_USB
+```
+
+Configuration for "External Storage":
+
+```ini
+; Ext. Storage: None (default)
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_NONE
+; Ext. Storage: SFLASH
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SFLASH
+; Ext. Storage: SDCARD
+build_flags = -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SDCARD
+```
+
+Example for combined values:
+```ini
+build_flags = 
+   -D PIO_FRAMEWORK_ARDUINO_STORAGE_TYPE_SDCARD
+   -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC_WITH_MSC
+```
+
+In case of platform or package updates, use
+```
+pio pkg update -g -p "https://github.com/maxgerhardt/platform-ststm32.git#stm32wb"
+pio pkg update -g -t "https://github.com/maxgerhardt/ArduinoCore-stm32wb.git"
+```
+
+on [the CLI](https://docs.platformio.org/en/stable/integration/ide/vscode.html#platformio-core-cli).
+
+## Installing in the Arduino IDE
 
 ### Board Manager
 
