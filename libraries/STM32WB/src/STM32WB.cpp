@@ -166,7 +166,7 @@ void STM32WBClass::getClocks(uint32_t &sysclk, uint32_t &hclk, uint32_t &pclk1, 
 
 void STM32WBClass::wakeup()
 {
-    k_event_send(&g_wakeup_event, WIRING_EVENT_WAKEUP);
+    k_event_send(k_task_default(), WIRING_EVENT_WAKEUP);
 }
 
 bool STM32WBClass::sleep()
@@ -199,7 +199,7 @@ bool STM32WBClass::sleep(uint32_t policy, uint32_t timeout)
     
     k_system_set_policy(policy, &policy);
 
-    k_event_receive(&g_wakeup_event, WIRING_EVENT_WAKEUP, (K_EVENT_ANY | K_EVENT_CLEAR), timeout, &mask);
+    k_event_receive(WIRING_EVENT_WAKEUP, (K_EVENT_ANY | K_EVENT_CLEAR), timeout, &mask);
     
     k_system_set_policy(policy, NULL);
     

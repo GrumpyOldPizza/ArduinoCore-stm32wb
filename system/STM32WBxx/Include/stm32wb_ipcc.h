@@ -42,6 +42,7 @@ extern "C" {
 #define STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE                   0xfc52
 #define STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE                  0xfc54
 #define STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE                   0xfc55
+#define STM32WB_IPCC_SYS_OPCODE_FUS_START_WS                    0xfc5a
 #define STM32WB_IPCC_SYS_OPCODE_BLE_INIT                        0xfc66
 #define STM32WB_IPCC_SYS_OPCODE_FLASH_ERASE_ACTIVITY            0xfc69
 #define STM32WB_IPCC_SYS_OPCODE_SET_FLASH_ACTIVITY_CONTROL      0xfc73
@@ -49,11 +50,13 @@ extern "C" {
 #define STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS                     0
 #define STM32WB_IPCC_SYS_FUS_STATUS_FAILURE                     1
   
-#define STM32WB_IPCC_SYS_FUS_STATE_MASK                         0xf0
 #define STM32WB_IPCC_SYS_FUS_STATE_IDLE                         0x00
-#define STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING             0x10
-#define STM32WB_IPCC_SYS_FUS_STATE_FUS_UPGRD_ONGOING            0x20
-#define STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING              0x30
+#define STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START       0x10
+#define STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_END         0x1f
+#define STM32WB_IPCC_SYS_FUS_STATE_FUS_UPGRD_ONGOING_START      0x20
+#define STM32WB_IPCC_SYS_FUS_STATE_FUS_UPGRD_ONGOING_END        0x2f
+#define STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_START        0x30
+#define STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END          0x3f
 #define STM32WB_IPCC_SYS_FUS_STATE_ERROR                        0xff
 
 #define STM32WB_IPCC_SYS_FUS_ERROR_CODE_NO_ERROR                0x00
@@ -176,6 +179,9 @@ typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
     uint16_t MaxAdvDataLen;
     int16_t  TxPathCompensation;
     int16_t  RxPathCompensation;
+#if 0
+    uint8_t  BleCoreVersion;
+#endif  
 } stm32wb_ipcc_ble_init_params_t;
   
 typedef void (*stm32wb_ipcc_ble_event_callback_t)(void *context);

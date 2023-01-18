@@ -152,7 +152,7 @@ uint8_t TwoWire::endTransmission(bool stopBit) {
         return 4;
     }
 
-    k_task_sleep(K_TIMEOUT_FOREVER);
+    k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
 
     m_tx_busy = false;
     
@@ -208,7 +208,7 @@ size_t TwoWire::requestFrom(uint8_t address, size_t size, bool stopBit) {
         return 0;
     }
     
-    k_task_sleep(K_TIMEOUT_FOREVER);
+    k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
 
     m_rx_index = 0;
 
@@ -270,7 +270,7 @@ size_t TwoWire::requestFrom(uint8_t address, size_t size, uint32_t iaddress, uin
         return 0;
     }
     
-    k_task_sleep(K_TIMEOUT_FOREVER);
+    k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
 
     m_rx_index = 0;
 
@@ -412,7 +412,7 @@ uint8_t TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSiz
         return 4;
     }
 
-    k_task_sleep(K_TIMEOUT_FOREVER);
+    k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
 
     if (transaction.status == STM32WB_I2C_STATUS_SUCCESS) {
         m_xf_address = stopBit ? 0 : address;
@@ -434,7 +434,7 @@ void TwoWire::reset() {
         return;
     }
 
-    k_task_sleep(K_TIMEOUT_FOREVER);
+    k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
 
     stm32wb_i2c_reset(m_i2c);
 
@@ -456,7 +456,7 @@ void TwoWire::onTransmit(void(*callback)(int)) {
 void TwoWire::doneCallback(void *context) {
     k_task_t *task = (k_task_t*)context;
     
-    k_task_wakeup(task);
+    k_event_send(task, WIRING_EVENT_TRANSIENT);
 }
 
 void TwoWire::eventCallback(void *context, uint32_t events) {

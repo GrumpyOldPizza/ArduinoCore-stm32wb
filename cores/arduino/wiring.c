@@ -37,8 +37,6 @@ extern "C" {
 
 #undef ARDUINO_RV2
 
-k_event_t g_wakeup_event = K_EVENT_INIT();
-  
 #if defined(USBCON)
 stm32wb_uart_t g_Serial1;
 extern const stm32wb_uart_params_t g_Serial1Params;

@@ -60,9 +60,8 @@ extern "C" {
 
 extern void dosfs_sflash_initialize();
 
-extern k_event_t g_wakeup_event;
-
-#define WIRING_EVENT_WAKEUP 0x00000001
+#define WIRING_EVENT_TRANSIENT  0x80000000
+#define WIRING_EVENT_WAKEUP     0x40000000    
 
 extern const uint32_t g_pinModeConfiguration[];
   

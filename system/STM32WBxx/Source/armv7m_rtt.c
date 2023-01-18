@@ -27,7 +27,6 @@
  */
 
 #include "armv7m.h"
-#include "rtos_api.h"
 
 #include <stdlib.h>
 #include <stdarg.h>

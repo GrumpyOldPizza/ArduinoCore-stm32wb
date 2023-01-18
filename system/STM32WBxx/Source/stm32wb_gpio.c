@@ -41,13 +41,9 @@ static stm32wb_gpio_device_t stm32wb_gpio_device;
 
 void __stm32wb_gpio_initialize(void)
 {
-    RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN); 
-    RCC->AHB2ENR;
-
-    GPIOA->MODER &= ~0xc0000000; // PA15
-    GPIOB->MODER &= ~0x000003c0; // PB3 / PB4
-    
-    RCC->AHB2ENR &= ~(RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN); 
+    stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PA15, STM32WB_GPIO_MODE_ANALOG);
+    stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB3,  STM32WB_GPIO_MODE_ANALOG);
+    stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB4,  STM32WB_GPIO_MODE_ANALOG);
 }
 
 void __stm32wb_gpio_swd_enable(void)

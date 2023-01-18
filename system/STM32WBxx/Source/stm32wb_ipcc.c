@@ -93,6 +93,9 @@ const stm32wb_hci_command_table_t hci_command_table[] = {
     { 0x201a, "HCI_LE_LONG_TERM_KEY_REQUEST_REPLY" },
     { 0x201b, "HCI_LE_LONG_TERM_KEY_REQUEST_NEGATIVE_REPLY" },
     { 0x201c, "HCI_LE_READ_SUPPORTED_STATES" },
+    { 0x201d, "HCI_LE_RECEIVER_TEST" },
+    { 0x201e, "HCI_LE_TRANSMITTER_TEST" },
+    { 0x201f, "HCI_LE_TEST_END" },
     { 0x2022, "HCI_LE_SET_DATA_LENGTH" },
     { 0x2023, "HCI_LE_READ_SUGGESTED_DEFAULT_DATA_LENGTH" },
     { 0x2024, "HCI_LE_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH" },
@@ -110,6 +113,8 @@ const stm32wb_hci_command_table_t hci_command_table[] = {
     { 0x2030, "HCI_LE_READ_PHY" },
     { 0x2031, "HCI_LE_SET_DEFAULT_PHY" },
     { 0x2032, "HCI_LE_SET_PHY" },
+    { 0x2033, "HCI_LE_RECEIVER_TEST_V2" },
+    { 0x2034, "HCI_LE_TRANSMITTER_TEST_V2" },
     { 0x2035, "HCI_LE_SET_ADVERTISING_SET_RANDOM_ADDRESS" },
     { 0x2036, "HCI_LE_SET_EXTENDED_ADVERTISING_PARAMETERS" },
     { 0x2037, "HCI_LE_SET_EXTENDED_ADVERTISING_DATA" },
@@ -126,11 +131,6 @@ const stm32wb_hci_command_table_t hci_command_table[] = {
     { 0x204c, "HCI_LE_READ_RF_PATH_COMPENSATION" },
     { 0x204d, "HCI_LE_WRITE_RF_PATH_COMPENSATION" },
     { 0x204e, "HCI_LE_SET_PRIVACY_MODE" },
-    { 0x201d, "HCI_LE_RECEIVER_TEST" },
-    { 0x201e, "HCI_LE_TRANSMITTER_TEST" },
-    { 0x201f, "HCI_LE_TEST_END" },
-    { 0x2033, "HCI_LE_RECEIVER_TEST_V2" },
-    { 0x2034, "HCI_LE_TRANSMITTER_TEST_V2" },
     { 0xfc00, "ACI_HAL_GET_FW_BUILD_NUMBER" },
     { 0xfc0c, "ACI_HAL_WRITE_CONFIG_DATA" },
     { 0xfc0d, "ACI_HAL_READ_CONFIG_DATA" },
@@ -144,6 +144,7 @@ const stm32wb_hci_command_table_t hci_command_table[] = {
     { 0xfc1a, "ACI_HAL_SET_EVENT_MASK" },
     { 0xfc1c, "ACI_HAL_GET_PM_DEBUG_INFO" },
     { 0xfc20, "ACI_HAL_SET_SLAVE_LATENCY" },
+    { 0xfc22, "ACI_HAL_READ_RSSI" },
     { 0xfc30, "ACI_HAL_READ_RADIO_REG" },
     { 0xfc31, "ACI_HAL_WRITE_RADIO_REG" },
     { 0xfc32, "ACI_HAL_READ_RAW_RSSI" },
@@ -247,6 +248,9 @@ const stm32wb_hci_command_table_t hci_command_table[] = {
     { 0xfd2c, "ACI_GATT_UPDATE_CHAR_VALUE_EXT" },
     { 0xfd2d, "ACI_GATT_DENY_READ" },
     { 0xfd2e, "ACI_GATT_SET_ACCESS_PERMISSION" },
+    { 0xfd30, "ACI_GATT_STORE_DB" },
+    { 0xfd31, "ACI_GATT_SEND_MULT_NOTIFICATION" },
+    { 0xfd32, "ACI_GATT_READ_MULTIPLE_VAR_CHAR_VALUE" },
     { 0xfd81, "ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_REQ" },
     { 0xfd82, "ACI_L2CAP_CONNECTION_PARAMETER_UPDATE_RESP" },
     { 0xfd88, "ACI_L2CAP_COC_CONNECT" },
@@ -279,7 +283,7 @@ const stm32wb_hci_event_table_t hci_le_event_table[] = {
     { 0x0008, "HCI_LE_READ_LOCAL_P256_PUBLIC_KEY_COMPLETE_EVENT" },
     { 0x0009, "HCI_LE_GENERATE_DHKEY_COMPLETE_EVENT" },
     { 0x000a, "HCI_LE_ENHANCED_CONNECTION_COMPLETE_EVENT" },
-    { 0x000b, "HCI_LE_DIRECT_ADVERTISING_REPORT_EVENT" },
+    { 0x000b, "HCI_LE_DIRECTED_ADVERTISING_REPORT_EVENT" },
     { 0x000c, "HCI_LE_PHY_UPDATE_COMPLETE_EVENT" },
     { 0x000d, "HCI_LE_EXTENDED_ADVERTISING_REPORT_EVENT" },
     { 0x0011, "HCI_LE_SCAN_TIMEOUT_EVENT" },
@@ -337,11 +341,12 @@ const stm32wb_hci_event_table_t hci_vs_event_table[] = {
     { 0x0c16, "ACI_GATT_TX_POOL_AVAILABLE_EVENT" },
     { 0x0c17, "ACI_GATT_SERVER_CONFIRMATION_EVENT" },
     { 0x0c18, "ACI_GATT_PREPARE_WRITE_PERMIT_REQ_EVENT" },
+    { 0x0c19, "ACI_GATT_EATT_BEARER_EVENT" },
+    { 0x0c1a, "ACI_GATT_MULT_NOTIFICATION_EVENT" },
     { 0x0c1d, "ACI_GATT_READ_EXT_EVENT" },
     { 0x0c1e, "ACI_GATT_INDICATION_EXT_EVENT" },
     { 0x0c1f, "ACI_GATT_NOTIFICATION_EXT_EVENT" },
 };
-
 
 #endif
 
@@ -780,17 +785,37 @@ bool stm32wb_ipcc_sys_command(stm32wb_ipcc_sys_command_t *command)
     return true;
 }
 
+static uint32_t stm32wb_ipcc_sys_fus_command(uint16_t opcode)
+{
+    stm32wb_ipcc_sys_command_t command;
+    uint8_t status;
+    
+    command.next = NULL;
+    command.opcode = opcode;
+    command.cparam = NULL;
+    command.clen = 0;
+    command.rparam = &status;
+    command.rsize = sizeof(status);
+    command.callback = NULL;
+    command.context = NULL;
+            
+    stm32wb_ipcc_sys_command(&command);
+
+    while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY)
+    {
+    }
+
+    return status;
+}
+
 bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return)
 {
     static uint8_t firmware_data[1024];
     const uint8_t *firmware_image;
     uint32_t firmware_address, firmware_size, firmware_offset, firmware_chunk, firmware_index;
-    uint8_t fus_status;
+    uint8_t state, status;
     stm32wb_ipcc_sys_info_t sys_info;
-    stm32wb_ipcc_sys_fus_state_t fus_state;
-    stm32wb_ipcc_sys_command_t command;
     stm32wb_flash_request_t request;
-    bool success = true;
 
     if (!stm32wb_ipcc_sys_info(&sys_info))
     {
@@ -806,11 +831,6 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
         return false;
     }
 
-    command.next = NULL;
-    command.event = 0;
-    command.callback = NULL;
-    command.context = NULL;
-
     request.next = NULL;
     request.callback = NULL;
     request.context = NULL;
@@ -823,186 +843,173 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     {
         if (stm32wb_ipcc_sys_state() == STM32WB_IPCC_SYS_STATE_WIRELESS)
         {
-            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
-            command.cparam = NULL;
-            command.clen = 0;
-            command.rparam = &fus_state;
-            command.rsize = sizeof(fus_state);
+            stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+            stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
             
-            stm32wb_ipcc_sys_command(&command);
-
-            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-
-            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
-            command.cparam = NULL;
-            command.clen = 0;
-            command.rparam = &fus_state;
-            command.rsize = sizeof(fus_state);
-            
-            stm32wb_ipcc_sys_command(&command);
-
-            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-            
-            while (1) { __WFE(); }
-        }
-
-        command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
-        command.cparam = NULL;
-        command.clen = 0;
-        command.rparam = &fus_state;
-        command.rsize = sizeof(fus_state);
-        
-        stm32wb_ipcc_sys_command(&command);
-
-        while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-        
-        while ((fus_state.state != STM32WB_IPCC_SYS_FUS_STATE_IDLE) && (fus_state.error_code == STM32WB_IPCC_SYS_FUS_ERROR_CODE_NO_ERROR))
-        {
-            armv7m_core_udelay(250000);
-
-            command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
-            command.cparam = NULL;
-            command.clen = 0;
-            command.rparam = &fus_state;
-            command.rsize = sizeof(fus_state);
-            
-            stm32wb_ipcc_sys_command(&command);
-
-            while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-        }
-        
-        if (fus_state.state != STM32WB_IPCC_SYS_FUS_STATE_IDLE)
-        {
-            if ((fus_state.state == STM32WB_IPCC_SYS_FUS_STATE_ERROR) && (fus_state.error_code >= 0xf0))
+            while (1)
             {
-                stm32wb_system_reset();
             }
-            
-            *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE << 16) | (fus_state.state << 8) | (fus_state.error_code << 0);
-
-            success = false;
         }
-        else
+
+        do
         {
-            if (sys_info.WirelessStackMemorySize)
+            state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+
+            if (state != STM32WB_IPCC_SYS_FUS_STATE_IDLE)
             {
-                command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE;
-                command.cparam = NULL;
-                command.clen = 0;
-                command.rparam = &fus_status;
-                command.rsize = sizeof(fus_status);
-            
-                stm32wb_ipcc_sys_command(&command);
-
-                while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-                
-                if (fus_status == STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+                if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
                 {
-                    while (1) { __WFE(); }
+                    armv7m_core_udelay(100000);
                 }
+                else
+                {
+                    stm32wb_system_reset();
+                }
+            }
+        }
+        while (state != STM32WB_IPCC_SYS_FUS_STATE_IDLE);
 
-                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE << 16) | fus_status;
+        if (sys_info.WirelessStackMemorySize)
+        {
+            status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE);
+            
+            if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+            {
+                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE << 16) | status;
 
-                success = false;
+                return false;
+            }
+
+            while (1)
+            {
+                state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+
+                if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
+                {
+                    armv7m_core_udelay(100000);
+                }
+                else
+                {
+                    stm32wb_system_reset();
+                }
+            }
+        }
+                
+        if ((sys_info.FusVersion & 0xffff0000) < 0x01020000)
+        {
+            if ((sys_info.FusVersion & 0xff000000) != 0x00000000)
+            {
+                firmware_image = fus;
             }
             else
             {
-                if ((sys_info.FusVersion & 0xffff0000) < 0x01020000)
-                {
-                    if ((sys_info.FusVersion & 0xff000000) != 0x00000000)
-                    {
-                        firmware_image = fus;
-                    }
-                    else
-                    {
-                        firmware_image = fus_for_0_5_3;
-                    }
+                firmware_image = fus_for_0_5_3;
+            }
+            
+            firmware_address = 0x080ec000;
+            firmware_size = 24496;
+        }
+        else
+        {
+            firmware_address = address;
+            firmware_image = (const uint8_t*)image;
+            firmware_size = size;
+        }
+        
+        request.control = STM32WB_FLASH_CONTROL_ERASE | STM32WB_FLASH_CONTROL_FLUSH;
+        request.address = firmware_address;
+        request.count = ((FLASH_BASE + ((FLASH->SFR & FLASH_SFR_SFSA) * 4096)) - firmware_address);
+        request.data = NULL;
+        
+        stm32wb_flash_request(&request);
 
-                    firmware_address = 0x080ec000;
-                    firmware_size = 24496;
-                }
-                else
-                {
-                    firmware_address = address;
-                    firmware_image = (const uint8_t*)image;
-                    firmware_size = size;
-                }
-
-                request.control = STM32WB_FLASH_CONTROL_ERASE | STM32WB_FLASH_CONTROL_FLUSH;
-                request.address = firmware_address;
-                request.count = ((FLASH_BASE + ((FLASH->SFR & FLASH_SFR_SFSA) * 4096)) - firmware_address);
-                request.data = NULL;
-                
-                stm32wb_flash_request(&request);
-
-                while (request.status == STM32WB_FLASH_STATUS_BUSY) { __WFE(); }
+        while (request.status == STM32WB_FLASH_STATUS_BUSY)
+        {
+        }
                     
-                if (request.status != STM32WB_FLASH_STATUS_SUCCESS)
-                {
-                    *p_code_return = 0xffff0002;
+        if (request.status != STM32WB_FLASH_STATUS_SUCCESS)
+        {
+            *p_code_return = 0xffff0002;
 
-                    success = false;
-                }
-                else
-                {
-                    for (firmware_offset = 0; firmware_offset < firmware_size; firmware_offset += firmware_chunk)
-                    {
-                        firmware_chunk = firmware_size - firmware_offset;
+            return false;
+        }
+
+        for (firmware_offset = 0; firmware_offset < firmware_size; firmware_offset += firmware_chunk)
+        {
+            firmware_chunk = firmware_size - firmware_offset;
+            
+            if (firmware_chunk > sizeof(firmware_data))
+            {
+                firmware_chunk = sizeof(firmware_data);
+            }
                                 
-                        if (firmware_chunk > sizeof(firmware_data)) {
-                            firmware_chunk = sizeof(firmware_data);
-                        }
-                                
-                        for (firmware_index = 0; firmware_index < firmware_chunk; firmware_index++) {
-                            firmware_data[firmware_index] = firmware_image[firmware_offset + firmware_index] ^ 0xff;
-                        }
-                                
-                        request.control = STM32WB_FLASH_CONTROL_PROGRAM | STM32WB_FLASH_CONTROL_FLUSH;
-                        request.address = firmware_address + firmware_offset;
-                        request.count = firmware_chunk;
-                        request.data = (const uint8_t*)&firmware_data[0];
-                        
-                        stm32wb_flash_request(&request);
-                        
-                        while (request.status == STM32WB_FLASH_STATUS_BUSY) { __WFE(); }
-                        
-                        if (request.status != STM32WB_FLASH_STATUS_SUCCESS)
-                        {
-                            *p_code_return = 0xffff0003;
+            for (firmware_index = 0; firmware_index < firmware_chunk; firmware_index++)
+            {
+                firmware_data[firmware_index] = firmware_image[firmware_offset + firmware_index] ^ 0xff;
+            }
+            
+            request.control = STM32WB_FLASH_CONTROL_PROGRAM | STM32WB_FLASH_CONTROL_FLUSH;
+            request.address = firmware_address + firmware_offset;
+            request.count = firmware_chunk;
+            request.data = (const uint8_t*)&firmware_data[0];
+            
+            stm32wb_flash_request(&request);
+            
+            while (request.status == STM32WB_FLASH_STATUS_BUSY)
+            {
+            }
+            
+            if (request.status != STM32WB_FLASH_STATUS_SUCCESS)
+            {
+                *p_code_return = 0xffff0003;
 
-                            success = false;
+                return false;
+            }
+        }
+        
+        status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE);
+            
+        if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+        {
+            *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE << 16) | status;
 
-                            break;
-                        }
-                    }
+            return false;
+        }
 
-                    if (success)
-                    {
-                        command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE;
-                        command.cparam = NULL;
-                        command.clen = 0;
-                        command.rparam = &fus_status;
-                        command.rsize = sizeof(fus_status);
+        while (1)
+        {
+            state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
 
-                        stm32wb_ipcc_sys_command(&command);
+            if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
+            {
+                armv7m_core_udelay(100000);
+            }
+            else
+            {
+                stm32wb_system_reset();
+            }
+        }
+    }
+    else
+    {
+        if (stm32wb_ipcc_sys_state() != STM32WB_IPCC_SYS_STATE_WIRELESS)
+        {
+            status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_START_WS);
 
-                        while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
-                        
-                        if (fus_status == STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
-                        {
-                            while (1) {  __WFE(); }
-                        }
+            if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+            {
+                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_START_WS << 16) | status;
 
-                        *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE << 16) | fus_status;
+                return false;
+            }
 
-                        success = false;
-                    }
-                }
+            while (1)
+            {
             }
         }
     }
     
-    return success;
+    return true;
 }
 
 bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32wb_ipcc_ble_event_callback_t callback, void *context)

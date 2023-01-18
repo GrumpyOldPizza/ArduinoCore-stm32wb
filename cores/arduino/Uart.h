@@ -96,7 +96,7 @@ public:
     Callback m_transmit_callback;
     
     k_work_t m_work;
-    k_event_t m_event;
+    k_sem_t m_sem;
 
     static void transmitCallback(class Uart *self);
     static void eventCallback(class Uart *self, uint32_t events);

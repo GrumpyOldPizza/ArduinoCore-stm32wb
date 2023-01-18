@@ -63,9 +63,19 @@ struct _stm32wb_rtc_tod_t {
 
 typedef void (*stm32wb_rtc_event_callback_t)(void *context, uint32_t events);
   
-typedef void (*stm32wb_rtc_alarm_callback_t)(void *context);
+typedef void (*stm32wb_rtc_alarm_callback_t)(void *context, uint64_t clock);
 
 typedef void (*stm32wb_rtc_tamp_callback_t)(void *context);
+
+typedef struct _stm32wb_rtc_alarm_t {
+    struct _stm32wb_rtc_alarm_t            *next;
+    struct _stm32wb_rtc_alarm_t            *previous;
+    struct _stm32wb_rtc_alarm_t * volatile modify;
+    volatile uint32_t                      clock_l;
+    volatile uint32_t                      clock_h;
+    volatile stm32wb_rtc_alarm_callback_t  callback;
+    void * volatile                        context;
+} stm32wb_rtc_alarm_t;
   
 #define STM32WB_RTC_IRQ_PRIORITY                      ARMV7M_IRQ_PRIORITY_RTC
 
@@ -88,10 +98,10 @@ typedef void (*stm32wb_rtc_tamp_callback_t)(void *context);
 #define STM32WB_RTC_TAMP_CONTROL_EDGE_FALLING         0x00000004
 #define STM32WB_RTC_TAMP_CONTROL_EDGE_RISING          0x00000008
 
-#define STM32WB_RTC_PREDIV_S                          1024
-#define STM32WB_RTC_PREDIV_A                          32
+#define STM32WB_RTC_PREDIV_S                          2048
+#define STM32WB_RTC_PREDIV_A                          16
   
-#define STM32WB_RTC_ALRMSSR_MASKSS                    (RTC_ALRMBSSR_MASKSS_3 | RTC_ALRMBSSR_MASKSS_1)
+#define STM32WB_RTC_ALRMSSR_MASKSS                    (RTC_ALRMBSSR_MASKSS_3 | RTC_ALRMBSSR_MASKSS_1 | RTC_ALRMBSSR_MASKSS_0)
   
 #define STM32WB_RTC_CLOCK_TICKS_PER_SECOND            STM32WB_RTC_PREDIV_S
 
@@ -101,7 +111,7 @@ typedef void (*stm32wb_rtc_tamp_callback_t)(void *context);
 #define STM32WB_RTC_BKP16R_NOT_DATA_SHIFT             16
 #define STM32WB_RTC_BKP16R_REVISION_MASK              0x000000ff
 #define STM32WB_RTC_BKP16R_REVISION_SHIFT             0
-#define STM32WB_RTC_BKP16R_REVISION_CURRENT           0x00000002
+#define STM32WB_RTC_BKP16R_REVISION_CURRENT           0x00000003
 #define STM32WB_RTC_BKP16R_FATAL_MASK                 0x00000100
 #define STM32WB_RTC_BKP16R_FATAL_SHIFT                8
 #define STM32WB_RTC_BKP16R_FATAL                      STM32WB_RTC_BKP16R_FATAL_MASK
@@ -119,17 +129,22 @@ typedef void (*stm32wb_rtc_tamp_callback_t)(void *context);
 #define STM32WB_RTC_BKP18R_SECONDS_OFFSET_MASK        0xffffffff
 #define STM32WB_RTC_BKP18R_SECONDS_OFFSET_SHIFT       0
 
-#define STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK          0x000003ff
+#define STM32WB_RTC_BKP19R_TICKS_OFFSET_MASK          0x000007ff
 #define STM32WB_RTC_BKP19R_TICKS_OFFSET_SHIFT         0
-#define STM32WB_RTC_BKP19R_ZONE_MASK                  0x0003fc00
-#define STM32WB_RTC_BKP19R_ZONE_SHIFT                 10
-#define STM32WB_RTC_BKP19R_ZONE_SIZE                  8
+#define STM32WB_RTC_BKP19R_ZONE_MASK                  0x0003f800
+#define STM32WB_RTC_BKP19R_ZONE_SHIFT                 11
+#define STM32WB_RTC_BKP19R_ZONE_SIZE                  7
+#define STM32WB_RTC_BKP19R_ZONE_BIAS                  (12 * 3600)
+#define STM32WB_RTC_BKP19R_ZONE_SCALE                 900
 #define STM32WB_RTC_BKP19R_DST_MASK                   0x000c0000
 #define STM32WB_RTC_BKP19R_DST_SHIFT                  18
 #define STM32WB_RTC_BKP19R_DST_SIZE                   2
+#define STM32WB_RTC_BKP19R_DST_BIAS                   0
+#define STM32WB_RTC_BKP19R_DST_SCALE                  3600
 #define STM32WB_RTC_BKP19R_LEAP_SECONDS_MASK          0x0ff00000
 #define STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT         20
 #define STM32WB_RTC_BKP19R_LEAP_SECONDS_SIZE          8
+#define STM32WB_RTC_BKP19R_LEAP_SECONDS_BIAS          128
 #define STM32WB_RTC_BKP19R_TIME_WRITTEN_MASK          0x10000000
 #define STM32WB_RTC_BKP19R_TIME_WRITTEN_SHIFT         28
 #define STM32WB_RTC_BKP19R_TIME_WRITTEN               STM32WB_RTC_BKP19R_TIME_WRITTEN_MASK
@@ -160,8 +175,6 @@ extern uint64_t stm32wb_rtc_time_to_clock(uint32_t seconds, uint32_t ticks);
 extern void stm32wb_rtc_time_read(uint32_t *p_seconds, uint32_t *p_ticks);
 extern void stm32wb_rtc_time_write(uint32_t seconds);
 extern void stm32wb_rtc_time_adjust(int32_t ticks);
-extern int32_t stm32wb_rtc_time_to_leap_seconds(uint32_t seconds);
-extern int32_t stm32wb_rtc_utc_to_leap_seconds(uint32_t seconds);
 extern int32_t stm32wb_rtc_get_leap_seconds(void);
 extern void stm32wb_rtc_set_leap_seconds(int32_t leap_seconds);
 extern int32_t stm32wb_rtc_get_zone(void);
@@ -171,15 +184,26 @@ extern void stm32wb_rtc_set_dst(uint32_t dst);
 
 extern void stm32wb_rtc_time_to_tod(uint32_t seconds, uint32_t ticks, stm32wb_rtc_tod_t *p_tod);
 extern void stm32wb_rtc_tod_to_time(const stm32wb_rtc_tod_t *tod, uint32_t *p_seconds, uint32_t *p_ticks);
+  
+#define STM32WB_RTC_ALARM_INIT()                \
+(stm32wb_rtc_alarm_t)                           \
+{                                               \
+    .next = NULL,                               \
+    .previous = NULL,                           \
+    .modify = NULL,                             \
+    .clock_l = 0,                               \
+    .clock_h = 0,                               \
+    .callback = NULL,                           \
+    .context = NULL,                            \
+}
 
-extern void stm32wb_rtc_alarm_start(uint32_t seconds, uint32_t ticks, stm32wb_rtc_alarm_callback_t callback, void *context);
-extern void stm32wb_rtc_alarm_stop();
-extern bool stm32wb_rtc_alarm_busy();
+extern bool stm32wb_rtc_alarm_start(stm32wb_rtc_alarm_t *alarm, uint64_t clock, stm32wb_rtc_alarm_callback_t callback, void *context);
+extern void stm32wb_rtc_alarm_stop(stm32wb_rtc_alarm_t *alarm);
+extern bool stm32wb_rtc_alarm_is_pending(stm32wb_rtc_alarm_t *alarm);
 
 extern bool stm32wb_rtc_tamp_catch(uint16_t pin, uint32_t control, stm32wb_rtc_tamp_callback_t callback, void *context);
 
-extern void stm32wb_rtc_standby_enter(uint32_t timeout);
-extern uint32_t stm32wb_rtc_standby_leave(uint32_t wakeup);
+extern void stm32wb_rtc_standby(uint32_t timeout);
 extern void stm32wb_rtc_reset(void);
 
 #ifdef __cplusplus

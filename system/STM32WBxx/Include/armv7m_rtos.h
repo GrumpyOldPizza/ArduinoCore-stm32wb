@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2022 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2019-2023 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -26,15 +26,78 @@
  * WITH THE SOFTWARE.
  */
 
-#if !defined(_RTOS_API_H)
-#define _RTOS_API_H
+#if !defined(_ARMV7M_RTOS_H)
+#define _ARMV7M_RTOS_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+  
+#define ARMV7M_RTOS_MPU_SUPPORTED   1
+#define ARMV7M_RTOS_HOOK_SUPPORTED  0
+#define ARMV7M_RTOS_DEBUG_SUPPORTED 1
+  
+typedef struct _armv7m_context_t {
+    uint32_t            r4;
+    uint32_t            r5;
+    uint32_t            r6;
+    uint32_t            r7;
+    uint32_t            r8;
+    uint32_t            r9;
+    uint32_t            r10;
+    uint32_t            r11;
+    uint32_t            r0;
+    uint32_t            r1;
+    uint32_t            r2;
+    uint32_t            r3;
+    uint32_t            r12;
+    uint32_t            lr;
+    uint32_t            pc;
+    uint32_t            xpsr;
+} armv7m_context_t;
+
+#if (__FPU_PRESENT == 1)
+
+typedef struct _armv7m_context_fpu_t {
+    uint64_t            d8;
+    uint64_t            d9;
+    uint64_t            d10;
+    uint64_t            d11;
+    uint64_t            d12;
+    uint64_t            d13;
+    uint64_t            d14;
+    uint64_t            d15;
+    uint32_t            r4;
+    uint32_t            r5;
+    uint32_t            r6;
+    uint32_t            r7;
+    uint32_t            r8;
+    uint32_t            r9;
+    uint32_t            r10;
+    uint32_t            r11;
+    uint32_t            r0;
+    uint32_t            r1;
+    uint32_t            r2;
+    uint32_t            r3;
+    uint32_t            r12;
+    uint32_t            lr;
+    uint32_t            pc;
+    uint32_t            xpsr;
+    uint64_t            d0;
+    uint64_t            d1;
+    uint64_t            d2;
+    uint64_t            d3;
+    uint64_t            d4;
+    uint64_t            d5;
+    uint64_t            d6;
+    uint64_t            d7;
+    uint32_t            fpscr;
+    uint32_t            reserved;
+} armv7m_context_fpu_t;
+  
+#endif /* __FPU_PRESENT == 1 */
 
 typedef struct _k_task_t  k_task_t;
-typedef struct _k_event_t k_event_t;
 typedef struct _k_sem_t   k_sem_t;
 typedef struct _k_mutex_t k_mutex_t;
 typedef struct _k_work_t  k_work_t;
@@ -62,7 +125,7 @@ struct _k_task_t {
     k_task_t                     *join;
     k_mutex_t                    *mutex;
     k_task_t * volatile          resume;
-    k_task_t * volatile          wakeup;
+    k_task_t * volatile          release;
   
     struct {
 	k_task_t                     *next;
@@ -76,9 +139,8 @@ struct _k_task_t {
 	    k_task_t                     *task;
 	}                            join;
 	struct {
-	    k_event_t                    *event;
-	    uint32_t                     mask;
-	    uint32_t                     *p_mask_return;
+	    uint32_t                     events;
+	    uint32_t                     *p_events_return;
 	}                            event;
 	struct {
 	    k_sem_t                      *sem;
@@ -88,18 +150,15 @@ struct _k_task_t {
 	}                            mutex;
     }                            wait;
 };
-
-struct _k_event_t {
-    volatile uint32_t            mask;
-    k_event_t * volatile         send;
-    k_task_t                     *waiting;
-};
-
+  
 struct _k_sem_t {
     volatile uint16_t            count;
     uint16_t                     limit;
-    k_sem_t * volatile           release;
-    k_task_t                     *waiting;
+    struct {
+	k_task_t                     *head;
+	k_task_t                     *tail;
+	k_task_t * volatile          release;
+    }                            waiting;
 };
 
 struct _k_mutex_t {
@@ -131,8 +190,7 @@ struct _k_alarm_t {
     k_alarm_t * volatile         modify;
     volatile uint32_t            clock_l;
     volatile uint32_t            clock_h;
-    volatile uint32_t            ticks;
-    volatile uint32_t            delta;
+    volatile uint32_t            period;
 };
 
 #define K_NO_ERROR                   0
@@ -186,11 +244,9 @@ struct _k_alarm_t {
 
 #define K_WAIT_NONE                  0
 #define K_WAIT_JOIN                  1
-#define K_WAIT_DELAY                 2
-#define K_WAIT_SLEEP                 3
-#define K_WAIT_EVENT                 4
-#define K_WAIT_SEM                   5
-#define K_WAIT_MUTEX                 6
+#define K_WAIT_EVENT                 2
+#define K_WAIT_SEM                   3
+#define K_WAIT_MUTEX                 4
   
 #define K_EVENT_ANY                  0x00000000
 #define K_EVENT_ALL                  0x00000001
@@ -203,21 +259,19 @@ struct _k_alarm_t {
 #define K_MUTEX_PRIORITY_INHERIT     0x00000002
 #define K_MUTEX_PRIORITY_PROTECT     0x00000004
   
-#define K_SYSTEM_TICKS_PER_SECOND    32768
-  
 typedef struct _k_task_info_t {
     const char                  *name;
     uint8_t                     priority;
     uint8_t                     bpriority;
     uint8_t                     state;
     uint8_t                     wait;
+    uint32_t                    events;
 } k_task_info_t;
   
 typedef void (*k_task_create_hook_t)(k_task_t *task, const char *name, uint32_t priority, void *stack_base, uint32_t stack_size);
 typedef void (*k_task_destroy_hook_t)(k_task_t *task);
 typedef void (*k_task_exit_hook_t)(void);
 typedef void (*k_task_terminate_hook_t)(k_task_t *task);
-typedef void (*k_task_stack_hook_t)(k_task_t *task, void *stack_base, uint32_t stack_size);
 typedef void (*k_task_block_hook_t)(k_task_t *task, uint32_t cause);
 typedef void (*k_task_ready_hook_t)(k_task_t *task);
 typedef void (*k_task_run_hook_t)(k_task_t *task);
@@ -263,31 +317,17 @@ extern int k_task_set_priority(k_task_t *task, uint32_t priority, uint32_t *p_pr
 extern int k_task_get_priority(k_task_t *task, uint32_t *p_priority_return);
 extern int k_task_delay(uint32_t ticks);
 extern int k_task_delay_until(uint64_t clock);
-extern int k_task_sleep(uint32_t timeout);
-extern int k_task_wakeup(k_task_t *task);
 extern int k_task_yield(void);
 
-#define K_EVENT_INIT()                          \
-(k_event_t)                                     \
-{                                               \
-    .mask = 0,                                  \
-    .send = NULL,                               \
-    .waiting = NULL                             \
-}
-
-extern int k_event_init(k_event_t *event);
-extern int k_event_deinit(k_event_t *event);
-extern int k_event_send(k_event_t *event, uint32_t mask);
-extern int k_event_receive(k_event_t *event, uint32_t mask, uint32_t mode, uint32_t timeout, uint32_t *p_mask_return);
-extern uint32_t k_event_mask(k_event_t *event);
+extern int k_event_send(k_task_t *task, uint32_t events);
+extern int k_event_receive(uint32_t events, uint32_t mode, uint32_t timeout, uint32_t *p_events_return);
 
 #define K_SEM_INIT(_count, _limit)              \
 (k_sem_t)                                       \
 {                                               \
     .count = (uint16_t)(_count),                \
     .limit = (uint16_t)(_limit),                \
-    .release = NULL,                            \
-    .waiting = NULL                             \
+    .waiting = { NULL, NULL, NULL }             \
 }
 
 extern int k_sem_init(k_sem_t *sem, uint32_t count, uint32_t limit);
@@ -339,8 +379,7 @@ extern bool k_work_is_in_progress(void);
     .modify = NULL,                             \
     .clock_l = 0,                               \
     .clock_h = 0,                               \
-    .ticks = 0,                                 \
-    .delta = 0                                  \
+    .period = 0                                 \
 }
   
 extern int k_alarm_init(k_alarm_t *alarm, k_alarm_routine_t routine, void *context);
@@ -354,4 +393,4 @@ extern bool k_alarm_is_active(k_alarm_t *alarm);
 }
 #endif
 
-#endif /* _RTOS_API_H */
+#endif /* _ARMV7M_RTOS_H */

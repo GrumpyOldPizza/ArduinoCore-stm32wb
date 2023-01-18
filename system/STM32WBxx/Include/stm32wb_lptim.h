@@ -72,20 +72,14 @@ typedef struct _stm32wb_lptim_timeout_t {
     struct _stm32wb_lptim_timeout_t            *next;
     struct _stm32wb_lptim_timeout_t            *previous;
     struct _stm32wb_lptim_timeout_t * volatile modify;
-    volatile uint32_t                          clock_l;
-    volatile uint32_t                          clock_h;
+    volatile uint32_t                          clock;
     volatile stm32wb_lptim_timeout_callback_t  callback;
     void * volatile                            context;
 } stm32wb_lptim_timeout_t;
   
-extern void __stm32wb_lptim_timeout_initialize(void);
-extern void __stm32wb_lptim_timeout_stop_leave(void);
-
-extern uint64_t stm32wb_lptim_timeout_clock(void);
-extern void stm32wb_lptim_timeout_absolute(stm32wb_lptim_timeout_t *timeout, uint64_t clock, stm32wb_lptim_timeout_callback_t callback, void *context);
-extern void stm32wb_lptim_timeout_relative(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context);
-extern void stm32wb_lptim_timeout_cancel(stm32wb_lptim_timeout_t *timeout);
-extern bool stm32wb_lptim_timeout_is_active(stm32wb_lptim_timeout_t *timeout);
+extern bool stm32wb_lptim_timeout_start(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context);
+extern void stm32wb_lptim_timeout_stop(stm32wb_lptim_timeout_t *timeout);
+extern bool stm32wb_lptim_timeout_is_pending(stm32wb_lptim_timeout_t *timeout);
   
 #define STM32WB_LPTIM_TIMEOUT_INIT()            \
 (stm32wb_lptim_timeout_t)                       \
@@ -93,8 +87,7 @@ extern bool stm32wb_lptim_timeout_is_active(stm32wb_lptim_timeout_t *timeout);
     .next = NULL,                               \
     .previous = NULL,                           \
     .modify = NULL,                             \
-    .clock_l = 0,                               \
-    .clock_h = 0,                               \
+    .clock = 0,                                 \
     .callback = NULL,                           \
     .context = NULL,                            \
 }

@@ -108,7 +108,7 @@ static inline void stm32wb_dma1_interrupt(stm32wb_dma_t *dma, DMA_Channel_TypeDe
     {
 	DMA1->IFCR = (15 << shift);
 
-	armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
+	__armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
 
 	if (callback)
 	{
@@ -129,7 +129,7 @@ static inline void stm32wb_dma2_interrupt(stm32wb_dma_t *dma, DMA_Channel_TypeDe
     {
 	DMA2->IFCR = (15 << shift);
 
-	armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
+	__armv7m_atomic_load_2_restart((volatile uint32_t*)&dma->callback, (uint32_t*)&callback, (uint32_t*)&context);
 
 	if (callback)
 	{

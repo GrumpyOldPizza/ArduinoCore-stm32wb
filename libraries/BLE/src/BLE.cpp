@@ -108,6 +108,7 @@ extern "C" {
 #define BLE_LSE_SOURCE_NOCALIB                           0x00
 #define BLE_LSE_SOURCE_CALIB                             0x01
 #define BLE_LSE_SOURCE_MOD5MM                            0x02
+#define BLE_LSE_SOURCE_HSE                               0x04 /* HSE/1024 vs LSE */
 
 #define BLE_OPTION_LL_ONLY                               0x01
 #define BLE_OPTION_NO_SERVICE_CHANGED                    0x02
@@ -119,6 +120,9 @@ extern "C" {
 
 #define BLE_RX_MODEL_AGC_RSSI_LEGACY                     0x00
 #define BLE_RX_MODEL_AGC_RSSI_BLOCKER                    0x01
+
+#define BLE_CORE_VERSION_5_2                             11 
+#define BLE_CORE_VERSION_5_3                             12
 
 #define BLE_VALUE_ATTRIB_HANDLE_OFFSET                   1
 #define BLE_CCCD_ATTRIB_HANDLE_OFFSET                    2
@@ -1762,7 +1766,7 @@ static const uint8_t ER[16] = { 0xfe,0xdc,0xba,0x09,0x87,0x65,0x43,0x21,0xfe,0xd
 static const uint8_t IR[16] = { 0x12,0x34,0x56,0x78,0x9a,0xbc,0xde,0xf0,0x12,0x34,0x56,0x78,0x9a,0xbc,0xde,0xf0 };
 
 static void hci_done_req(k_task_t *task) {
-    k_task_wakeup(task);
+    k_event_send(task, WIRING_EVENT_TRANSIENT);
 }
 
 int hci_send_req(stm32wb_ipcc_ble_command_t *command, bool async) {
@@ -1779,7 +1783,7 @@ int hci_send_req(stm32wb_ipcc_ble_command_t *command, bool async) {
         return BLE_STATUS_ERROR;
     }
 
-    if (k_task_sleep(K_TIMEOUT_FOREVER) != K_NO_ERROR) {
+    if (k_event_receive(WIRING_EVENT_TRANSIENT, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL) != K_NO_ERROR) {
         return BLE_STATUS_ERROR;
     }
 
@@ -1886,6 +1890,9 @@ bool BLELocalDevice::begin(int mtu, uint32_t options) {
         0,                                                                                             /* MaxAdvDataLen              */
         BLE_TX_PATH_COMPENSATION,                                                                      /* TxPathCompensation         */
         BLE_RX_PATH_COMPENSATION                                                                       /* RxPacthCompensation        */
+#if 0        
+        BLE_CORE_VERSION_5_2,                                                                          /* BleCoreVersion             */
+#endif
     };
 
     if (!stm32wb_ipcc_sys_enable()) {

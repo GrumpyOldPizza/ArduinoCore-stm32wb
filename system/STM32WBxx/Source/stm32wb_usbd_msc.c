@@ -28,7 +28,6 @@
 
 
 #include "armv7m.h"
-#include "rtos_api.h"
 #include "stm32wb_usbd.h"
 #include "stm32wb_usbd_dcd.h"
 #include "stm32wb_usbd_msc.h"
@@ -250,8 +249,6 @@ typedef struct _stm32wb_usbd_msc_control_t {
 } stm32wb_usbd_msc_control_t;
 
 static stm32wb_usbd_msc_control_t stm32wb_usbd_msc_control;
-
-static k_event_t stm32wb_usbd_msc_event = K_EVENT_INIT();
 
 static k_task_t stm32wb_usbd_msc_task;
 
@@ -1207,7 +1204,7 @@ static void SCSI_ProcessWrite(void)
 
 static void MSC_BOT_Event(uint32_t events)
 {
-    k_event_send(&stm32wb_usbd_msc_event, events);
+    k_event_send(&stm32wb_usbd_msc_task, events);
 }
 
 static __attribute__((noreturn)) void MSC_BOT_Routine(void *context) 
@@ -1216,7 +1213,7 @@ static __attribute__((noreturn)) void MSC_BOT_Routine(void *context)
 
     while (1)
     {
-        k_event_receive(&stm32wb_usbd_msc_event, ~0, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, &events);
+        k_event_receive(~0, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, &events);
 
 	if (events & MSC_BOT_EVENT_CONFIGURE)
 	{

@@ -64,7 +64,7 @@ CDC::CDC(void (*serialEventRun)(void)) {
     
     m_work = K_WORK_INIT((k_work_routine_t)&CDC::notifyRoutine, this);
 
-    m_event = K_EVENT_INIT();
+    m_sem = K_SEM_INIT(0, 1);
 }
 
 void CDC::begin(unsigned long baudrate) {
@@ -135,7 +135,7 @@ int CDC::read(uint8_t *buffer, size_t size) {
 void CDC::flush() {
     if (k_task_is_in_progress()) {
         while (m_tx_busy) {
-            k_event_receive(&m_event, 1, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
+            k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
         }
     }
 }
@@ -217,7 +217,7 @@ size_t CDC::write(const uint8_t *buffer, size_t size) {
                 }
 
                 if (m_tx_busy) {
-                    k_event_receive(&m_event, 1, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
+                    k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
                 }
             }
         } while (tx_size == 0);
@@ -401,7 +401,7 @@ bool CDC::rts() {
 void CDC::transmitCallback(class CDC *self) {
     uint32_t tx_read, tx_write, tx_count;
 
-    k_event_send(&self->m_event, 1);
+    k_sem_release(&self->m_sem);
     
     tx_count = self->m_tx_count;
     

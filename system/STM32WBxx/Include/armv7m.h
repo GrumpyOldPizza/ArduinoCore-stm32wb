@@ -40,6 +40,7 @@
 #include "armv7m_atomic.h"
 #include "armv7m_core.h"
 #include "armv7m_pendsv.h"
+#include "armv7m_rtos.h"
 #include "armv7m_rtt.h"
 #include "armv7m_svcall.h"
 #include "armv7m_systick.h"

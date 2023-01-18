@@ -37,7 +37,6 @@
 #include <sys/unistd.h>
 
 #include "armv7m.h"
-#include "rtos_api.h"
 
 extern int wiring_stdin_read(char *data, int nbytes);
 extern int wiring_stdout_write(const char *data, int nbytes);

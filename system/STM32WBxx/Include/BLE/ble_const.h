@@ -159,6 +159,13 @@ extern int hci_send_req( struct hci_request* req, bool async );
 #define DIVC( x, y )           (((x)+(y)-1)/(y))
 #endif
 
+#ifndef __PACKED_STRUCT
+#define __PACKED_STRUCT PACKED(struct)
+#endif
+
+#ifndef __PACKED_UNION
+#define __PACKED_UNION PACKED(union)
+#endif
 
 #ifndef __WEAK
 #define __WEAK __attribute__((weak))

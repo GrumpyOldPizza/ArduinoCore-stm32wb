@@ -10,7 +10,8 @@ OBJCOPY  = $(TOOLS)/bin/arm-none-eabi-objcopy
 CFLAGS   = -c -g3 -Os $(WARNINGS) -std=gnu11 -ffast-math -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 CXXFLAGS = -c -g3 -Os $(WARNINGS) -std=gnu++11 -ffast-math -ffunction-sections -fdata-sections -fno-threadsafe-statics -nostdlib -fno-use-cxa-atexit -fno-rtti -fno-exceptions -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 ASFLAGS  = -c -g -x assembler-with-cpp $(EXTRAS) $(DEFINES) $(INCLUDES)
-LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LinkScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
+LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LdScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
+#LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LinkScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs
 WARNINGS = -Wall -Wextra
 EXTRAS   = -mcpu=cortex-m4 -march=armv7e-m+fp -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 DEFINES  = -DSTM32WB55xx -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE

@@ -4,14 +4,13 @@
 #include "../Firmware/stm32wb5x_FUS_fw.h"
 #include "../Firmware/stm32wb5x_FUS_fw_for_fus_0_5_3.h"
 //#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_13_3.h"
-#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_14_0.h"
-//#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_14_1.h"
+#include "../Firmware/stm32wb5x_BLE_Stack_full_fw_1_14_1.h"
 
 bool connected = false;
 bool success = true;
 uint32_t code = 0;
 
-#if defined(USBCONN)
+#if defined(USBCON)
 void initUSB() {
 }
 #endif
@@ -32,7 +31,7 @@ void setup(void) {
 
     digitalWrite(LED_BUILTIN, 0);
 
-#if defined(USBCONN)
+#if defined(USBCON)
     USBDevice.begin();
     USBDevice.start();
 #endif
@@ -85,5 +84,3 @@ void loop(void) {
     delay(500);
     digitalWrite(LED_BUILTIN, 0);
 }
-
-
