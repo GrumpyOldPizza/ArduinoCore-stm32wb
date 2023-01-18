@@ -128,7 +128,7 @@ env.Append(
 if not board.get("build.ldscript", ""):
     env.Append(
         LIBPATH=[
-            os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "LinkScripts")
+            os.path.join(FRAMEWORK_DIR, "system", "STM32WBxx", "LdScripts")
         ]
     )
     env.Replace(LDSCRIPT_PATH="STM32WB55xx_FLASH.ld")
