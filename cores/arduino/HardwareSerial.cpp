@@ -101,7 +101,7 @@ int wiring_stderr_write(const char *data, int nbytes) {
         return Serial.write((const uint8_t*)data, nbytes);
     }
 
-    retirn 0;
+    return 0;
 }
 
 }

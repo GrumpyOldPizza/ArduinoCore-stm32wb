@@ -27,7 +27,6 @@
  */
 
 #include "armv7m.h"
-#include "rtos_api.h"
 #include "../../CMSIS/RTOS2/Include/cmsis_os2.h"
 
 #include <malloc.h>
@@ -41,7 +40,6 @@ extern void __malloc_unlock(struct _reent *);
 
 #define OS_THREAD_MAGIC      0xff544844
 #define OS_TIMER_MAGIC       0xff544d52
-#define OS_EVENT_MAGIC       0xff4f5654
 #define OS_MUTEX_MAGIC       0xff4e5458
 #define OS_SEMAPHORE_MAGIC   0xff53454d
 
@@ -49,7 +47,6 @@ typedef struct _osThread_t {
     uint32_t                      magic;
     const char                    *name;
     k_task_t                      task;
-    k_event_t                     event;
     osThreadFunc_t                func;
     void                          *argument;
     void                          *cb_mem;
@@ -63,13 +60,6 @@ typedef struct _osTimer_t {
     osTimerType_t                 type;
     void                          *cb_mem;
 } osTimer_t;
-
-typedef struct _osEventFlags_t {
-    uint32_t                      magic;
-    const char                    *name;
-    k_event_t                     event;
-    void                          *cb_mem;
-} osEventFlags_t;
   
 typedef struct osMutex_t {
     uint32_t                      magic;
@@ -103,14 +93,6 @@ static const osTimerAttr_t osTimerAttrDefault =
     .name = NULL,
     .attr_bits = 0,
     .cb_mem = NULL,
-    .cb_size = 0
-};
-
-static const osEventFlagsAttr_t osEventFlagsAttrDefault =
-{
-    .name = NULL,
-    .attr_bits = 0,
-    .cb_mem = 0,
     .cb_size = 0
 };
 
@@ -462,7 +444,6 @@ osThreadId_t osThreadNew(osThreadFunc_t func, void *argument, const osThreadAttr
 
     thread->magic = OS_THREAD_MAGIC;
     thread->name = name;
-    thread->event = K_EVENT_INIT();
     thread->func = func;
     thread->argument = argument;
     thread->cb_mem = attr->cb_mem ? NULL : thread;
@@ -816,7 +797,6 @@ uint32_t osThreadEnumerate(osThreadId_t *thread_array, uint32_t array_items)
 uint32_t osThreadFlagsSet(osThreadId_t thread_id, uint32_t flags)
 {
     osThread_t *thread = (osThread_t*)thread_id;
-    uint32_t flags_return;
     int status;
     
     if (!thread || (thread->magic != OS_THREAD_MAGIC))
@@ -829,92 +809,59 @@ uint32_t osThreadFlagsSet(osThreadId_t thread_id, uint32_t flags)
         return osFlagsErrorParameter;
     }
 
-    status = k_event_send(&thread->event, flags);
+    status = k_event_send(&thread->task, flags);
 
     if (status != K_NO_ERROR)
     {
         return osXlateKernelFlags[status];
     }
 
-    status = k_event_receive(&thread->event, 0, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_NONE, &flags_return);
-    
-    if (status != K_NO_ERROR)
-    {
-        return osXlateKernelFlags[status];
-    }
-    
-    return flags_return;
+    return thread->task.events;
 }
  
 uint32_t osThreadFlagsClear(uint32_t flags)
 {
-    osThread_t *thread;
+    k_task_t *self;
     uint32_t flags_return;
     int status;
-
-    if (!k_task_is_in_progress())
-    {
-        return osFlagsErrorISR;
-    }
-
-    thread = (osThread_t*)(((uint32_t)k_task_self()) - offsetof(osThread_t, task));
-
-    if (thread->magic != OS_THREAD_MAGIC)
-    {
-        return osFlagsErrorUnknown;
-    }
     
     if (flags & 0x80000000)
     {
         return osFlagsErrorParameter;
     }
-    
-    status = k_event_receive(&thread->event, flags, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_NONE, &flags_return);
-    
+
+    status = k_event_receive(flags, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_NONE, &flags_return);
+
     if (status != K_NO_ERROR)
     {
         return osXlateKernelFlags[status];
     }
 
-    return flags_return;
+    self = k_task_self();
+
+    return self->events | flags_return;
 }
 
 uint32_t osThreadFlagsGet(void)
 {
-    osThread_t *thread;
+    k_task_info_t info;
+    int status;
+    
+    status = k_task_info(k_task_self(), &info);
 
-    if (!k_task_is_in_progress())
+    if (status != K_NO_ERROR)
     {
-        return osFlagsErrorISR;
-    }
-
-    thread = (osThread_t*)(((uint32_t)k_task_self()) - offsetof(osThread_t, task));
-
-    if (thread->magic != OS_THREAD_MAGIC)
-    {
-        return osFlagsErrorUnknown;
+        return osXlateKernelFlags[status];
     }
     
-    return k_event_mask(&thread->event);
+    return info.events;
 }
  
 uint32_t osThreadFlagsWait(uint32_t flags, uint32_t options, uint32_t timeout)
 {
-    osThread_t *thread;
+    k_task_info_t info;
     uint32_t flags_return;
     int status;
-
-    if (!k_task_is_in_progress())
-    {
-        return osFlagsErrorISR;
-    }
-
-    thread = (osThread_t*)(((uint32_t)k_task_self()) - offsetof(osThread_t, task));
-
-    if (thread->magic != OS_THREAD_MAGIC)
-    {
-        return osFlagsErrorUnknown;
-    }
     
     if (flags & 0x80000000)
     {
@@ -926,14 +873,21 @@ uint32_t osThreadFlagsWait(uint32_t flags, uint32_t options, uint32_t timeout)
         return osFlagsErrorParameter;
     }
 
-    status = k_event_receive(&thread->event, flags, (((options & osFlagsWaitAll) ? K_EVENT_ALL : K_EVENT_ANY) | ((options & osFlagsNoClear) ? 0 : K_EVENT_CLEAR)), timeout, &flags_return);
+    status = k_event_receive(flags, (((options & osFlagsWaitAll) ? K_EVENT_ALL : K_EVENT_ANY) | ((options & osFlagsNoClear) ? 0 : K_EVENT_CLEAR)), timeout, &flags_return);
 
     if (status != K_NO_ERROR)
     {
         return osXlateKernelFlags[status];
     }
 
-    return flags_return | k_event_mask(&thread->event);
+    status = k_task_info(k_task_self(), &info);
+
+    if (status != K_NO_ERROR)
+    {
+        return osXlateKernelFlags[status];
+    }
+    
+    return info.events | flags_return;
 }    
 
 osStatus_t osDelay(uint32_t ticks)
@@ -952,6 +906,7 @@ osStatus_t osDelayUntil(uint32_t ticks)
     int status;
     
     clock = k_system_clock();
+
     reference = clock;
     
     status = k_task_delay_until(clock + ((uint32_t)(ticks - reference)));
@@ -1125,213 +1080,7 @@ osStatus_t osTimerDelete(osTimerId_t timer_id)
     return osXlateKernelStatus[status];
 }
 
-osEventFlagsId_t osEventFlagsNew (const osEventFlagsAttr_t *attr)
-{
-    osEventFlags_t *ef;
-    const char *name;
-    
-    if (armv7m_core_is_in_interrupt())
-    {
-        return (osEventFlagsId_t)NULL;
-    }
-
-    if (!attr)
-    {
-        attr = &osEventFlagsAttrDefault;
-    }
-
-    name = attr->name;
-
-    ef = (osEventFlags_t*)attr->cb_mem;
-
-    if (ef)
-    {
-        if (((uint32_t)ef & 3) || (attr->cb_size < sizeof(osEventFlags_t)))
-        {
-            return (osEventFlagsId_t)NULL;
-        }
-    }
-    else
-    {
-        if (attr->cb_size != 0)
-        {
-            return (osEventFlagsId_t)NULL;
-        }
-    }
-
-    if (!ef)
-    {
-        ef = (osEventFlags_t*)malloc(sizeof(osEventFlags_t));
-
-        if (!ef)
-        {
-            return (osEventFlagsId_t)NULL;
-        }
-    }
-
-    ef->magic = OS_EVENT_MAGIC;
-    ef->name = name;
-    ef->cb_mem = attr->cb_mem ? NULL : ef;
-    
-    if (k_event_init(&ef->event) != K_NO_ERROR)
-    {
-        ef->magic = ~OS_EVENT_MAGIC;
-
-        if (!attr->cb_mem)
-        {
-            free(ef);
-        }
-
-        return (osEventFlagsId_t)NULL;
-    }
-
-    return (osEventFlagsId_t)ef;
-}
  
-const char *osEventFlagsGetName(osEventFlagsId_t ef_id)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-
-    if (armv7m_core_is_in_interrupt())
-    {
-        return NULL;
-    }
-    
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return NULL;
-    }
-
-    return ef->name;
-}
- 
-uint32_t osEventFlagsSet(osEventFlagsId_t ef_id, uint32_t flags)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-    uint32_t flags_return;
-    int status;
-    
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return osFlagsErrorParameter;
-    }
-
-    if (flags & 0x80000000)
-    {
-        return osFlagsErrorParameter;
-    }
-
-    status = k_event_send(&ef->event, flags);
-
-    if (status != K_NO_ERROR)
-    {
-        return osXlateKernelFlags[status];
-    }
-
-    status = k_event_receive(&ef->event, 0, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_NONE, &flags_return);
-    
-    if (status != K_NO_ERROR)
-    {
-        return osXlateKernelFlags[status];
-    }
-    
-    return flags_return;
-}
-
-uint32_t osEventFlagsClear(osEventFlagsId_t ef_id, uint32_t flags)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-    uint32_t flags_return;
-    int status;
-    
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return osFlagsErrorParameter;
-    }
-
-    if (flags & 0x80000000)
-    {
-        return osFlagsErrorParameter;
-    }
-
-    status = k_event_receive(&ef->event, flags, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_NONE, &flags_return);
-    
-    if (status != K_NO_ERROR)
-    {
-        return osXlateKernelFlags[status];
-    }
-    
-    return flags_return;
-}
- 
-uint32_t osEventFlagsGet(osEventFlagsId_t ef_id)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-    
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return 0;
-    }
-  
-    return k_event_mask(&ef->event);
-}
- 
-uint32_t osEventFlagsWait(osEventFlagsId_t ef_id, uint32_t flags, uint32_t options, uint32_t timeout)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-    uint32_t flags_return;
-    int status;
-
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return osFlagsErrorParameter;
-    }
-
-    if (flags & 0x80000000)
-    {
-        return osFlagsErrorParameter;
-    }
-
-    if (options & ~(osFlagsWaitAll | osFlagsNoClear))
-    {
-        return osFlagsErrorParameter;
-    }
-
-    status = k_event_receive(&ef->event, flags, (((options & osFlagsWaitAll) ? K_EVENT_ALL : K_EVENT_ANY) | ((options & osFlagsNoClear) ? 0 : K_EVENT_CLEAR)), timeout, &flags_return);
-
-    if (status != K_NO_ERROR)
-    {
-        return osXlateKernelFlags[status];
-    }
-    
-    return flags_return | k_event_mask(&ef->event);
-}
-
-osStatus_t osEventFlagsDelete(osEventFlagsId_t ef_id)
-{
-    osEventFlags_t *ef = (osEventFlags_t*)ef_id;
-    int status;
-    
-    if (!ef || (ef->magic != OS_EVENT_MAGIC))
-    {
-        return osErrorParameter;
-    }
-
-    status = k_event_deinit(&ef->event);
-
-    if (status == K_NO_ERROR)
-    {
-        ef->magic = ~OS_EVENT_MAGIC;
-    
-        if (ef->cb_mem)
-        {
-            free(ef->cb_mem);
-        }
-    }
-
-    return osXlateKernelStatus[status];
-}
-
 osMutexId_t osMutexNew(const osMutexAttr_t *attr)
 {
     osMutex_t *mutex;
@@ -1489,6 +1238,7 @@ osStatus_t osMutexDelete(osMutexId_t mutex_id)
     
     return osXlateKernelStatus[status];
 }    
+
 
 osSemaphoreId_t osSemaphoreNew(uint32_t max_count, uint32_t initial_count, const osSemaphoreAttr_t *attr)
 {

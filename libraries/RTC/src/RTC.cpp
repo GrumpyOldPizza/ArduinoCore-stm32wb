@@ -50,9 +50,10 @@ struct RTCClass::RTCAlarm RTCClass::m_alarm = {
     .day = 0,
     .month = 0,
     .year = 0,
-    .tod = { },
     .callback = Callback(),
-    .work = K_WORK_INIT(RTCClass::alarmNotify, nullptr)
+    .work = K_WORK_INIT(RTCClass::alarmNotify, nullptr),
+    .tod = { },
+    .alarm = STM32WB_RTC_ALARM_INIT()
 };
 
 RTCClass::RTCClass() {
@@ -816,11 +817,11 @@ void RTCClass::alarmStart() {
 
     alarm_seconds = (alarm_seconds + Y2K_TO_GPS_OFFSET) + stm32wb_rtc_get_leap_seconds() - stm32wb_rtc_get_zone() - stm32wb_rtc_get_dst();
 
-    stm32wb_rtc_alarm_start(alarm_seconds, alarm_ticks, RTCClass::alarmCallback, NULL);
+    stm32wb_rtc_alarm_start(&m_alarm.alarm, stm32wb_rtc_time_to_clock(alarm_seconds, alarm_ticks), RTCClass::alarmCallback, NULL);
 }
 
 void RTCClass::alarmStop() {
-    stm32wb_rtc_alarm_stop();
+    stm32wb_rtc_alarm_stop(&m_alarm.alarm);
 }
 
 void RTCClass::alarmEvent(__attribute__((unused)) void *context, __attribute__((unused)) uint32_t events) {
@@ -829,7 +830,7 @@ void RTCClass::alarmEvent(__attribute__((unused)) void *context, __attribute__((
     }
 }
 
-void RTCClass::alarmCallback(__attribute__((unused)) void *context) {
+void RTCClass::alarmCallback(__attribute__((unused)) void *context, uint64_t reference) {
     if (m_alarm.match == RTC_MATCH_YYMMDDHHMMSS) {
         m_alarm.match = RTC_MATCH_OFF;
     } else {

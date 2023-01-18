@@ -45,8 +45,9 @@ typedef struct _stm32wb_lptim_device_t {
     volatile uint8_t                   timeout_busy;
     volatile uint8_t                   timeout_sync;
     volatile uint16_t                  timeout_compare[2];
-    volatile uint64_t                  timeout_epoch;
-    volatile uint64_t                  timeout_clock;
+    volatile uint32_t                  timeout_epoch;
+    volatile uint32_t                  timeout_clock;
+    volatile uint32_t                  timeout_reference;
     stm32wb_lptim_timeout_t            *timeout_queue;
     stm32wb_lptim_timeout_t * volatile timeout_modify;
 } stm32wb_lptim_device_t;
@@ -69,28 +70,15 @@ void __stm32wb_lptim_initialize(void)
     stm32wb_lptim_device.event_lock = 0;
     stm32wb_lptim_device.event_active = 0;
     
-    stm32wb_lptim_device.timeout_busy = 0;
-    stm32wb_lptim_device.timeout_sync = 1;
-    stm32wb_lptim_device.timeout_compare[0] = 0xffff;
-    stm32wb_lptim_device.timeout_compare[1] = 0xffff;
+    stm32wb_lptim_device.timeout_busy = false;
+    stm32wb_lptim_device.timeout_sync = false;
     stm32wb_lptim_device.timeout_epoch = 0;
+    stm32wb_lptim_device.timeout_clock = 0;
+    stm32wb_lptim_device.timeout_reference = 0;
     stm32wb_lptim_device.timeout_queue = NULL;
     stm32wb_lptim_device.timeout_modify = STM32WB_LPTIM_TIMEOUT_SENTINEL;
 
-    stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_LPTIM1);
-
     armv7m_atomic_or(&EXTI->IMR1, EXTI_IMR1_IM29);
-
-    LPTIM1->IER = LPTIM_IER_CMPOKIE | LPTIM_IER_ARRMIE;
-    LPTIM1->CFGR = 0;
-
-    LPTIM1->CR = LPTIM_CR_ENABLE;
-    LPTIM1->CMP = 0xffff;
-    LPTIM1->ARR = 0xffff;
-    LPTIM1->CR = LPTIM_CR_CNTSTRT | LPTIM_CR_ENABLE;
-
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
-    stm32wb_system_lock(STM32WB_SYSTEM_LOCK_STOP_2);
 
     NVIC_SetPriority(LPTIM1_IRQn, STM32WB_LPTIM1_IRQ_PRIORITY);
     NVIC_EnableIRQ(LPTIM1_IRQn);
@@ -235,15 +223,63 @@ bool stm32wb_lptim_event_compare(uint32_t compare)
     return true;
 }
 
-static void stm32wb_lptim_timeout_remove(stm32wb_lptim_timeout_t *timeout);
-static void stm32wb_lptim_timeout_insert(stm32wb_lptim_timeout_t *timeout, uint64_t clock);
-static void stm32wb_lptim_timeout_routine(void);
+static inline uint32_t __attribute__((optimize("O3"),always_inline)) stm32wb_lptim_timeout_clock(void)
+{
+    uint32_t clock, clock_previous;
 
-static void stm32wb_lptim_timeout_insert(stm32wb_lptim_timeout_t *timeout, uint64_t clock)
+    if (!stm32wb_lptim_device.timeout_busy)
+    {
+	return 0;
+    }
+    
+    clock = stm32wb_lptim_device.timeout_epoch + (LPTIM1->CNT & 0xffff);
+
+    do
+    {
+	clock_previous = clock;
+	
+	clock = stm32wb_lptim_device.timeout_epoch + (LPTIM1->CNT & 0xffff);
+    }
+    while (clock != clock_previous);
+
+    return clock;
+}
+
+uint32_t __stm32wb_lptim_timeout_clock(void)
+{
+    return stm32wb_lptim_timeout_clock();
+}
+
+static void stm32wb_lptim_timeout_remove(stm32wb_lptim_timeout_t *timeout)
+{
+    if (timeout->next == timeout)
+    {
+	stm32wb_lptim_device.timeout_queue = NULL;
+    }
+    else
+    {
+	if (timeout == stm32wb_lptim_device.timeout_queue)
+	{
+	    stm32wb_lptim_device.timeout_queue = timeout->next;
+	}
+	
+	timeout->next->previous = timeout->previous;
+	timeout->previous->next = timeout->next;
+    }
+    
+    timeout->next = NULL;
+    timeout->previous = NULL;
+}
+
+static void stm32wb_lptim_timeout_insert(stm32wb_lptim_timeout_t *timeout, uint32_t reference, uint32_t ticks)
 {
     stm32wb_lptim_timeout_t *timeout_element, *timeout_next;
-    uint64_t element_clock;
+    uint32_t clock, element_clock;
 
+    clock = ticks + reference;
+
+    reference = stm32wb_lptim_device.timeout_reference;
+    
     if (stm32wb_lptim_device.timeout_queue == NULL)
     {
 	stm32wb_lptim_device.timeout_queue = timeout;
@@ -259,16 +295,17 @@ static void stm32wb_lptim_timeout_insert(stm32wb_lptim_timeout_t *timeout, uint6
 	{
 	    timeout_next = timeout_element->next;
 
-            element_clock = (((uint64_t)timeout_element->clock_l << 0) | ((uint64_t)timeout_element->clock_h << 32));
+            element_clock = timeout_element->clock;
 
 	    if (!timeout_element->modify)
 	    {
-		if (clock < element_clock)
+                if ((clock - reference) < (element_clock - reference))
 		{
 		    if (timeout_element == stm32wb_lptim_device.timeout_queue)
 		    {
 			stm32wb_lptim_device.timeout_queue = timeout;
 		    }
+                    
 		    break;
 		}
 	    }
@@ -297,27 +334,8 @@ static void stm32wb_lptim_timeout_insert(stm32wb_lptim_timeout_t *timeout, uint6
 	    timeout->next->previous = timeout;
 	}
     }
-}
 
-static void stm32wb_lptim_timeout_remove(stm32wb_lptim_timeout_t *timeout)
-{
-    if (timeout->next == timeout)
-    {
-	stm32wb_lptim_device.timeout_queue = NULL;
-    }
-    else
-    {
-	if (timeout == stm32wb_lptim_device.timeout_queue)
-	{
-	    stm32wb_lptim_device.timeout_queue = timeout->next;
-	}
-	
-	timeout->next->previous = timeout->previous;
-	timeout->previous->next = timeout->next;
-    }
-    
-    timeout->next = NULL;
-    timeout->previous = NULL;
+    armv7m_atomic_cas((volatile uint32_t*)&timeout->clock, ticks, clock);
 }
 
 static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
@@ -325,10 +343,11 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
     stm32wb_lptim_timeout_t *timeout, *timeout_next, *timeout_previous;
     stm32wb_lptim_timeout_callback_t callback;
     void *context;
-    uint64_t clock, reference;
-    uint32_t clock_l, clock_h;
+    uint32_t clock, reference, ticks;
     uint16_t compare;
-    
+
+    reference = stm32wb_lptim_timeout_clock();
+
     if (stm32wb_lptim_device.timeout_modify != STM32WB_LPTIM_TIMEOUT_SENTINEL)
     {
         timeout = (stm32wb_lptim_timeout_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_lptim_device.timeout_modify, (uint32_t)STM32WB_LPTIM_TIMEOUT_SENTINEL);
@@ -355,40 +374,37 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
 		stm32wb_lptim_timeout_remove(timeout);
 	    }
 
-	    clock = (((uint64_t)timeout->clock_l << 0) | ((uint64_t)timeout->clock_h << 32));
-		
+	    ticks = timeout->clock;
+            
 	    timeout->modify = NULL;
 
 	    if (!timeout->modify)
 	    {
-		if (clock)
+		if (ticks)
 		{
-		    stm32wb_lptim_timeout_insert(timeout, clock);
+		    stm32wb_lptim_timeout_insert(timeout, reference, ticks);
 		}
 	    }
 		
 	    timeout = timeout_next;
 	}
     }
-
+    
+    ticks = reference - stm32wb_lptim_device.timeout_reference;
+    
     timeout = stm32wb_lptim_device.timeout_queue;
 
     if (timeout)
     {
-        reference = stm32wb_lptim_timeout_clock();
-
 	do
 	{
-            clock_l = timeout->clock_l;
-            clock_h = timeout->clock_h;
+            clock = timeout->clock;
             callback = timeout->callback;
             context = timeout->context;
 		
 	    if (!timeout->modify)
 	    {
-                clock = (((uint64_t)clock_l << 0) | ((uint64_t)clock_h << 32));
-
-		if (clock > reference)
+		if (ticks < (clock - stm32wb_lptim_device.timeout_reference))
 		{
 		    break;
 		}
@@ -407,41 +423,61 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
 	while (timeout);
     }
 
+    stm32wb_lptim_device.timeout_reference = reference;
+    
     if (!armv7m_pendsv_is_pending(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT))
     {
         timeout = stm32wb_lptim_device.timeout_queue;
         
         if (timeout)
         {
-            clock = (((uint64_t)timeout->clock_l << 0) | ((uint64_t)timeout->clock_h << 32));
+            clock = timeout->clock;
             
             if (!timeout->modify)
             {
                 if (stm32wb_lptim_device.timeout_clock != clock)
                 {
-                    stm32wb_lptim_device.timeout_busy = 0;
-                    stm32wb_lptim_device.timeout_clock = clock;
-
-                    armv7m_atomic_and(&LPTIM1->IER, ~LPTIM_IER_CMPMIE);
-
-                    stm32wb_lptim_device.timeout_busy = 1;
-
                     compare = clock & 0xffff;
 
-                    if (stm32wb_lptim_device.timeout_compare[1] != compare)
+                    if (!stm32wb_lptim_device.timeout_busy)
                     {
+                        stm32wb_lptim_device.timeout_busy = true;
+                        stm32wb_lptim_device.timeout_sync = true;
+                        stm32wb_lptim_device.timeout_compare[0] = compare;
                         stm32wb_lptim_device.timeout_compare[1] = compare;
+                        stm32wb_lptim_device.timeout_epoch = 0;
+
+                        stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_LPTIM1);
                         
-                        if (!stm32wb_lptim_device.timeout_sync)
+                        LPTIM1->IER = LPTIM_IER_CMPOKIE | LPTIM_IER_CMPMIE | LPTIM_IER_ARRMIE;
+                        LPTIM1->CFGR = 0;
+                        
+                        LPTIM1->CR = LPTIM_CR_ENABLE;
+                        LPTIM1->CMP = compare;
+                        LPTIM1->ARR = 0xffff;
+                        LPTIM1->CR = LPTIM_CR_CNTSTRT | LPTIM_CR_ENABLE;
+
+                        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+                    }
+                    else
+                    {
+                        if (stm32wb_lptim_device.timeout_compare[1] != compare)
                         {
-                            stm32wb_lptim_device.timeout_sync = 1;
-                            stm32wb_lptim_device.timeout_compare[0] = compare;
+                            stm32wb_lptim_device.timeout_compare[1] = compare;
                             
-                            stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
-                            
-                            LPTIM1->CMP = compare;
+                            if (!stm32wb_lptim_device.timeout_sync)
+                            {
+                                stm32wb_lptim_device.timeout_sync = true;
+                                stm32wb_lptim_device.timeout_compare[0] = compare;
+                                
+                                stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+                                
+                                LPTIM1->CMP = compare;
+                            }
                         }
                     }
+
+                    stm32wb_lptim_device.timeout_clock = clock;
                 }
             }
         }
@@ -449,27 +485,23 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
         {
             if (stm32wb_lptim_device.timeout_busy)
             {
-                stm32wb_lptim_device.timeout_busy = 0;
+                stm32wb_system_periph_reset(STM32WB_SYSTEM_PERIPH_LPTIM1);
+
+                stm32wb_lptim_device.timeout_busy = false;
+                stm32wb_lptim_device.timeout_sync = false;
+                stm32wb_lptim_device.timeout_epoch = 0;
                 stm32wb_lptim_device.timeout_clock = 0;
-
-                armv7m_atomic_and(&LPTIM1->IER, ~LPTIM_IER_CMPMIE);
+                stm32wb_lptim_device.timeout_reference = 0;
             }
         }
     }
 }
 
-typedef struct _stm32wb_lptim_timeout_absolute_params_t {
-    uint32_t                         clock_l;
-    uint32_t                         clock_h;
-    stm32wb_lptim_timeout_callback_t callback;
-    void                             *context;
-} stm32wb_lptim_timeout_absolute_params_t;
-
-static void __svc_stm32wb_lptim_timeout_absolute(stm32wb_lptim_timeout_t *timeout, const stm32wb_lptim_timeout_absolute_params_t *params)
+static void __svc_stm32wb_lptim_timeout_modify(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context)
 {
     stm32wb_lptim_timeout_t *timeout_modify;
     
-    armv7m_atomic_store_4_restart((volatile uint32_t*)&timeout->clock_l, params->clock_l, params->clock_h, (uint32_t)params->callback, (uint32_t)params->context);
+    __armv7m_atomic_store_3_restart((volatile uint32_t*)&timeout->clock, ticks, (uint32_t)callback, (uint32_t)context);
     
     if (armv7m_atomic_cas((volatile uint32_t*)&timeout->modify, (uint32_t)NULL, (uint32_t)STM32WB_LPTIM_TIMEOUT_SENTINEL) == (uint32_t)NULL)
     {
@@ -484,209 +516,53 @@ static void __svc_stm32wb_lptim_timeout_absolute(stm32wb_lptim_timeout_t *timeou
     }
 }
 
-typedef struct _stm32wb_lptim_timeout_relative_params_t {
-    uint32_t                         ticks;
-    stm32wb_lptim_timeout_callback_t callback;
-    void                             *context;
-} stm32wb_lptim_timeout_relative_params_t;
-
-static void __svc_stm32wb_lptim_timeout_relative(stm32wb_lptim_timeout_t *timeout, const stm32wb_lptim_timeout_relative_params_t *params)
+bool stm32wb_lptim_timeout_start(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context)
 {
-    stm32wb_lptim_timeout_t *timeout_modify;
-    uint64_t clock;
-    uint32_t clock_l, clock_h;
-
-    clock = stm32wb_lptim_timeout_clock() + params->ticks;
-
-    clock_l = (clock >> 0);
-    clock_h = (clock >> 32);
-    
-    armv7m_atomic_store_4_restart((volatile uint32_t*)&timeout->clock_l, clock_l, clock_h, (uint32_t)params->callback, (uint32_t)params->context);
-    
-    if (armv7m_atomic_cas((volatile uint32_t*)&timeout->modify, (uint32_t)NULL, (uint32_t)STM32WB_LPTIM_TIMEOUT_SENTINEL) == (uint32_t)NULL)
+    if (!ticks)
     {
-        timeout_modify = (stm32wb_lptim_timeout_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_lptim_device.timeout_modify, (uint32_t)timeout);
-
-        timeout->modify = timeout_modify;
-
-        if (timeout_modify == STM32WB_LPTIM_TIMEOUT_SENTINEL)
-        {
-            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
-        }
+        return false;
     }
-}
-
-static void __svc_stm32wb_lptim_timeout_cancel(stm32wb_lptim_timeout_t *timeout)
-{
-    stm32wb_lptim_timeout_t *timeout_modify;
     
-    armv7m_atomic_store_2_restart((volatile uint32_t*)&timeout->clock_l, 0, 0);
-    
-    if (armv7m_atomic_cas((volatile uint32_t*)&timeout->modify, (uint32_t)NULL, (uint32_t)STM32WB_LPTIM_TIMEOUT_SENTINEL) == (uint32_t)NULL)
+    if (!armv7m_core_is_in_thread())
     {
-        timeout_modify = (stm32wb_lptim_timeout_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_lptim_device.timeout_modify, (uint32_t)timeout);
-
-        timeout->modify = timeout_modify;
-
-        if (timeout_modify == STM32WB_LPTIM_TIMEOUT_SENTINEL)
-        {
-            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
-        }
-    }
-}
-
-__attribute__((optimize("O3"))) uint64_t stm32wb_lptim_timeout_clock()
-{
-    uint64_t epoch, epoch_previous, count;
-    uint32_t epoch_l, epoch_h;
-
-    armv7m_atomic_load_2_restart((volatile uint32_t*)&stm32wb_lptim_device.timeout_epoch, (uint32_t*)&epoch_l, (uint32_t*)&epoch_h);
-
-    epoch = (((uint64_t)epoch_l << 0) | ((uint64_t)epoch_h << 32));
-
-    if (LPTIM2->ISR & LPTIM_ISR_ARRM)
-    {
-        epoch += 0x0000000000010000ull;
-    }
-
-    do
-    {
-	epoch_previous = epoch;
-
-        count = (LPTIM1->CNT & 0xffff);
-
-        armv7m_atomic_load_2_restart((volatile uint32_t*)&stm32wb_lptim_device.timeout_epoch, (uint32_t*)&epoch_l, (uint32_t*)&epoch_h);
-
-        epoch = (((uint64_t)epoch_l << 0) | ((uint64_t)epoch_h << 32));
-        
-        if (LPTIM2->ISR & LPTIM_ISR_ARRM)
-        {
-            epoch += 0x0000000000010000ull;
-        }
-    }
-    while (epoch != epoch_previous);
-
-    return (epoch + count);
-}
-
-void stm32wb_lptim_timeout_absolute(stm32wb_lptim_timeout_t *timeout, uint64_t clock, stm32wb_lptim_timeout_callback_t callback, void *context)
-{
-    stm32wb_lptim_timeout_absolute_params_t params;
-
-    params.clock_l = (clock >> 0);
-    params.clock_h = (clock >> 32);
-    params.callback = callback;
-    params.context = context;
-    
-    if (!armv7m_core_is_in_interrupt())
-    {
-	armv7m_svcall_2((uint32_t)&__svc_stm32wb_lptim_timeout_absolute, (uint32_t)timeout, (uint32_t)&params);
+	__svc_stm32wb_lptim_timeout_modify(timeout, ticks, callback, context);
     }
     else
     {
-	__svc_stm32wb_lptim_timeout_absolute(timeout, &params);
+	armv7m_svcall_4((uint32_t)&__svc_stm32wb_lptim_timeout_modify, (uint32_t)timeout, ticks, (uint32_t)callback, (uint32_t)context);
     }
+
+    return true;
 }
 
-void stm32wb_lptim_timeout_relative(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context)
+void stm32wb_lptim_timeout_stop(stm32wb_lptim_timeout_t *timeout)
 {
-    stm32wb_lptim_timeout_relative_params_t params;
-
-    params.ticks = ticks;
-    params.callback = callback;
-    params.context = context;
-    
-    if (!armv7m_core_is_in_interrupt())
+    if (!armv7m_core_is_in_thread())
     {
-	armv7m_svcall_2((uint32_t)&__svc_stm32wb_lptim_timeout_relative, (uint32_t)timeout, (uint32_t)&params);
+        __svc_stm32wb_lptim_timeout_modify(timeout, 0, NULL, NULL);
     }
     else
     {
-	__svc_stm32wb_lptim_timeout_relative(timeout, &params);
+	armv7m_svcall_4((uint32_t)&__svc_stm32wb_lptim_timeout_modify, (uint32_t)timeout, 0, (uint32_t)NULL, (uint32_t)NULL);
     }
 }
 
-void stm32wb_lptim_timeout_cancel(stm32wb_lptim_timeout_t *timeout)
+bool stm32wb_lptim_timeout_is_pending(stm32wb_lptim_timeout_t *timeout)
 {
-    if (!armv7m_core_is_in_interrupt())
-    {
-	armv7m_svcall_1((uint32_t)&__svc_stm32wb_lptim_timeout_cancel, (uint32_t)timeout);
-    }
-    else
-    {
-	__svc_stm32wb_lptim_timeout_cancel(timeout);
-    }
-}
+    stm32wb_lptim_timeout_t *previous, *modify;
+    uint32_t clock;
 
-void __stm32wb_lptim_timeout_stop_leave(void)
-{
-    uint64_t clock, epoch;
-    uint32_t lptim_isr;
+    __armv7m_atomic_load_3_restart((volatile uint32_t*)&timeout->previous, (uint32_t*)&previous, (uint32_t*)&modify, &clock);
 
-    lptim_isr = LPTIM1->ISR;
-
-    if (lptim_isr & (LPTIM_ISR_ARRM | LPTIM_ISR_CMPM))
-    {
-        do
-        {
-            if (lptim_isr & LPTIM_ISR_ARRM)
-            {
-                LPTIM1->ICR = LPTIM_ICR_ARRMCF;
-                
-                stm32wb_lptim_device.timeout_epoch += 0x00010000;
-            }
-            
-            if (lptim_isr & LPTIM_ISR_CMPM)
-            {
-                LPTIM1->ICR = LPTIM_ICR_CMPMCF;
-            }
-            
-            if (stm32wb_lptim_device.timeout_busy)
-            {
-                clock = stm32wb_lptim_device.timeout_clock;
-                epoch = stm32wb_lptim_device.timeout_epoch;
-        
-                if (clock <= (epoch + (LPTIM1->CNT & 0xffff)))
-                {
-                    LPTIM1->IER &= ~LPTIM_IER_CMPMIE;
-                    
-                    stm32wb_lptim_device.timeout_busy = 0;
-                    
-                    armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
-                }
-                else
-                {
-                    if (!((clock ^ epoch) & 0xffffffffffff0000ull))
-                    {
-                        LPTIM1->IER |= LPTIM_IER_CMPMIE;
-                    }
-                }
-            }
-
-            NVIC_ClearPendingIRQ(LPTIM1_IRQn);
-            
-            lptim_isr = LPTIM1->ISR;
-        }
-        while (lptim_isr & (LPTIM_ISR_ARRM | LPTIM_ISR_CMPM));
-    }
+    return ((modify != NULL) ? (clock != 0) : (previous != NULL));
 }
 
 __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
 {
-    uint64_t clock, epoch;
-    uint32_t lptim_isr;
+    uint32_t lptim_isr, clock;
     uint16_t compare;
     
     lptim_isr = LPTIM1->ISR;
-
-    if (lptim_isr & LPTIM_ISR_ARRM)
-    {
-        LPTIM1->ICR = LPTIM_ICR_ARRMCF;
-        
-        stm32wb_lptim_device.timeout_epoch += 0x00010000;
-
-        __armv7m_systick_calibrate();
-    }
     
     if (lptim_isr & LPTIM_ISR_CMPOK)
     {
@@ -713,26 +589,18 @@ __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
         LPTIM1->ICR = LPTIM_ICR_CMPMCF;
     }
     
-    if (stm32wb_lptim_device.timeout_busy)
+    if (lptim_isr & LPTIM_ISR_ARRM)
     {
-        clock = stm32wb_lptim_device.timeout_clock;
-        epoch = stm32wb_lptim_device.timeout_epoch;
+        LPTIM1->ICR = LPTIM_ICR_ARRMCF;
         
-        if (clock <= (epoch + (LPTIM1->CNT & 0xffff)))
-        {
-            LPTIM1->IER &= ~LPTIM_IER_CMPMIE;
-            
-            stm32wb_lptim_device.timeout_busy = 0;
-            
-            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
-        }
-        else
-        {
-            if (!((clock ^ epoch) & 0xffffffffffff0000ull))
-            {
-                LPTIM1->IER |= LPTIM_IER_CMPMIE;
-            }
-        }
+        stm32wb_lptim_device.timeout_epoch += 0x00010000;
+    }
+
+    clock = stm32wb_lptim_timeout_clock();
+
+    if ((clock - stm32wb_lptim_device.timeout_reference) >= (stm32wb_lptim_device.timeout_clock - stm32wb_lptim_device.timeout_reference))
+    {
+        armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
     }
     
     __DSB();
@@ -752,7 +620,7 @@ __attribute__((optimize("O3"))) void LPTIM2_IRQHandler(void)
     {
 	LPTIM2->ICR = LPTIM_ICR_ARRMCF;
 
-	stm32wb_lptim_device.event_epoch += 0x0000000000010000ull;
+	stm32wb_lptim_device.event_epoch += 0x00010000u;
 	
 	if (stm32wb_lptim_device.event_mask & STM32WB_LPTIM_EVENT_PERIOD)
 	{

@@ -22,8 +22,6 @@
 
 #if defined(ARDUINO_MAKEFILE)
 
-#include "STM32WB.h"
-
 void setup(void) {
 }
 

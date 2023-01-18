@@ -276,11 +276,11 @@ SECTIONS
 
    .info :
    {
-     __rtc_info__ = .;
-       LONG (DEFINED(__RTC_EPOCH__) ? __RTC_EPOCH__ : 0)
-       LONG (DEFINED(__RTC_ZONE__) ? __RTC_ZONE__ : 0)
-       SHORT (DEFINED(__RTC_DST__) ? __RTC_DST__ : 0)
-       SHORT (DEFINED(__RTC_LEAP_SECONDS__) ? __RTC_LEAP_SECONDS__ : 18)
+     __stm32wb_rtc_info__ = .;
+       LONG  (DEFINED(__RTC_EPOCH__) ? __RTC_EPOCH__ : 0)
+       SHORT (((DEFINED(__RTC_ZONE__) ? __RTC_ZONE__ : 0) + 43200) / 900)
+       BYTE  ((DEFINED(__RTC_DST__) ? __RTC_DST__ : 0) / 3600)
+       BYTE  ((DEFINED(__RTC_LEAP_SECONDS__) ? __RTC_LEAP_SECONDS__ : 18) + 128)
        
      __copy_table_start__ = .;
        LONG (LOADADDR(.data))

@@ -491,7 +491,7 @@ bool stm32wb_usbd_dcd_disconnect(void)
     }
 
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
-    stm32wb_lptim_timeout_cancel(&stm32wb_usbd_dcd_device.timeout);
+    stm32wb_lptim_timeout_stop(&stm32wb_usbd_dcd_device.timeout);
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 
     NVIC_DisableIRQ(CRS_IRQn);
@@ -655,7 +655,7 @@ static void stm32wb_usbd_dcd_wakeup_routine(void *context)
 
             stm32wb_usbd_dcd_device.unset_resume = 1;
             
-            stm32wb_lptim_timeout_relative(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(5), stm32wb_usbd_dcd_wakeup_routine, NULL);
+            stm32wb_lptim_timeout_start(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(5), stm32wb_usbd_dcd_wakeup_routine, NULL);
         }
         
         if (stm32wb_usbd_dcd_device.unset_resume)
@@ -710,7 +710,7 @@ bool stm32wb_usbd_dcd_wakeup(void)
             stm32wb_usbd_dcd_device.set_resume = 1;
             stm32wb_usbd_dcd_device.unset_resume = 0;
             
-            stm32wb_lptim_timeout_relative(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(2), stm32wb_usbd_dcd_wakeup_routine, NULL);
+            stm32wb_lptim_timeout_start(&stm32wb_usbd_dcd_device.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(2), stm32wb_usbd_dcd_wakeup_routine, NULL);
         }
     }
 
@@ -2669,7 +2669,7 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_dcd_interrupt()
             }
 
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
-            stm32wb_lptim_timeout_cancel(&stm32wb_usbd_dcd_device.timeout);
+            stm32wb_lptim_timeout_stop(&stm32wb_usbd_dcd_device.timeout);
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 
 	    events |= STM32WB_USBD_DCD_EVENT_RESET;

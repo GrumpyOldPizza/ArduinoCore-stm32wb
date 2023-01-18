@@ -64,7 +64,7 @@ Uart::Uart(struct _stm32wb_uart_t *uart, const struct _stm32wb_uart_params_t *pa
     
     m_work = K_WORK_INIT((k_work_routine_t)&Uart::notifyRoutine, this);
 
-    m_event = K_EVENT_INIT();
+    m_sem = K_SEM_INIT(0, 1);
 
     stm32wb_uart_create(uart, params);
 }
@@ -145,7 +145,7 @@ int Uart::read(uint8_t *buffer, size_t size) {
 void Uart::flush() {
     if (k_task_is_in_progress()) {
         while (m_tx_busy) {
-            k_event_receive(&m_event, 1, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
+            k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
         }
     }
 }
@@ -206,8 +206,8 @@ size_t Uart::write(const uint8_t *buffer, size_t size) {
                         tx_count = m_tx_size - tx_read;
                     }
 
-                    if (tx_count > CDC_TX_PACKET_SIZE) {
-                        tx_count = CDC_TX_PACKET_SIZE;
+                    if (tx_count > UART_TX_PACKET_SIZE) {
+                        tx_count = UART_TX_PACKET_SIZE;
                     }
                     
                     if (tx_count) {
@@ -227,7 +227,7 @@ size_t Uart::write(const uint8_t *buffer, size_t size) {
                 }
 
                 if (m_tx_busy) {
-                    k_event_receive(&m_event, 1, (K_EVENT_ANY | K_EVENT_CLEAR), K_TIMEOUT_FOREVER, NULL);
+                    k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
                 }
             }
         } while (tx_size == 0);
@@ -270,8 +270,8 @@ finish:
                 tx_count = m_tx_size - tx_read;
             }
             
-            if (tx_count > CDC_TX_PACKET_SIZE) {
-                tx_count = CDC_TX_PACKET_SIZE;
+            if (tx_count > UART_TX_PACKET_SIZE) {
+                tx_count = UART_TX_PACKET_SIZE;
             }
             
             if (tx_count) {
@@ -359,7 +359,7 @@ Uart::operator bool() {
 void Uart::transmitCallback(class Uart *self) {
     uint32_t tx_read, tx_write, tx_count;
 
-    k_event_send(&self->m_event, 1);
+    k_sem_release(&self->m_sem);
     
     tx_count = self->m_tx_count;
     
@@ -381,8 +381,8 @@ void Uart::transmitCallback(class Uart *self) {
                 tx_count = (self->m_tx_size - tx_read);
             }
 
-            if (tx_count > CDC_TX_PACKET_SIZE) {
-                tx_count = CDC_TX_PACKET_SIZE;
+            if (tx_count > UART_TX_PACKET_SIZE) {
+                tx_count = UART_TX_PACKET_SIZE;
             }
             
             self->m_tx_count = tx_count;

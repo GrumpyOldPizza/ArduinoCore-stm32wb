@@ -45,10 +45,9 @@
 #define WAKEUP_PIN_3         0x00000004
 #define WAKEUP_PIN_4         0x00000008
 #define WAKEUP_PIN_5         0x00000010
-#define WAKEUP_TIMEOUT       0x00010000
-#define WAKEUP_ALARM         0x00020000
-#define WAKEUP_WATCHDOG      0x00040000
-#define WAKEUP_RESET         0x00080000
+#define WAKEUP_TIMEOUT       0x00000100
+#define WAKEUP_WATCHDOG      0x00000200
+#define WAKEUP_RESET         0x00000400
 
 #define POLICY_RUN           1
 #define POLICY_SLEEP         2

@@ -1692,7 +1692,7 @@ static void ubx_start_message(gnss_device_t *device, unsigned int message)
             
         device->rx_chunk = 40;
 
-        stm32wb_lptim_timeout_cancel(&device->ubx.timeout);
+        stm32wb_lptim_timeout_stop(&device->ubx.timeout);
     }
 }
 
@@ -2874,14 +2874,14 @@ static void ubx_table(gnss_device_t *device, const uint8_t * const * table)
 
     ubx_send(device, data);
 
-    stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
+    stm32wb_lptim_timeout_start(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
 }
 
 static void ubx_configure(gnss_device_t *device, __attribute__((unused)) unsigned int response, uint32_t command)
 {
     const uint8_t *data = NULL;
 
-    stm32wb_lptim_timeout_cancel(&device->ubx.timeout);
+    stm32wb_lptim_timeout_stop(&device->ubx.timeout);
 
     // printf("CONFIGURE %04x\r\n", command);
     
@@ -2946,7 +2946,7 @@ static void ubx_configure(gnss_device_t *device, __attribute__((unused)) unsigne
     {
         ubx_send(device, data);
 
-        stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
+        stm32wb_lptim_timeout_start(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
     }
 }
 
@@ -3028,7 +3028,7 @@ static void ubx_timeout(void)
 
         ubx_send(device, data);
 
-        stm32wb_lptim_timeout_relative(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
+        stm32wb_lptim_timeout_start(&device->ubx.timeout, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_timeout, NULL); // 125ms
     }
 }
 
@@ -3042,7 +3042,7 @@ static void gnss_send_callback(void)
     {
         device->command = ~0l;
         
-        stm32wb_lptim_timeout_relative(&device->ubx.sleep, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_sleep, NULL); // 125ms
+        stm32wb_lptim_timeout_start(&device->ubx.sleep, STM32WB_LPTIM_TIMEOUT_MILLIS_TO_TICKS(125), (stm32wb_lptim_timeout_callback_t)ubx_sleep, NULL); // 125ms
     }
     else
     {

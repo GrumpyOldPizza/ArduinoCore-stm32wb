@@ -46,7 +46,6 @@ extern "C"{
 
 #define ARM_MATH_CM4
 #include "armv7m.h"
-#include "rtos_api.h"
 #include "stm32wbxx.h"
   
 #undef STM32WB

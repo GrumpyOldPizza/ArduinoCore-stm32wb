@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2022 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -35,11 +35,7 @@ typedef struct _armv7m_systick_control_t {
     volatile uint32_t         millis;
     uint32_t                  cycle;
     uint32_t                  scale[2];
-    uint32_t                  params[6];
-    volatile uint32_t         calib[5];
-    volatile uint8_t          index;
-    volatile uint8_t          sync;
-    volatile uint8_t          state;
+    uint32_t                  step[3];
 } armv7m_systick_control_t;
 
 static  __attribute__((section(".noinit"))) armv7m_systick_control_t armv7m_systick_control;
@@ -47,136 +43,38 @@ static  __attribute__((section(".noinit"))) armv7m_systick_control_t armv7m_syst
 void __armv7m_systick_initialize(void)
 {
     NVIC_SetPriority(SysTick_IRQn, ARMV7M_IRQ_PRIORITY_SYSTICK);
-
-    armv7m_systick_control.index = 0;
-    armv7m_systick_control.sync = 0;
-    armv7m_systick_control.state = 0;
 }
 
-static void armv7m_systick_params(void)
+void armv7m_systick_configure(void)
 {
-    armv7m_systick_control.params[3] = ((armv7m_systick_control.calib[0] + armv7m_systick_control.calib[1] + armv7m_systick_control.calib[2] + armv7m_systick_control.calib[3] + 32) / 64) -1;
+    armv7m_systick_control.clock = 0;
+    armv7m_systick_control.micros = 0;
+    armv7m_systick_control.millis = 0;
 
-    /* micros = 125000 * (count / coeff)
-     * micros = (125000 / coeff) * count
-     * micros = (((125000 * (2^32)) / coeff) * count) / (2^32)
-     * micros = ((125000 / (coeff * (2 ^ 32)) * count) / (2^32)
-     */
-
-    armv7m_systick_control.params[4] = ((uint64_t)125000ull * 0x100000000ull) / (uint32_t)(armv7m_systick_control.params[3]);
-    armv7m_systick_control.params[5] = ((uint64_t)125ull    * 0x100000000ull) / (uint32_t)(armv7m_systick_control.params[3]);
-}
-
-void armv7m_systick_configure(uint32_t clock)
-{
+    armv7m_systick_control.cycle = (SystemCoreClock / 8) -1;
+    armv7m_systick_control.scale[0] = ((uint64_t)125000ull * 0x100000000ull) / SystemCoreClock;
+    armv7m_systick_control.scale[1] = ((uint64_t)125ull    * 0x100000000ull) / SystemCoreClock;
+    
+    armv7m_systick_control.step[0] = SystemCoreClock / 8;
+    armv7m_systick_control.step[1] = 125000;
+    armv7m_systick_control.step[2] = 125;
+    
     SysTick->CTRL |= SysTick_CTRL_CLKSOURCE_Msk;
 
-    armv7m_systick_control.calib[0] = clock * 2;
-    armv7m_systick_control.calib[1] = clock * 2;
-    armv7m_systick_control.calib[2] = clock * 2;
-    armv7m_systick_control.calib[3] = clock * 2;
-    
-    armv7m_systick_params();
-}
-
-void __armv7m_systick_calibrate(void)
-{
-    uint32_t clock, clock_previous, count;
-
-    if (armv7m_systick_control.state != 0)
-    {
-        clock = (uint32_t)armv7m_systick_control.clock;
-        
-        if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
-        {
-            clock += (armv7m_systick_control.cycle +1);
-        }
-        
-        do
-        {
-            clock_previous = clock;
-            
-            count = (armv7m_systick_control.cycle - SysTick->VAL);
-            
-            clock = (uint32_t)armv7m_systick_control.clock;
-            
-            if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
-            {
-                clock += (armv7m_systick_control.cycle +1);
-            }
-        }
-        while (clock != clock_previous);
-        
-        clock += count;
-
-        if (armv7m_systick_control.state == 1)
-        {
-            armv7m_systick_control.state = 2;
-
-            armv7m_systick_control.calib[4] = clock;
-        }
-        else
-        {
-            armv7m_systick_control.state = 3;
-
-            armv7m_systick_control.calib[armv7m_systick_control.index] = clock - armv7m_systick_control.calib[4];
-            armv7m_systick_control.calib[4] = clock;
-
-            armv7m_systick_control.index = (armv7m_systick_control.index +1) & 3;
-            
-        }
-
-        armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_SYSTICK);
-    }
+    SysTick->VAL = armv7m_systick_control.cycle;
+    SysTick->LOAD = armv7m_systick_control.cycle;
 }
 
 __attribute__((optimize("O3"))) void armv7m_systick_enable(void)
 {
-    uint64_t clock;
-    uint32_t frequency, seconds, ticks, count;
-
-    frequency = (armv7m_systick_control.calib[0] + armv7m_systick_control.calib[1] + armv7m_systick_control.calib[2] + armv7m_systick_control.calib[3] + 4) / 8;
-    
-    armv7m_systick_control.params[0] = armv7m_systick_control.params[3];
-    armv7m_systick_control.params[1] = armv7m_systick_control.params[4];
-    armv7m_systick_control.params[2] = armv7m_systick_control.params[5];
-
-    armv7m_systick_control.cycle    = armv7m_systick_control.params[0];
-    armv7m_systick_control.scale[0] = armv7m_systick_control.params[1];
-    armv7m_systick_control.scale[1] = armv7m_systick_control.params[2];
-    
-    clock = stm32wb_lptim_timeout_clock();
-    ticks = clock >> 12;
-
-    armv7m_systick_control.micros = 125000 * ticks;
-    armv7m_systick_control.millis = 125 * ticks;
-
-    ticks = clock & 4095;
-
-    /* 2 partial products to avoid a long multiplication
-     */
-    count = (((armv7m_systick_control.cycle & 4095) * ticks) >> 12) + ((armv7m_systick_control.cycle >> 12) * ticks);
-
-    seconds = clock / 32768;
-    ticks = clock & 32767;
-
-    armv7m_systick_control.clock = ((uint64_t)seconds * (uint64_t)frequency) + (((uint64_t)ticks * (uint64_t)frequency) / 32768) - count;
-    
-    SysTick->VAL = armv7m_systick_control.cycle - count;
-    SysTick->LOAD = armv7m_systick_control.cycle;
-
     SysTick->CTRL |= (SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
     SysTick->CTRL;
 
-    armv7m_systick_control.state = 1;
-    
     __DSB();
 }
 
 __attribute__((optimize("O3"))) void armv7m_systick_disable(void)
 {
-    armv7m_systick_control.state = 0;
-
     SysTick->CTRL &= ~(SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
     SysTick->CTRL;
 
@@ -194,7 +92,7 @@ __attribute__((optimize("O3"))) uint64_t armv7m_systick_clock(void)
 
     if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
     {
-        clock += (armv7m_systick_control.cycle +1);
+        clock += armv7m_systick_control.step[0];
     }
 
     do
@@ -207,7 +105,7 @@ __attribute__((optimize("O3"))) uint64_t armv7m_systick_clock(void)
 
         if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
         {
-            clock += (armv7m_systick_control.cycle +1);
+            clock += armv7m_systick_control.step[0];
         }
     }
     while (clock != clock_previous);
@@ -223,7 +121,7 @@ __attribute__((optimize("O3"))) uint32_t armv7m_systick_micros(void)
 
     if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
     {
-        micros += 125000;
+        micros += armv7m_systick_control.step[1];
     }
 
     do
@@ -236,7 +134,7 @@ __attribute__((optimize("O3"))) uint32_t armv7m_systick_micros(void)
 
         if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
         {
-            micros += 125000;
+            micros += armv7m_systick_control.step[1];
         }
     }
     while (micros != micros_previous);
@@ -252,7 +150,7 @@ __attribute__((optimize("O3"))) uint32_t armv7m_systick_millis(void)
 
     if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
     {
-        millis += 125;
+        millis += armv7m_systick_control.step[2];
     }
 
     do
@@ -265,7 +163,7 @@ __attribute__((optimize("O3"))) uint32_t armv7m_systick_millis(void)
 
         if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk)
         {
-            millis += 125;
+            millis += armv7m_systick_control.step[2];
         }
     }
     while (millis != millis_previous);
@@ -277,24 +175,9 @@ __attribute__((optimize("O3"))) void SysTick_Handler(void)
 {
     if (SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk)
     {
-        armv7m_systick_control.clock  += (armv7m_systick_control.cycle +1);
-        armv7m_systick_control.micros += 125000;
-        armv7m_systick_control.millis += 125;
-
-        armv7m_systick_control.cycle    = armv7m_systick_control.params[0];
-        armv7m_systick_control.scale[0] = armv7m_systick_control.params[1];
-        armv7m_systick_control.scale[1] = armv7m_systick_control.params[2];
-
-        if (armv7m_systick_control.sync)
-        {
-            armv7m_systick_control.sync = 0;
-        
-            armv7m_systick_control.params[0] = armv7m_systick_control.params[3];
-            armv7m_systick_control.params[1] = armv7m_systick_control.params[4];
-            armv7m_systick_control.params[2] = armv7m_systick_control.params[5];
-
-            SysTick->LOAD = armv7m_systick_control.params[0];
-        }
+        armv7m_systick_control.clock  += armv7m_systick_control.step[0];
+        armv7m_systick_control.micros += armv7m_systick_control.step[1];
+        armv7m_systick_control.millis += armv7m_systick_control.step[2];
     }
 
     __DSB();
@@ -311,16 +194,4 @@ void armv7m_systick_udelay(uint32_t udelay)
         end = armv7m_systick_micros();
     }
     while ((end - start) < udelay);
-}
-
-void SYSTICK_SWIHandler(void)
-{
-    if (armv7m_systick_control.state == 3)
-    {
-        armv7m_systick_control.sync = 0;
-
-        armv7m_systick_params();
-
-        armv7m_systick_control.sync = 1;
-    }
 }

@@ -189,7 +189,7 @@ static void stm32wb_rtc_timedate(uint16_t *p_time, uint16_t *p_date)
 
     stm32wb_rtc_time_read(&seconds, &ticks);
 
-    leap_seconds = stm32wb_rtc_time_to_leap_seconds(seconds);
+    leap_seconds = stm32wb_rtc_get_leap_seconds();
 
     seconds -= Y2K_TO_GPS_OFFSET;
 

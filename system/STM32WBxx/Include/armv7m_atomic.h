@@ -747,6 +747,112 @@ static inline __attribute__((optimize("O3"),always_inline)) uint32_t __armv7m_at
     return data_return;
 }
 
+/* CM0+ has restartable LDM/STM, CM4/CM7 have continuable LDM/STM ... However LDRD/STRD are atomic.
+ *
+ * Hence 2 sets of functions. One that is fully atomic (non-interruptible), and one that just guarantees restart semantics (i.e. multiple accesses)
+ */
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_load_2(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1)
+{
+    uint32_t data_0, data_1;
+
+    __asm__ volatile ("ldrd %0, %1, %2"
+                      : "=&r" (data_0), "=&r" (data_1) 
+                      :"Qo" (*p_data)
+                      : "memory");
+    
+    *p_data_0 = data_0;
+    *p_data_1 = data_1;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_store_2(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1)
+{
+    __asm__ volatile ("strd %0, %1, %2"
+                      :
+                      : "r" (data_0), "r" (data_1), "Qo" (*p_data)
+                      : "memory");
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_load_2_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1)
+{
+    uint32_t data_0, data_1;
+
+    __asm__ volatile ("ldrd %0, %1, %2"
+                      : "=&r" (data_0), "=&r" (data_1) 
+                      :"Qo" (*p_data)
+                      : "memory");
+    
+    *p_data_0 = data_0;
+    *p_data_1 = data_1;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_load_3_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1, uint32_t *p_data_2)
+{
+    uint32_t data_0, data_1, data_2;
+    
+    do
+    {
+        data_0 = p_data[0];
+        data_1 = p_data[1];
+        data_2 = p_data[2];
+    }
+    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2));
+
+    *p_data_0 = data_0;
+    *p_data_1 = data_1;
+    *p_data_2 = data_2;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_load_4_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1, uint32_t *p_data_2, uint32_t *p_data_3)
+{
+    uint32_t data_0, data_1, data_2, data_3;
+    
+    do
+    {
+        data_0 = p_data[0];
+        data_1 = p_data[1];
+        data_2 = p_data[2];
+        data_3 = p_data[3];
+    }
+    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2) || (p_data[3] != data_3));
+
+    *p_data_0 = data_0;
+    *p_data_1 = data_1;
+    *p_data_2 = data_2;
+    *p_data_3 = data_3;
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_store_2_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1)
+{
+    __asm__ volatile ("strd %0, %1, %2"
+                      :
+                      : "r" (data_0), "r" (data_1), "Qo" (*p_data)
+                      : "memory");
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_store_3_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1, uint32_t data_2)
+{
+    do
+    {
+        p_data[0] = data_0;
+        p_data[1] = data_1;
+        p_data[2] = data_2;
+    }
+    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2));
+}
+
+static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic_store_4_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1, uint32_t data_2, uint32_t data_3)
+{
+    do
+    {
+        p_data[0] = data_0;
+        p_data[1] = data_1;
+        p_data[2] = data_2;
+        p_data[3] = data_3;
+    }
+    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2) || (p_data[3] != data_3));
+}
+
 extern uint32_t armv7m_atomic_add(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_sub(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_and(volatile uint32_t *p_data, uint32_t data);
@@ -794,88 +900,6 @@ extern uint32_t armv7m_atomic_orz(volatile uint32_t *p_data, uint32_t data, vola
 extern uint32_t armv7m_atomic_orzb(volatile uint32_t *p_data, uint32_t data, volatile uint8_t *p_zero);
 extern uint32_t armv7m_atomic_orhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero);
 extern uint32_t armv7m_atomic_orhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero);
-
-/* CM0+ has restartable LDM/STM, CM4/CM7 have continuable LDM/STM ... However LDRD/STRD are restarted.
- */
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_store_2_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1)
-{
-    __asm__ volatile ("strd %0, %1, %2"
-                      :
-                      : "r" (data_0), "r" (data_1), "Qo" (*p_data)
-                      : "memory");
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_store_3_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1, uint32_t data_2)
-{
-    do
-    {
-        p_data[0] = data_0;
-        p_data[1] = data_1;
-        p_data[2] = data_2;
-    }
-    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2));
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_store_4_restart(volatile uint32_t *p_data, uint32_t data_0, uint32_t data_1, uint32_t data_2, uint32_t data_3)
-{
-    do
-    {
-        p_data[0] = data_0;
-        p_data[1] = data_1;
-        p_data[2] = data_2;
-        p_data[3] = data_3;
-    }
-    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2) || (p_data[3] != data_3));
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_load_2_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1)
-{
-    uint32_t data_0, data_1;
-
-    __asm__ volatile ("ldrd %0, %1, %2"
-                      : "=&r" (data_0), "=&r" (data_1) 
-                      :"Qo" (*p_data)
-                      : "memory");
-    
-    *p_data_0 = data_0;
-    *p_data_1 = data_1;
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_load_3_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1, uint32_t *p_data_2)
-{
-    uint32_t data_0, data_1, data_2;
-    
-    do
-    {
-        data_0 = p_data[0];
-        data_1 = p_data[1];
-        data_2 = p_data[2];
-    }
-    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2));
-
-    *p_data_0 = data_0;
-    *p_data_1 = data_1;
-    *p_data_2 = data_2;
-}
-
-static inline __attribute__((optimize("O3"),always_inline)) void armv7m_atomic_load_4_restart(volatile uint32_t *p_data, uint32_t *p_data_0, uint32_t *p_data_1, uint32_t *p_data_2, uint32_t *p_data_3)
-{
-    uint32_t data_0, data_1, data_2, data_3;
-    
-    do
-    {
-        data_0 = p_data[0];
-        data_1 = p_data[1];
-        data_2 = p_data[2];
-        data_3 = p_data[3];
-    }
-    while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2) || (p_data[3] != data_3));
-
-    *p_data_0 = data_0;
-    *p_data_1 = data_1;
-    *p_data_2 = data_2;
-    *p_data_3 = data_3;
-}
 
 #ifdef __cplusplus
 }

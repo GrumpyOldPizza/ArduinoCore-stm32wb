@@ -185,9 +185,8 @@ typedef struct _stm32wb_system_notify_t {
 #define STM32WB_SYSTEM_WAKEUP_PIN_4              0000000008
 #define STM32WB_SYSTEM_WAKEUP_PIN_5              0x00000010
 #define STM32WB_SYSTEM_WAKEUP_TIMEOUT            0x00000100
-#define STM32WB_SYSTEM_WAKEUP_ALARM              0x00000200
-#define STM32WB_SYSTEM_WAKEUP_WATCHDOG           0x00000400
-#define STM32WB_SYSTEM_WAKEUP_RESET              0x00000800
+#define STM32WB_SYSTEM_WAKEUP_WATCHDOG           0x00000200
+#define STM32WB_SYSTEM_WAKEUP_RESET              0x00000400
 
 #define STM32WB_SYSTEM_POLICY_RUN                1
 #define STM32WB_SYSTEM_POLICY_SLEEP              2
@@ -220,8 +219,6 @@ extern bool     stm32wb_system_pvm1_disable(void);
 extern bool     stm32wb_system_pvm1_sense(void);
 extern bool     stm32wb_system_clk48_enable(void);
 extern bool     stm32wb_system_clk48_disable(void);
-extern void     stm32wb_system_lsi_enable(void);
-extern void     stm32wb_system_lsi_disable(void);
 extern void     stm32wb_system_hsi16_enable(void);
 extern void     stm32wb_system_hsi16_disable(void);
 extern uint32_t stm32wb_system_reset_cause(void);

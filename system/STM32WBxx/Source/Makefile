@@ -8,6 +8,7 @@ AS       = $(TOOLS)/bin/arm-none-eabi-as
 AR       = $(TOOLS)/bin/arm-none-eabi-ar
 LD       = $(TOOLS)/bin/arm-none-eabi-ld
 CFLAGS   = -c -g -Os $(WARNINGS) -std=gnu11 -ffast-math -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
+#CFLAGS   = -c -g3 -Og $(WARNINGS) -std=gnu11 -ffast-math -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 CXXFLAGS = -c -g -Os $(WARNINGS) -std=gnu++11 -ffast-math -ffunction-sections -fdata-sections -fno-threadsafe-statics -nostdlib -fno-rtti -fno-exceptions -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 ASFLAGS  = -c -g -x assembler-with-cpp $(EXTRAS) $(DEFINES) $(INCLUDES)
 WARNINGS = -Wall -Wextra -Wno-unused-parameter
@@ -30,6 +31,7 @@ SRCS = \
 	armv7m_pdm.S \
 	armv7m_pendsv.c \
 	armv7m_rtlib.S \
+	armv7m_rtos.c \
 	armv7m_rtt.c \
 	armv7m_svcall.c \
 	armv7m_systick.c \
@@ -37,13 +39,6 @@ SRCS = \
 	dosfs_device.c \
 	dosfs_sflash.c \
 	dosfs_storage.c \
-	rtos_alarm.c \
-	rtos_core.c \
-	rtos_event.c \
-	rtos_mutex.c \
-	rtos_sem.c \
-	rtos_task.c \
-	rtos_work.c \
 	stm32wb_adc.c \
 	stm32wb_dma.c \
 	stm32wb_eeprom.c \

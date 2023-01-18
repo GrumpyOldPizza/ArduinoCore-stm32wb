@@ -144,9 +144,10 @@ private:
         uint8_t day;
         uint8_t month;
         uint8_t year;
-        stm32wb_rtc_tod_t tod;
         Callback callback;
         k_work_t work;
+        stm32wb_rtc_tod_t tod;
+        stm32wb_rtc_alarm_t alarm;
     } m_alarm;
 
     static void getTod(stm32wb_rtc_tod_t *tod);
@@ -155,7 +156,7 @@ private:
     static void alarmSync();
     static void alarmStart();
     static void alarmStop();
-    static void alarmCallback(void *context);
+    static void alarmCallback(void *context, uint64_t reference);
     static void alarmNotify(void *context);
     static void alarmEvent(void *context, uint32_t events);
 };
