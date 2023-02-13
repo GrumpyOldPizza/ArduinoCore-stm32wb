@@ -157,7 +157,7 @@
         {
           "name": "Tlera Corp STM32WB Boards",
           "architecture": "stm32wb",
-          "version": "0.1.45,
+          "version": "0.1.5,
           "category": "Contributed",
           "url": "https://github.com/GrumpyOldPizza/ArduinoCore-stm32wb/archive/0.1.5.tar.gz",
           "archiveFileName": "ArduinoCore-stm32wb-0.1.5.tar.gz",
