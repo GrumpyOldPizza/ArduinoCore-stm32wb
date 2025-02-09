@@ -32,6 +32,8 @@ BLECharacteristic pressureCharacteristic("00100000-0001-11e1-ac36-0002a5d5c51b",
 BLECharacteristic humidityCharacteristic("00080000-0001-11e1-ac36-0002a5d5c51b", (BLE_PROPERTY_READ | BLE_PROPERTY_NOTIFY), humidityFeature);
 BLECharacteristic temperatureCharacteristic("00040000-0001-11e1-ac36-0002a5d5c51b", (BLE_PROPERTY_READ | BLE_PROPERTY_NOTIFY), temperatureFeature);
 
+BLEOta OTA;
+
 static const uint8_t manufacturer_data[6] = {
     0x01,
     0x00,
@@ -47,12 +49,14 @@ void setup()
     
     while (!Serial) { }
 
+    OTA.begin();
+    
     Wire.begin();
 
     bme280_read_calibration_data();
     bme280_write_config();
 
-    BLE.begin();
+    BLE.begin(247);
     BLE.setIncludeTxPowerLevel(true);
     BLE.setLocalName("STM32WB");
     BLE.setManufacturerData(manufacturer_data, sizeof(manufacturer_data));
@@ -62,6 +66,7 @@ void setup()
     bluestService.addCharacteristic(humidityCharacteristic);
 
     BLE.addService(bluestService);
+    BLE.addService(OTA);
     
     BLE.advertise();
 

@@ -1350,19 +1350,14 @@ static bool dosfs_sflash_ftl_start()
 
 static void dosfs_sflash_ftl_stop()
 {
+    const stm32wb_sflash_interface_t *interface = dosfs_sflash_device.interface;
+    
+    (*interface->disable)();
 }
 
-static int dosfs_sflash_release(void *context)
+static int dosfs_sflash_start(void *context, uint8_t *p_media, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial)
 {
-    int status = F_NO_ERROR;
-
-    dosfs_sflash_ftl_stop();
-
-    return status;
-}
-
-static int dosfs_sflash_info(void *context, uint8_t *p_media, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial)
-{
+    const stm32wb_sflash_interface_t *interface = dosfs_sflash_device.interface;
     int status = F_NO_ERROR;
 
     if (dosfs_sflash_device.state <= DOSFS_SFLASH_STATE_NOT_READY)
@@ -1371,6 +1366,8 @@ static int dosfs_sflash_info(void *context, uint8_t *p_media, uint8_t *p_write_p
     }
     else
     {
+        (*interface->enable)();
+        
         *p_media = DOSFS_MEDIA_SFLASH;
         *p_write_protected = false;
         *p_block_count = dosfs_sflash_device.sector_count;
@@ -1378,6 +1375,15 @@ static int dosfs_sflash_info(void *context, uint8_t *p_media, uint8_t *p_write_p
 	*p_serial = dosfs_sflash_device.serial;
     }
     
+    return status;
+}
+
+static int dosfs_sflash_stop(void *context, bool eject)
+{
+    int status = F_NO_ERROR;
+
+    dosfs_sflash_ftl_stop();
+
     return status;
 }
 
@@ -1475,7 +1481,7 @@ static int dosfs_sflash_discard(void *context, uint32_t address, uint32_t length
     return status;
 }
 
-static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uint32_t length, uint32_t total, uint32_t *p_fault_return)
+static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uint32_t length)
 {
     int status = F_NO_ERROR;
     uint32_t entry;
@@ -1512,7 +1518,7 @@ static int dosfs_sflash_read(void *context, uint32_t address, uint8_t *data, uin
     return status;
 }
 
-static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_address)
+static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, bool sync)
 {
     int status = F_NO_ERROR;
     uint32_t entry;
@@ -1547,7 +1553,7 @@ static int dosfs_sflash_write(void *context, uint32_t address, const uint8_t *da
     return status;
 }
 
-static int dosfs_sflash_sync(void *context, uint32_t *p_fault_address)
+static int dosfs_sflash_sync(void *context)
 {
     int status = F_NO_ERROR;
 
@@ -1560,8 +1566,8 @@ static int dosfs_sflash_sync(void *context, uint32_t *p_fault_address)
 }
 
 static const dosfs_device_interface_t dosfs_sflash_interface = {
-    dosfs_sflash_release,
-    dosfs_sflash_info,
+    dosfs_sflash_start,
+    dosfs_sflash_stop,
     dosfs_sflash_format,
     dosfs_sflash_erase,
     dosfs_sflash_discard,

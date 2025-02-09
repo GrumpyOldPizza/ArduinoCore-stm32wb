@@ -51,7 +51,6 @@ struct RTCClass::RTCAlarm RTCClass::m_alarm = {
     .month = 0,
     .year = 0,
     .callback = Callback(),
-    .work = K_WORK_INIT(RTCClass::alarmNotify, nullptr),
     .tod = { },
     .alarm = STM32WB_RTC_ALARM_INIT()
 };
@@ -603,12 +602,18 @@ void RTCClass::disableAlarm() {
     }
 }
 
-void RTCClass::onAlarm(void(*callback)(void)) {
-    onAlarm(Callback(callback));
+void RTCClass::attachInterrupt(void(*callback)(void)) {
+    attachInterrupt(Callback(callback));
 }
 
-void RTCClass::onAlarm(Callback callback) {
+void RTCClass::attachInterrupt(Callback callback) {
     m_alarm.callback = callback;
+
+    alarmSync();
+}
+
+void RTCClass::detachInterrupt() {
+    m_alarm.callback = Callback();
 
     alarmSync();
 }
@@ -637,8 +642,28 @@ void RTCClass::setLeapSeconds(int32_t seconds) {
     stm32wb_rtc_set_leap_seconds(seconds);
 }
 
-uint32_t RTCClass::status() {
-    return stm32wb_rtc_status();
+bool RTCClass::setCalibration(float clock) {
+    return stm32wb_rtc_set_calibration((uint32_t)(clock * 256.0 + 0.5), 2500, -1);
+}
+
+bool RTCClass::setCalibration(float clock, float temp) {
+    return stm32wb_rtc_set_calibration((uint32_t)(clock * 256.0 + 0.5), (int32_t)(temp * 1e2 + 0.5), -1);
+}
+
+bool RTCClass::setCalibration(float clock, float temp, int32_t tsense) {
+    return stm32wb_rtc_set_calibration((uint32_t)(clock * 256.0 + 0.5), (int32_t)(temp * 1e2 + 0.5), tsense);
+}
+
+bool RTCClass::setCompensation(float temp_lo, float temp_hi, float coeff_lo, float coeff_hi) {
+    return stm32wb_rtc_set_compensation((int32_t)(temp_lo * 1e2 + 0.5), (int32_t)(temp_hi * 1e2 + 0.5), (int32_t)(coeff_lo * 1e10 + 0.5), (int32_t)(coeff_hi * 1e10 + 0.5));
+}
+
+bool RTCClass::startCompensation(uint32_t seconds) {
+    return stm32wb_rtc_start_compensation(seconds);
+}
+
+bool RTCClass::stopCompensation() {
+    return stm32wb_rtc_stop_compensation();
 }
 
 void RTCClass::getTod(stm32wb_rtc_tod_t *tod) {
@@ -830,17 +855,13 @@ void RTCClass::alarmEvent(__attribute__((unused)) void *context, __attribute__((
     }
 }
 
-void RTCClass::alarmCallback(__attribute__((unused)) void *context, uint64_t reference) {
+void RTCClass::alarmCallback(__attribute__((unused)) void *context, __attribute__((unused)) uint64_t reference) {
     if (m_alarm.match == RTC_MATCH_YYMMDDHHMMSS) {
         m_alarm.match = RTC_MATCH_OFF;
     } else {
         alarmStart();
     }
     
-    k_work_submit(&m_alarm.work);
-}
-
-void RTCClass::alarmNotify(__attribute__((unused)) void *context) {
     m_alarm.callback();
 }
 

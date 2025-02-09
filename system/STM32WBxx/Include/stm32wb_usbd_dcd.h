@@ -33,12 +33,21 @@
 extern "C" {
 #endif
 
+#if !defined(__STM32WB_BOOT_CODE__)
 #define STM32WB_USBD_DCD_LSE_SUPPORTED                0
 #define STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED      1
 #define STM32WB_USBD_DCD_LPM_SUPPORTED                1
-#define STM32WB_USBD_DCD_DBL_SUPPORTED                1
+#define STM32WB_USBD_DCD_EP_SUPPORTED                 1
+#define STM32WB_USBD_DCD_SOF_SUPPORTED                1
+#define STM32WB_USBD_DCD_ISO_SUPPORTED                1
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+#define STM32WB_USBD_DCD_LSE_SUPPORTED                0
+#define STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED      0
+#define STM32WB_USBD_DCD_LPM_SUPPORTED                0
+#define STM32WB_USBD_DCD_EP_SUPPORTED                 0
 #define STM32WB_USBD_DCD_SOF_SUPPORTED                0
 #define STM32WB_USBD_DCD_ISO_SUPPORTED                0
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
   
 #define STM32WB_USBD_DCD_IRQ_PRIORITY                 ARMV7M_IRQ_PRIORITY_USB
 
@@ -63,7 +72,6 @@ extern "C" {
 #define STM32WB_USBD_DCD_EP_TYPE_ISO                  0x01
 #define STM32WB_USBD_DCD_EP_TYPE_BULK                 0x02
 #define STM32WB_USBD_DCD_EP_TYPE_INTERRUPT            0x03
-#define STM32WB_USBD_DCD_EP_TYPE_BULK_DBL             0x06
 
 #define STM32WB_USBD_DCD_EP_MASK(_ep_addr)            ((((_ep_addr) & 0x80) ? 0x00000001 : 0x00010000) << ((_ep_addr) & 0x0f))
 
@@ -73,20 +81,14 @@ typedef void (*stm32wb_usbd_dcd_sof_callback_t)(void *context, uint32_t frameno)
 
 typedef void (*stm32wb_usbd_dcd_ep_in_callback_t)(void *context, uint8_t ep_addr);
 
-typedef void (*stm32wb_usbd_dcd_ep_out_callback_t)(void *context, uint8_t ep_addr, uint16_t count);
-  
-#if (STM32WB_USBD_DCD_ISO_SUPPORTED == 1)
+typedef void (*stm32wb_usbd_dcd_ep_out_callback_t)(void *context, uint8_t ep_addr, uint32_t count);
 
-typedef void (*stm32wb_usbd_dcd_ep_iso_callback_t)(void *context, uint8_t ep_addr, uint16_t count);
+#if (STM32WB_USBD_DCD_ISO_SUPPORTED == 1)
   
-typedef struct _stm32wb_usbd_dcd_fifo_t {
-    uint8_t                           *data;
-    uint16_t                          size;
-    volatile uint16_t                 head;
-    volatile uint16_t                 tail;
-    volatile uint16_t                 count;
-} stm32wb_usbd_dcd_fifo_t;
-  
+typedef void (*stm32wb_usbd_dcd_ep_iso_in_callback_t)(void *context, uint8_t ep_addr, const uint8_t **p_data_return, uint32_t *p_count_return);
+
+typedef void (*stm32wb_usbd_dcd_ep_iso_out_callback_t)(void *context, uint8_t ep_addr, uint32_t count, uint8_t **p_data_return, uint32_t *p_size_return);
+
 #endif /* STM32WB_USBD_DCD_ISO_SUPPORTED == 1 */
 
 extern bool stm32wb_usbd_dcd_configure(void);
@@ -103,32 +105,27 @@ extern bool stm32wb_usbd_dcd_wakeup(void);
 extern bool stm32wb_usbd_dcd_lpm_reference(uint32_t reference);
 extern void stm32wb_usbd_dcd_lpm_unreference(uint32_t reference);
 #endif /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
-extern bool stm32wb_usbd_dcd_ep0_transmit(const uint8_t *data, uint16_t length);
-extern bool stm32wb_usbd_dcd_ep0_receive(uint8_t *data, uint16_t length);
+extern bool stm32wb_usbd_dcd_ep0_transmit(const uint8_t *data, uint32_t count);
+extern bool stm32wb_usbd_dcd_ep0_receive(uint8_t *data, uint32_t size);
 extern uint32_t stm32wb_usbd_dcd_ep0_count(void);
 extern bool stm32wb_usbd_dcd_ep0_stall(void);
-extern bool stm32wb_usbd_dcd_ep_configure(uint8_t ep_addr, uint8_t type, uint16_t size, uint16_t pma_address, uint16_t *p_pma_address_return);
+extern bool stm32wb_usbd_dcd_ep_configure(uint8_t ep_addr, uint8_t type, uint16_t size);
 extern bool stm32wb_usbd_dcd_ep_enable(uint8_t ep_addr);
 extern bool stm32wb_usbd_dcd_ep_disable(uint8_t ep_addr);
 extern bool stm32wb_usbd_dcd_ep_stall(uint8_t ep_addr);
 extern bool stm32wb_usbd_dcd_ep_unstall(uint8_t ep_addr);
 extern bool stm32wb_usbd_dcd_ep_is_stalled(uint8_t ep_addr);
-extern bool stm32wb_usbd_dcd_ep_transmit(uint8_t ep_addr, const uint8_t *data, uint16_t length, stm32wb_usbd_dcd_ep_in_callback_t callback, void *context);
-extern bool stm32wb_usbd_dcd_ep_receive(uint8_t ep_addr, uint8_t *data, uint16_t length, stm32wb_usbd_dcd_ep_out_callback_t callback, void *context);
+extern bool stm32wb_usbd_dcd_ep_transmit(uint8_t ep_addr, const uint8_t *data, uint32_t count, stm32wb_usbd_dcd_ep_in_callback_t callback, void *context);
+extern bool stm32wb_usbd_dcd_ep_receive(uint8_t ep_addr, uint8_t *data, uint32_t size, stm32wb_usbd_dcd_ep_out_callback_t callback, void *context);
 extern bool stm32wb_usbd_dcd_ep_flush(uint8_t ep_addr);
 #if (STM32WB_USBD_DCD_SOF_SUPPORTED == 1)
 extern bool stm32wb_usbd_dcd_sof_enable(stm32wb_usbd_dcd_sof_callback_t callback, void *context);
 extern bool stm32wb_usbd_dcd_sof_disable(void);
 #endif /* STM32WB_USBD_DCD_SOF_SUPPORTED == 1 */
 #if (STM32WB_USBD_DCD_ISO_SUPPORTED == 1)
-extern uint16_t stm32wb_usbd_dcd_fifo_count(stm32wb_usbd_dcd_fifo_t *fifo);
-extern uint16_t stm32wb_usbd_dcd_fifo_write(stm32wb_usbd_dcd_fifo_t *fifo, const uint8_t *data, uint16_t length);
-extern uint16_t stm32wb_usbd_dcd_fifo_read(stm32wb_usbd_dcd_fifo_t *fifo, uint8_t *data, uint16_t length);
-extern bool stm32wb_usbd_dcd_ep_fifo_attach(uint8_t ep_addr, stm32wb_usbd_dcd_fifo_t *fifo, uint8_t *data, uint16_t size);
-extern bool stm32wb_usbd_dcd_ep_fifo_detach(uint8_t ep_addr);
-extern bool stm32wb_usbd_dcd_ep_iso_start(uint8_t ep_addr, stm32wb_usbd_dcd_ep_iso_callback_t callback, void *context);
+extern bool stm32wb_usbd_dcd_ep_iso_transmit(uint8_t ep_addr, const uint8_t *data_0, uint32_t count_0, const uint8_t *data_1, uint32_t count_1, stm32wb_usbd_dcd_ep_iso_in_callback_t callback, void *context);
+extern bool stm32wb_usbd_dcd_ep_iso_receive(uint8_t ep_addr, uint8_t *data, uint32_t size, stm32wb_usbd_dcd_ep_iso_out_callback_t callback, void *context);
 extern bool stm32wb_usbd_dcd_ep_iso_stop(uint8_t ep_addr);
-extern bool stm32wb_usbd_dcd_ep_iso_transmit(uint8_t ep_addr, uint16_t length);
 #endif /* STM32WB_USBD_DCD_ISO_SUPPORTED == 1 */
 
 #ifdef __cplusplus

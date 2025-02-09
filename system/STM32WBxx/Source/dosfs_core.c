@@ -306,7 +306,7 @@ static int dosfs_volume_mount(dosfs_volume_t * volume)
     memset(&volume->statistics, 0, sizeof(volume->statistics));
 #endif /* (DOSFS_CONFIG_STATISTICS == 1) */
 
-    status = (*device->interface->info)(device->context, &media, &write_protected, &blkcnt, &au_size, &product);
+    status = (*device->interface->start)(device->context, &media, &write_protected, &blkcnt, &au_size, &product);
 
     if (status == F_NO_ERROR)
     {
@@ -961,7 +961,7 @@ static int dosfs_volume_read(dosfs_volume_t *volume, uint32_t address, uint8_t *
 
     do
     {
-        status = (*device->interface->read)(device->context, address, data, 1, 1, NULL);
+        status = (*device->interface->read)(device->context, address, data, 1);
                 
         if ((status == F_ERR_ONDRIVE) && (retries >= 1))
         {
@@ -1007,7 +1007,7 @@ static int dosfs_volume_write(dosfs_volume_t *volume, uint32_t address, const ui
 
     do
     {
-        status = (*device->interface->write)(device->context, address, data, 1, 1, true, NULL);
+        status = (*device->interface->write)(device->context, address, data, 1, true);
                 
         if ((status == F_ERR_ONDRIVE) && (retries >= 1))
         {
@@ -1036,19 +1036,13 @@ static int dosfs_volume_write(dosfs_volume_t *volume, uint32_t address, const ui
         }
     }
 
-    if (status == F_NO_ERROR)
-    {
-	armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
-    }
-
     return status;
 }
 
-static int  dosfs_volume_zero(dosfs_volume_t *volume, uint32_t address, uint32_t length, bool wait)
+static int  dosfs_volume_zero(dosfs_volume_t *volume, uint32_t address, uint32_t length, bool sync)
 {
     int status = F_NO_ERROR;
     dosfs_device_t *device;
-    uint32_t total;
     uint8_t *data;
 
     device = DOSFS_VOLUME_DEVICE(volume);
@@ -1061,21 +1055,13 @@ static int  dosfs_volume_zero(dosfs_volume_t *volume, uint32_t address, uint32_t
         volume->dir_cache.blkno = DOSFS_BLKNO_INVALID;
         
         memset(data, 0, DOSFS_BLK_SIZE);
-
-	total = length;
 	
         do
         {
-            status = (*device->interface->write)(device->context, address, data, 1, total, wait, NULL);
-
-            if (status == F_NO_ERROR)
-            {
-                armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
-            }
+            status = (*device->interface->write)(device->context, address, data, 1, ((length == 1) ? sync : false));
 
             address++;
             length--;
-	    total = 0;
         }
         while ((status == F_NO_ERROR) && length);
     }
@@ -1087,7 +1073,7 @@ static int  dosfs_volume_zero(dosfs_volume_t *volume, uint32_t address, uint32_t
     }
 #endif /* (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1) */
 
-    if (wait)
+    if (sync)
     {
         if (status != F_NO_ERROR)
         {
@@ -1976,7 +1962,7 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
     dosfs_device_t *device;
     uint8_t media, write_protected;
     unsigned int fattype, sys_id;
-    uint32_t blkno, blkcnt, blktotal, blk_unit_size, cls_blk_shift, clscnt, clscnt_e, tot_sec, num_fats;
+    uint32_t blkno, blkcnt, blk_unit_size, cls_blk_shift, clscnt, clscnt_e, tot_sec, num_fats;
     uint32_t boot_blkno, fat1_blkno, fat2_blkno, root_blkno, clus_blkno, fat_blkcnt, root_blkcnt, user_blkno, user_blkcnt;
     uint32_t hpc, spt, start_h, start_s, start_c, end_h, end_s, end_c;
     uint32_t au_size, product, serial;
@@ -1986,7 +1972,7 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
     
     device = DOSFS_VOLUME_DEVICE(volume);
 
-    status = (*device->interface->info)(device->context, &media, &write_protected, &blkcnt, &au_size, &product);
+    status = (*device->interface->start)(device->context, &media, &write_protected, &blkcnt, &au_size, &product);
 
     if (status == F_NO_ERROR)
     {
@@ -2020,8 +2006,6 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
 
         if (status == F_NO_ERROR)
         {
-            armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
-
 	    {
 		volatile uint8_t status;
 		
@@ -2458,7 +2442,7 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                 boot->mbr.mbr_par_table[0].mbr_tot_sec      = DOSFS_HTOFL(tot_sec);
                 boot->bs.bs_trail_sig                       = DOSFS_HTOFS(0xaa55);
 
-                status = (*device->interface->write)(device->context, 0, (uint8_t*)boot, 1, 1, true, NULL);
+                status = (*device->interface->write)(device->context, 0, (uint8_t*)boot, 1, true);
 
                 if (status == F_NO_ERROR)
                 {
@@ -2511,7 +2495,7 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                             memcpy(boot->bpb40.bs_fil_sys_type, "FAT16   ", sizeof(boot->bpb40.bs_fil_sys_type));
                         }
 
-                        status = (*device->interface->write)(device->context, boot_blkno, (uint8_t*)boot, 1, 1, true, NULL);
+                        status = (*device->interface->write)(device->context, boot_blkno, (uint8_t*)boot, 1, true);
                     }
                     else
                     {
@@ -2534,11 +2518,11 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                         memcpy(boot->bpb71.bs_vol_lab, "NO NAME    ", sizeof(boot->bpb71.bs_vol_lab));
                         memcpy(boot->bpb71.bs_fil_sys_type, "FAT32   ", sizeof(boot->bpb71.bs_fil_sys_type));
 
-                        status = (*device->interface->write)(device->context, boot_blkno, (uint8_t*)boot, 1, 1, true, NULL);
+                        status = (*device->interface->write)(device->context, boot_blkno, (uint8_t*)boot, 1, true);
 
                         if (status == F_NO_ERROR)
                         {
-                            status = (*device->interface->write)(device->context, boot_blkno +6, (uint8_t*)boot, 1, 1, true, NULL);
+                            status = (*device->interface->write)(device->context, boot_blkno +6, (uint8_t*)boot, 1, true);
 
                             if (status == F_NO_ERROR)
                             {
@@ -2553,11 +2537,11 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                                 fsinfo->fsi_nxt_free   = DOSFS_HTOFL(3);
                                 fsinfo->fsi_trail_sig  = DOSFS_HTOFL(0xaa550000);
                                         
-                                status = (*device->interface->write)(device->context, boot_blkno +1, (uint8_t*)fsinfo, 1, 1, true, NULL);
+                                status = (*device->interface->write)(device->context, boot_blkno +1, (uint8_t*)fsinfo, 1, true);
                                         
                                 if (status == F_NO_ERROR)
                                 {
-                                    status = (*device->interface->write)(device->context, boot_blkno +7, (uint8_t*)fsinfo, 1, 1, true, NULL);
+                                    status = (*device->interface->write)(device->context, boot_blkno +7, (uint8_t*)fsinfo, 1, true);
 
                                     if (status == F_NO_ERROR)
                                     {
@@ -2565,11 +2549,11 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                                     
                                         boot->bs.bs_trail_sig = DOSFS_HTOFS(0xaa55);
                                                 
-                                        status = (*device->interface->write)(device->context, boot_blkno +2, (uint8_t*)boot, 1, 1, true, NULL);
+                                        status = (*device->interface->write)(device->context, boot_blkno +2, (uint8_t*)boot, 1, true);
                                     
                                         if (status == F_NO_ERROR)
                                         {
-                                            status = (*device->interface->write)(device->context, boot_blkno +8, (uint8_t*)boot, 1, 1, true, NULL);
+                                            status = (*device->interface->write)(device->context, boot_blkno +8, (uint8_t*)boot, 1, true);
                                         }
                                     }
                                 }
@@ -2589,15 +2573,13 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                         
                         blkno = fat1_blkno;
                         blkcnt = (root_blkno - fat1_blkno) + root_blkcnt;
-                        blktotal = (blkcnt == 1) ? 0 : blkcnt;
 			
                         do
                         {
-                            status = (*device->interface->write)(device->context, blkno, data, 1, blktotal, true, NULL);
+                            status = (*device->interface->write)(device->context, blkno, data, 1, (blkcnt == 1));
                             
                             blkno++;
                             blkcnt--;
-			    blktotal = 0;
                         }
                         while ((status == F_NO_ERROR) && blkcnt);
                         
@@ -2628,13 +2610,13 @@ static int dosfs_volume_hardformat(dosfs_volume_t *volume)
                                 }
                             }
                                 
-                            status = (*device->interface->write)(device->context, fat1_blkno, data, 1, 1, true, NULL);
+                            status = (*device->interface->write)(device->context, fat1_blkno, data, 1, true);
                 
                             if (status == F_NO_ERROR)
                             {
                                 if (fat2_blkno)
                                 {
-                                    status = (*device->interface->write)(device->context, fat2_blkno, data, 1, 1, true, NULL);
+                                    status = (*device->interface->write)(device->context, fat2_blkno, data, 1, true);
                                 }
                             }
                         }
@@ -2677,7 +2659,7 @@ static int dosfs_dir_cache_write(dosfs_volume_t *volume)
     {
         dosfs_file_t *file = volume->data_file;
         
-        status = (*device->interface->write)(device->context, volume->dir_cache.blkno, volume->dir_cache.data, 1, 0, !!(file->mode & DOSFS_FILE_MODE_RANDOM), NULL);
+        status = (*device->interface->write)(device->context, volume->dir_cache.blkno, volume->dir_cache.data, 1, !!(file->mode & DOSFS_FILE_MODE_RANDOM));
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
         if (status == F_ERR_INVALIDSECTOR)
@@ -2689,8 +2671,6 @@ static int dosfs_dir_cache_write(dosfs_volume_t *volume)
         if (status == F_NO_ERROR)
         {
             DOSFS_VOLUME_STATISTICS_COUNT(data_cache_write);
-
-            armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
         }
 
         /* Unconditionally clean the dirty condition, or
@@ -3624,7 +3604,7 @@ static int dosfs_data_cache_write(dosfs_volume_t *volume, dosfs_file_t *file)
 
     device = DOSFS_VOLUME_DEVICE(volume);
 
-    status = (*device->interface->write)(device->context, file->data_cache.blkno, file->data_cache.data, 1, 0, !!(file->mode & DOSFS_FILE_MODE_RANDOM), NULL);
+    status = (*device->interface->write)(device->context, file->data_cache.blkno, file->data_cache.data, 1, !!(file->mode & DOSFS_FILE_MODE_RANDOM));
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
     if (status == F_ERR_INVALIDSECTOR)
@@ -3636,8 +3616,6 @@ static int dosfs_data_cache_write(dosfs_volume_t *volume, dosfs_file_t *file)
     if (status == F_NO_ERROR)
     {
         DOSFS_VOLUME_STATISTICS_COUNT(data_cache_write);
-
-        armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
     }
 
     /* Unconditionally clean the dirty condition, or
@@ -3674,7 +3652,7 @@ static int dosfs_data_cache_fill(dosfs_volume_t *volume, dosfs_file_t *file, uin
         }
         else
         {
-            status = (*device->interface->read)(device->context, blkno, file->data_cache.data, 1, 1, NULL);
+            status = (*device->interface->read)(device->context, blkno, file->data_cache.data, 1);
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
             if (status == F_ERR_INVALIDSECTOR)
@@ -3775,7 +3753,7 @@ static int dosfs_data_cache_write(dosfs_volume_t *volume, dosfs_file_t *file)
 
     device = DOSFS_VOLUME_DEVICE(volume);
 
-    status = (*device->interface->write)(device->context, volume->data_cache.blkno, volume->data_cache.data, 1, 0, !!(file->mode & DOSFS_FILE_MODE_RANDOM), NULL);
+    status = (*device->interface->write)(device->context, volume->data_cache.blkno, volume->data_cache.data, 1, !!(file->mode & DOSFS_FILE_MODE_RANDOM));
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
     if (status == F_ERR_INVALIDSECTOR)
@@ -3787,8 +3765,6 @@ static int dosfs_data_cache_write(dosfs_volume_t *volume, dosfs_file_t *file)
     if (status == F_NO_ERROR)
     {
         DOSFS_VOLUME_STATISTICS_COUNT(data_cache_write);
-
-        armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
     }
 
     /* Unconditionally clean the dirty condition, or
@@ -3825,7 +3801,7 @@ static int dosfs_data_cache_fill(dosfs_volume_t *volume, dosfs_file_t *file, uin
         }
         else
         {
-            status = (*device->interface->read)(device->context, blkno, volume->data_cache.data, 1, 1, NULL);
+            status = (*device->interface->read)(device->context, blkno, volume->data_cache.data, 1);
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
             if (status == F_ERR_INVALIDSECTOR)
@@ -3956,7 +3932,7 @@ static int dosfs_data_cache_fill(dosfs_volume_t *volume, dosfs_file_t *file, uin
         }
         else
         {
-            status = (*device->interface->read)(device->context, blkno, volume->dir_cache.data, 1, 1, NULL);
+            status = (*device->interface->read)(device->context, blkno, volume->dir_cache.data, 1);
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
             if (status == F_ERR_INVALIDSECTOR)
@@ -7749,7 +7725,7 @@ static int dosfs_file_flush(dosfs_volume_t *volume, dosfs_file_t *file, int clos
 
         if (status == F_NO_ERROR)
         {
-            status = (*device->interface->sync)(device->context, NULL);
+            status = (*device->interface->sync)(device->context);
         }
 
         if (file->status == F_NO_ERROR)
@@ -8879,7 +8855,7 @@ static int dosfs_file_read(dosfs_volume_t *volume, dosfs_file_t *file, uint8_t *
 
                             if (status == F_NO_ERROR)
                             {
-                                status = (*device->interface->read)(device->context, blkno, data, blkcnt, blkcnt, NULL);
+                                status = (*device->interface->read)(device->context, blkno, data, blkcnt);
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
                                 if (status == F_ERR_INVALIDSECTOR)
@@ -9170,7 +9146,7 @@ static int dosfs_file_write(dosfs_volume_t *volume, dosfs_file_t *file, const ui
 
                                         if (status == F_NO_ERROR)
                                         {
-                                            status = (*device->interface->write)(device->context, blkno, data, blkcnt, 0, false, NULL);
+                                            status = (*device->interface->write)(device->context, blkno, data, blkcnt, false);
 
 #if (DOSFS_CONFIG_MEDIA_FAILURE_SUPPORTED == 1)
                                             if (status == F_ERR_INVALIDSECTOR)
@@ -9198,7 +9174,7 @@ static int dosfs_file_write(dosfs_volume_t *volume, dosfs_file_t *file, const ui
                     {
                         if (file->mode & DOSFS_FILE_MODE_RANDOM)
                         {
-                          status = (*device->interface->sync)(device->context, NULL);
+                          status = (*device->interface->sync)(device->context);
                         }
 
                         if (status == F_NO_ERROR)
@@ -9209,11 +9185,6 @@ static int dosfs_file_write(dosfs_volume_t *volume, dosfs_file_t *file, const ui
                             file->blkno_e = blkno_e;
                         }
                     }
-                }
-
-                if (total != count)
-                {
-                    armv7m_atomic_or(&device->lock, DOSFS_DEVICE_LOCK_MODIFIED);
                 }
 
                 *p_count = total - count;
@@ -9245,20 +9216,25 @@ int f_initvolume(void)
     {
         o_lock = device->lock;
         
-        if (!(o_lock & (DOSFS_DEVICE_LOCK_SCSI | DOSFS_DEVICE_LOCK_MEDIUM | DOSFS_DEVICE_LOCK_INIT)))
+        if (o_lock & (DOSFS_DEVICE_LOCK_INIT | DOSFS_DEVICE_LOCK_SFLASH | DOSFS_DEVICE_LOCK_VOLUME | DOSFS_DEVICE_LOCK_SCSI))
         {
-            n_lock = o_lock | DOSFS_DEVICE_LOCK_VOLUME;
-            
-            if (armv7m_atomic_cas(&device->lock, o_lock, n_lock) == o_lock)
-            {
-                break;
-            }
+            status = F_ERR_INITFUNC;
+
+            break;
         }
+
+        n_lock = o_lock | DOSFS_DEVICE_LOCK_VOLUME;
         
-        __WFE();
+        if (armv7m_atomic_cas(&device->lock, o_lock, n_lock) == o_lock)
+        {
+            break;
+        }
     }
 
-    status = dosfs_volume_lock_noinit(volume);
+    if (status == F_NO_ERROR)
+    {
+        status = dosfs_volume_lock_noinit(volume);
+    }
     
     if (status == F_NO_ERROR)
     {
@@ -9292,7 +9268,7 @@ int f_delvolume(void)
 
         if (status == F_NO_ERROR)
         {
-            status = (*device->interface->release)(device->context);
+            status = (*device->interface->stop)(device->context, true);
 
             if (status == F_NO_ERROR)
             {
@@ -9324,7 +9300,7 @@ int f_checkvolume(void)
     
     if (status == F_NO_ERROR)
     {
-        status = (*device->interface->sync)(device->context, NULL);
+        status = (*device->interface->sync)(device->context);
 
         status = dosfs_volume_unlock(volume, status);
     }
@@ -11512,7 +11488,7 @@ int f_rewind(F_FILE *file)
 
             if (status == F_NO_ERROR)
             {
-                status = (*device->interface->sync)(device->context, NULL);
+                status = (*device->interface->sync)(device->context);
 
                 if (status == F_NO_ERROR)
                 {

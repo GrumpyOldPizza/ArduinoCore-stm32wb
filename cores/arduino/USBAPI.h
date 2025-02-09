@@ -36,40 +36,42 @@ public:
     USBDeviceClass();
 
     // USB Device API
-    bool begin();
-    void end();
-    void start();
-    void stop();
-    void wakeup();
+    static bool begin();
+    static void end();
+    static void start();
+    static void stop();
+    static void wakeup();
 
-    bool attached();
-    bool connected();
-    bool suspended();
+    static bool attached();
+    static bool connected();
+    static bool suspended();
 
-    void onAttach(void(*callback)(void));
-    void onAttach(Callback callback);
-    void onDetach(void(*callback)(void));
-    void onDetach(Callback callback);
-    void onConnect(void(*callback)(void));
-    void onConnect(Callback callback);
-    void onSuspend(void(*callback)(void));
-    void onSuspend(Callback callback);
-    void onResume(void(*callback)(void));
-    void onResume(Callback callback);
+    static void onAttach(void(*callback)(void));
+    static void onAttach(Callback callback);
+    static void onDetach(void(*callback)(void));
+    static void onDetach(Callback callback);
+    static void onConnect(void(*callback)(void));
+    static void onConnect(Callback callback);
+    static void onSuspend(void(*callback)(void));
+    static void onSuspend(Callback callback);
+    static void onResume(void(*callback)(void));
+    static void onResume(Callback callback);
     
 private:
-    volatile uint32_t m_events;
+    static struct USBDeviceCallbacks {
+        volatile uint32_t events;
     
-    Callback m_attach_callback;
-    Callback m_detach_callback;
-    Callback m_connect_callback;
-    Callback m_suspend_callback;
-    Callback m_resume_callback;
-
-    k_work_t m_work;
+        Callback attach_callback;
+        Callback detach_callback;
+        Callback connect_callback;
+        Callback suspend_callback;
+        Callback resume_callback;
+        
+        k_work_t work;
+    } m_callbacks;
     
-    static void eventCallback(class USBDeviceClass *self, uint32_t events);
-    static void notifyRoutine(class USBDeviceClass *self);
+    static void eventCallback(void *context, uint32_t events);
+    static void notifyRoutine(void *context);
 };
 
 extern USBDeviceClass USBDevice;

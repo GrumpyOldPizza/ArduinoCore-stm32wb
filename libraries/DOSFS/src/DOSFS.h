@@ -39,7 +39,7 @@ public:
     void end();
     bool format();
     bool hardformat(size_t size);
-    bool reclaim(size_t size);
+    // bool reclaim(size_t size);
 
     operator bool() override;
 

@@ -87,7 +87,7 @@ typedef struct _stm32wb_usbd_cdc_transmit_params_t {
     void                                    *context;
 } stm32wb_usbd_cdc_transmit_params_t;
 
-static void stm32wb_usbd_cdc_rx_callback(void *context, uint8_t ep_addr, uint16_t length)
+static void stm32wb_usbd_cdc_rx_callback(void *context, uint8_t ep_addr, uint32_t length)
 {
     uint32_t rx_count, rx_size, rx_write, events;
 
@@ -379,9 +379,9 @@ static void stm32wb_usbd_cdc_configure(void *context, uint8_t interface)
     
     stm32wb_usbd_cdc_control.tx_busy = STM32WB_USBD_CDC_TX_IDLE;
 
-    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_CONTROL_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_INTERRUPT, STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE, 0, NULL);
-    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE, 0, NULL);
-    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE, 0, NULL);
+    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_CONTROL_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_INTERRUPT, STM32WB_USBD_CDC_CONTROL_MAX_PACKET_SIZE);
+    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE);
+    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_CDC_DATA_OUT_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_CDC_DATA_MAX_PACKET_SIZE);
 
     stm32wb_usbd_cdc_control.state = STM32WB_USBD_CDC_STATE_INIT;
 }

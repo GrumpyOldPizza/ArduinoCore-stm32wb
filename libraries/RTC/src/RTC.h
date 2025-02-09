@@ -118,8 +118,9 @@ public:
     void enableAlarm(RTCAlarmMatch match);
     void disableAlarm();
 
-    void onAlarm(void(*callback)(void) = nullptr);
-    void onAlarm(Callback callback);
+    void attachInterrupt(void(*callback)(void));
+    void attachInterrupt(Callback callback);
+    void detachInterrupt();
 
     int32_t getZone();
     void setZone(int32_t seconds);
@@ -130,11 +131,13 @@ public:
     int32_t getLeapSeconds();
     void setLeapSeconds(int32_t leapSeconds);
 
-    uint32_t status();
+    bool setCalibration(float clock);
+    bool setCalibration(float clock, float temp);
+    bool setCalibration(float clock, float temp, int32_t tsense);
+    bool setCompensation(float temp_lo, float temp_hi, float coeff_lo, float coeff_hi);
+    bool startCompensation(uint32_t seconds);
+    bool stopCompensation();
 
-     __attribute__((deprecated("Use RTC.onAlarm(callback) instead."))) void attachInterrupt(void(*callback)(void)) { onAlarm(callback); };
-     __attribute__((deprecated("Use RTC.onAlarm() instead."))) void detachInterrupt() { onAlarm(); };
-  
 private:
     static struct RTCAlarm {
         uint8_t match;
@@ -145,7 +148,6 @@ private:
         uint8_t month;
         uint8_t year;
         Callback callback;
-        k_work_t work;
         stm32wb_rtc_tod_t tod;
         stm32wb_rtc_alarm_t alarm;
     } m_alarm;

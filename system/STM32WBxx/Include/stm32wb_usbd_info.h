@@ -35,9 +35,7 @@
 extern "C" {
 #endif
 
-extern const stm32wb_usbd_info_t stm32wb_usbd_cdc_info;
-extern const stm32wb_usbd_info_t stm32wb_usbd_cdc_msc_info;
-
+extern const stm32wb_usbd_info_t stm32wb_usbd_dfu_info;
 extern const stm32wb_usbd_info_t stm32wb_usbd_dfu_cdc_info;
 extern const stm32wb_usbd_info_t stm32wb_usbd_dfu_cdc_msc_info;
 

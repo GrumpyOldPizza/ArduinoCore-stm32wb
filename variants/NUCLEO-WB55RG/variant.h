@@ -36,12 +36,6 @@
  *        Definitions
  *----------------------------------------------------------------------------*/
 
-#define STM32WB_CONFIG_LSECLK             32768
-#define STM32WB_CONFIG_HSECLK             32000000
-#define STM32WB_CONFIG_SYSOPT             (STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_10uH | STM32WB_SYSTEM_OPTION_SMPS_CURRENT_220mA)
-#define STM32WB_CONFIG_PIN_VBUS           STM32WB_GPIO_PIN_NONE
-#define STM32WB_CONFIG_PIN_BUTTON         STM32WB_GPIO_PIN_PC4
-
 /** Master clock frequency */
 #define VARIANT_MCK			  F_CPU
 

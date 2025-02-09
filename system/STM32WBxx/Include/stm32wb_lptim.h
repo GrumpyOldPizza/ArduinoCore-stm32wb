@@ -76,7 +76,10 @@ typedef struct _stm32wb_lptim_timeout_t {
     volatile stm32wb_lptim_timeout_callback_t  callback;
     void * volatile                            context;
 } stm32wb_lptim_timeout_t;
-  
+
+extern bool stm32wb_lptim_timeout_enable(void);
+extern bool stm32wb_lptim_timeout_disable(void);
+extern uint32_t stm32wb_lptim_timeout_clock(void);
 extern bool stm32wb_lptim_timeout_start(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context);
 extern void stm32wb_lptim_timeout_stop(stm32wb_lptim_timeout_t *timeout);
 extern bool stm32wb_lptim_timeout_is_pending(stm32wb_lptim_timeout_t *timeout);

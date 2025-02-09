@@ -79,7 +79,10 @@ setDst			KEYWORD2
 getLeapSeconds	 	KEYWORD2
 setLeapSeconds	 	KEYWORD2
 
-status                  KEYWORD2
+setCalibration          KEYWORD2
+setCompensation         KEYWORD2
+startCompensation       KEYWORD2
+stopCompensation        KEYWORD2
 
 #######################################
 # Constants (LITERAL1)

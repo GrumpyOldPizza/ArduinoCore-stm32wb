@@ -45,26 +45,30 @@
         .space  2048
 #endif
 
-        .section .vectors
+        .section .isr_stack, "aw"
+        .align  3
+        .space  4096
+        
+        .section .isr_vectors
         .align  2
         .globl  __Vectors
 __Vectors:
-        .long   0xbe00be00            /* Top of Stack */
-        .long   Reset_Handler         /* Reset Handler */
-        .long   NMI_Handler           /* NMI Handler */
-        .long   HardFault_Handler     /* Hard Fault Handler */
-        .long   MemManage_Handler     /* MPU Fault Handler */
-        .long   BusFault_Handler      /* Bus Fault Handler */
-        .long   UsageFault_Handler    /* Usage Fault Handler */
-        .long   0                     /* Reserved */
-        .long   0                     /* Reserved */
-        .long   0                     /* Reserved */
-        .long   0                     /* Reserved */
-        .long   SVC_Handler           /* SVCall Handler */
-        .long   DebugMon_Handler      /* Debug Monitor Handler */
-        .long   0                     /* Reserved */
-        .long   PendSV_Handler        /* PendSV Handler */
-        .long   SysTick_Handler       /* SysTick Handler */
+        .long   __StackTop                /* Top of Stack */
+        .long   Reset_Handler             /* Reset Handler */
+        .long   NMI_Handler               /* NMI Handler */
+        .long   HardFault_Handler         /* Hard Fault Handler */
+        .long   MemManage_Handler         /* MPU Fault Handler */
+        .long   BusFault_Handler          /* Bus Fault Handler */
+        .long   UsageFault_Handler        /* Usage Fault Handler */
+        .long   0                         /* Reserved */
+        .long   0x54568495                /* Reserved (magic) */
+        .long   __boot_base__ + 0x4000    /* Reserved (base) */
+        .long   stm32wb_application_info + 32 - __Vectors /* Reserved (size) */
+        .long   SVC_Handler               /* SVCall Handler */
+        .long   DebugMon_Handler          /* Debug Monitor Handler */
+        .long   stm32wb_system_info - __Vectors /* Reserved (offset) */
+        .long   PendSV_Handler            /* PendSV Handler */
+        .long   SysTick_Handler           /* SysTick Handler */
 
         /* External interrupts */
         .long   WWDG_IRQHandler
@@ -141,8 +145,6 @@ __Vectors:
         .globl  Reset_Handler
         .type   Reset_Handler, %function
 Reset_Handler:
-        ldr     r0, =__StackTop
-        mov     sp, r0
         bl      SystemInit
 
         /*

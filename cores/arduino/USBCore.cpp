@@ -34,11 +34,11 @@
 
 #if !defined(USB_TYPE)
 #define USB_VID 0x1209
-#define USB_PID 0x6671
-#define USB_DID 0x0100
+#define USB_PID 0x6675
 #define USB_MANUFACTURER "Tlera Corporation"
 #define USB_PRODUCT "Firefly"
-#define USB_TYPE 1
+//#define USB_TYPE 1
+#define USB_TYPE 2
 #endif
 
 #if (USB_TYPE != 0)
@@ -54,30 +54,24 @@ static const stm32wb_usbd_device_t g_USBDevice =
 {
     USB_VID,
     USB_PID,
-    USB_DID,
+    0,
     USB_MANUFACTURER,
     USB_PRODUCT,
 };
 
-static const stm32wb_usbd_params_t g_USBParams =
-{
-    STM32WB_USB_IRQ_PRIORITY,
-    STM32WB_CONFIG_PIN_VBUS,
-};
-
 #endif
 
+struct USBDeviceClass::USBDeviceCallbacks USBDeviceClass::m_callbacks = {
+    .events = 0,
+    .attach_callback = Callback(),
+    .detach_callback = Callback(),
+    .connect_callback = Callback(),
+    .suspend_callback = Callback(),
+    .resume_callback = Callback(),
+    .work = K_WORK_INIT(&USBDeviceClass::notifyRoutine, NULL)
+};
+
 USBDeviceClass::USBDeviceClass() {
-    m_events = 0;
-    
-    m_attach_callback = Callback();
-    m_detach_callback = Callback();
-    m_connect_callback = Callback();
-    m_suspend_callback = Callback();
-    m_resume_callback = Callback();
-
-    m_work = K_WORK_INIT(&USBDeviceClass::notifyRoutine, (void*)this);
-
 #if (USB_TYPE == 2)
 #if (STM32WB_CONFIG_SFLASH == 1) || (STORAGE_TYPE == 1)
     dosfs_sflash_initialize();
@@ -85,13 +79,13 @@ USBDeviceClass::USBDeviceClass() {
 #endif
 
 #if (USB_TYPE != 0)
-    stm32wb_usbd_configure(&g_USBDevice, &USB_INFO, &g_USBParams);
+    stm32wb_usbd_configure(&g_USBDevice, &USB_INFO);
 #endif
 }
 
 bool USBDeviceClass::begin() {
 #if (USB_TYPE != 0)
-    return stm32wb_usbd_enable((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)this);
+    return stm32wb_usbd_enable();
 #endif
 
     return false;
@@ -146,74 +140,84 @@ bool USBDeviceClass::suspended() {
 }
 
 void USBDeviceClass::onAttach(void(*callback)(void)) {
-    m_attach_callback = Callback(callback);
+    onAttach(Callback(callback));
 }
 
 void USBDeviceClass::onAttach(Callback callback) {
-    m_attach_callback = callback;
+    stm32wb_usbd_notify((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)NULL);
+
+    m_callbacks.attach_callback = callback;
 }
 
 void USBDeviceClass::onDetach(void(*callback)(void)) {
-    m_detach_callback = Callback(callback);
+    onDetach(Callback(callback));
 }
 
 void USBDeviceClass::onDetach(Callback callback) {
-    m_detach_callback = callback;
+    stm32wb_usbd_notify((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)NULL);
+
+    m_callbacks.detach_callback = callback;
 }
 
 void USBDeviceClass::onConnect(void(*callback)(void)) {
-    m_connect_callback = Callback(callback);
+    onConnect(Callback(callback));
 }
 
 void USBDeviceClass::onConnect(Callback callback) {
-    m_connect_callback = callback;
+    stm32wb_usbd_notify((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)NULL);
+
+    m_callbacks.connect_callback = callback;
 }
 
 void USBDeviceClass::onSuspend(void(*callback)(void)) {
-    m_suspend_callback = Callback(callback);
+    onSuspend(Callback(callback));
 }
 
 void USBDeviceClass::onSuspend(Callback callback) {
-    m_suspend_callback = callback;
+    stm32wb_usbd_notify((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)NULL);
+
+    m_callbacks.suspend_callback = callback;
 }
 
 void USBDeviceClass::onResume(void(*callback)(void)) {
-    m_resume_callback = Callback(callback);
+    onResume(Callback(callback));
 }
 
 void USBDeviceClass::onResume(Callback callback) {
-    m_resume_callback = callback;
+    stm32wb_usbd_notify((stm32wb_usbd_event_callback_t)&USBDeviceClass::eventCallback, (void*)NULL);
+
+    m_callbacks.resume_callback = callback;
 }
 
-void USBDeviceClass::eventCallback(class USBDeviceClass *self, uint32_t events) {
-    armv7m_atomic_or(&self->m_events, events);
+void USBDeviceClass::eventCallback(void *context, uint32_t events) {
+    armv7m_atomic_or(&m_callbacks.events, events);
 
-    k_work_submit(&self->m_work);
+    k_work_submit(&m_callbacks.work);
 }
 
-void USBDeviceClass::notifyRoutine(class USBDeviceClass *self) {
+void USBDeviceClass::notifyRoutine(void *context) {
     uint32_t events;
 
-    events = armv7m_atomic_swap(&self->m_events, 0);
+    events = armv7m_atomic_swap(&m_callbacks.events, 0);
 
     if (events & STM32WB_USBD_EVENT_ATTACH) {
-        self->m_attach_callback();
+        m_callbacks.attach_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_DETACH) {
-        self->m_attach_callback();
+        m_callbacks.attach_callback();
     }
     
     if (events & STM32WB_USBD_EVENT_CONNECT) {
-        self->m_connect_callback();
+        m_callbacks.connect_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_SUSPEND) {
-        self->m_suspend_callback();
+        m_callbacks.suspend_callback();
     }
 
     if (events & STM32WB_USBD_EVENT_RESUME) {
-        self->m_resume_callback();
+        m_callbacks.resume_callback();
     }
 }
 

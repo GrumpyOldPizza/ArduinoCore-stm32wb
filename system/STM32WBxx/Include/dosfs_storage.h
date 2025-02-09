@@ -34,27 +34,51 @@
 #include <string.h>
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
-typedef struct _dosfs_storage_interface_t {
-    bool (*Init)(uint8_t **p_cache_data, const uint8_t **p_inquiry_data);
-    bool (*DeInit)(void);
-    bool (*IsReady)(void);
-    bool (*GetCapacity)(uint32_t *p_block_count, uint32_t *p_block_size);
-    bool (*GetWriteProtected)(bool *p_write_protected);
-    bool (*GetChanged)(bool *p_changed);
-    bool (*StartStopUnit)(bool start, bool loej, bool noflush, uint32_t *p_fault_return);
-    bool (*PreventAllowMediumRemoval)(bool prevent, uint32_t *p_fault_return);
-    bool (*SynchronizeCache)(uint32_t *p_fault_return);
-    bool (*Acquire)(void);
-    void (*Release)(void);
-    bool (*Read)(uint8_t *data, uint32_t address, uint32_t length, uint32_t total, uint32_t *p_fault_return);
-    bool (*Write)(const uint8_t *data, uint32_t address, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return);
-} dosfs_storage_interface_t;
+#include "dosfs_core.h"
+  
+typedef struct _dosfs_object_t dosfs_object_t;
+  
+typedef void (*dosfs_object_read_callback_t)(dosfs_object_t *object, uint32_t offset, uint8_t *data, uint32_t count);
+typedef void (*dosfs_object_write_callback_t)(dosfs_object_t *object, uint32_t offset, const uint8_t *data, uint32_t count);
+typedef void (*dosfs_object_delete_callback_t)(dosfs_object_t *object);
 
-extern const dosfs_storage_interface_t dosfs_storage_interface;
-     
+typedef struct _dosfs_object_t {
+    const char                     *name;
+    bool                           read_only;
+    uint32_t                       size;
+    dosfs_object_read_callback_t   read_callback;
+    dosfs_object_write_callback_t  write_callback;
+    dosfs_object_delete_callback_t delete_callback;
+} dosfs_object_t;
+
+typedef struct _dosfs_storage_t {
+    dosfs_device_t               device;
+    uint32_t                     serial;
+    uint8_t                      write_protect;
+    uint8_t                      label[11];
+    uint8_t                      type;
+    uint8_t                      spt;
+    uint16_t                     hpc;
+    uint32_t                     tot_sec;
+    uint32_t                     fat_blkno;
+    uint32_t                     fat_blkcnt;
+    uint32_t                     root_blkno;
+    uint32_t                     root_blkcnt;
+    uint32_t                     data_blkno;
+    uint32_t                     data_blkcnt;
+    uint32_t                     object_mask;
+    uint32_t                     object_count;
+    dosfs_object_t               **object_table;
+    dosfs_dir_t                  root_data[16];
+    uint32_t                     cache_data[1024 / 4];
+} dosfs_storage_t;
+
+extern bool dosfs_storage_init(dosfs_storage_t *storage, bool write_protect, const char *label, uint32_t object_count, dosfs_object_t **object_table);
+extern bool dosfs_storage_deinit(dosfs_storage_t *storage);
+  
 #ifdef __cplusplus
 }
 #endif

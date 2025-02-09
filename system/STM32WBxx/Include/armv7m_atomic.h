@@ -853,6 +853,8 @@ static inline __attribute__((optimize("O3"),always_inline)) void __armv7m_atomic
     while ((p_data[0] != data_0) || (p_data[1] != data_1) || (p_data[2] != data_2) || (p_data[3] != data_3));
 }
 
+#if !defined(__STM32WB_BOOT_CODE__)
+
 extern uint32_t armv7m_atomic_add(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_sub(volatile uint32_t *p_data, uint32_t data);
 extern uint32_t armv7m_atomic_and(volatile uint32_t *p_data, uint32_t data);
@@ -900,6 +902,8 @@ extern uint32_t armv7m_atomic_orz(volatile uint32_t *p_data, uint32_t data, vola
 extern uint32_t armv7m_atomic_orzb(volatile uint32_t *p_data, uint32_t data, volatile uint8_t *p_zero);
 extern uint32_t armv7m_atomic_orhz(volatile uint16_t *p_data, uint32_t data, volatile uint32_t *p_zero);
 extern uint32_t armv7m_atomic_orhzb(volatile uint16_t *p_data, uint32_t data, volatile uint8_t *p_zero);
+
+#endif // !defined(__STM32WB_BOOT_CODE__)
 
 #ifdef __cplusplus
 }

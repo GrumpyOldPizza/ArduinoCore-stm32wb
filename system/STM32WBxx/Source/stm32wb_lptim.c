@@ -56,6 +56,10 @@ static stm32wb_lptim_device_t stm32wb_lptim_device;
 
 #define STM32WB_LPTIM_TIMEOUT_SENTINEL ((stm32wb_lptim_timeout_t*)0x00000001)
 
+#define STM32WB_LPTIM_TIMEOUT_BUSY_NONE    0
+#define STM32WB_LPTIM_TIMEOUT_BUSY_PERIOD  1
+#define STM32WB_LPTIM_TIMEOUT_BUSY_COMPARE 2
+
 /* There is some APB to async LPTIM clock domain sync delay.
  * Measured this is max 5 LPTIM clock cycles (post prescaler).
  * Hence for EVENT use, we simply wait in case of a quick back
@@ -223,7 +227,7 @@ bool stm32wb_lptim_event_compare(uint32_t compare)
     return true;
 }
 
-static inline uint32_t __attribute__((optimize("O3"),always_inline)) stm32wb_lptim_timeout_clock(void)
+static inline uint32_t __attribute__((optimize("O3"),always_inline)) __stm32wb_lptim_timeout_clock(void)
 {
     uint32_t clock, clock_previous;
 
@@ -245,9 +249,9 @@ static inline uint32_t __attribute__((optimize("O3"),always_inline)) stm32wb_lpt
     return clock;
 }
 
-uint32_t __stm32wb_lptim_timeout_clock(void)
+uint32_t stm32wb_lptim_timeout_clock(void)
 {
-    return stm32wb_lptim_timeout_clock();
+    return __stm32wb_lptim_timeout_clock();
 }
 
 static void stm32wb_lptim_timeout_remove(stm32wb_lptim_timeout_t *timeout)
@@ -346,7 +350,7 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
     uint32_t clock, reference, ticks;
     uint16_t compare;
 
-    reference = stm32wb_lptim_timeout_clock();
+    reference = __stm32wb_lptim_timeout_clock();
 
     if (stm32wb_lptim_device.timeout_modify != STM32WB_LPTIM_TIMEOUT_SENTINEL)
     {
@@ -441,7 +445,6 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
 
                     if (!stm32wb_lptim_device.timeout_busy)
                     {
-                        stm32wb_lptim_device.timeout_busy = true;
                         stm32wb_lptim_device.timeout_sync = true;
                         stm32wb_lptim_device.timeout_compare[0] = compare;
                         stm32wb_lptim_device.timeout_compare[1] = compare;
@@ -477,24 +480,88 @@ static void __attribute__((optimize("O3"))) stm32wb_lptim_timeout_routine(void)
                         }
                     }
 
+                    stm32wb_lptim_device.timeout_busy |= STM32WB_LPTIM_TIMEOUT_BUSY_COMPARE;
+                    
                     stm32wb_lptim_device.timeout_clock = clock;
                 }
             }
         }
         else
         {
-            if (stm32wb_lptim_device.timeout_busy)
+            stm32wb_lptim_device.timeout_busy &= ~STM32WB_LPTIM_TIMEOUT_BUSY_COMPARE;
+
+            if (!stm32wb_lptim_device.timeout_busy)
             {
                 stm32wb_system_periph_reset(STM32WB_SYSTEM_PERIPH_LPTIM1);
 
-                stm32wb_lptim_device.timeout_busy = false;
                 stm32wb_lptim_device.timeout_sync = false;
                 stm32wb_lptim_device.timeout_epoch = 0;
                 stm32wb_lptim_device.timeout_clock = 0;
                 stm32wb_lptim_device.timeout_reference = 0;
             }
+            else
+            {
+                if (stm32wb_lptim_device.timeout_compare[1] != 0xffff)
+                {
+                    stm32wb_lptim_device.timeout_compare[1] = 0xffff;
+                    
+                    if (!stm32wb_lptim_device.timeout_sync)
+                    {
+                        stm32wb_lptim_device.timeout_sync = true;
+                        stm32wb_lptim_device.timeout_compare[0] = 0xffff;
+                        
+                        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+                        
+                        LPTIM1->CMP = 0xffff;
+                    }
+                }
+            }
         }
     }
+}
+
+static bool __svc_stm32wb_lptim_timeout_enable(void)
+{
+    if (!stm32wb_lptim_device.timeout_busy)
+    {
+        stm32wb_lptim_device.timeout_sync = true;
+        stm32wb_lptim_device.timeout_compare[0] = 0xffff;
+        stm32wb_lptim_device.timeout_compare[1] = 0xffff;
+        stm32wb_lptim_device.timeout_epoch = 0;
+        
+        stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_LPTIM1);
+        
+        LPTIM1->IER = LPTIM_IER_CMPOKIE | LPTIM_IER_CMPMIE | LPTIM_IER_ARRMIE;
+        LPTIM1->CFGR = 0;
+        
+        LPTIM1->CR = LPTIM_CR_ENABLE;
+        LPTIM1->CMP = 0xffff;
+        LPTIM1->ARR = 0xffff;
+        LPTIM1->CR = LPTIM_CR_CNTSTRT | LPTIM_CR_ENABLE;
+        
+        stm32wb_system_lock(STM32WB_SYSTEM_LOCK_SLEEP);
+    }
+    
+    stm32wb_lptim_device.timeout_busy |= STM32WB_LPTIM_TIMEOUT_BUSY_PERIOD;
+
+    return true;
+}
+
+static bool __svc_stm32wb_lptim_timeout_disable(void)
+{
+    stm32wb_lptim_device.timeout_busy &= ~STM32WB_LPTIM_TIMEOUT_BUSY_PERIOD;
+    
+    if (!stm32wb_lptim_device.timeout_busy)
+    {
+        stm32wb_system_periph_reset(STM32WB_SYSTEM_PERIPH_LPTIM1);
+        
+        stm32wb_lptim_device.timeout_sync = false;
+        stm32wb_lptim_device.timeout_epoch = 0;
+        stm32wb_lptim_device.timeout_clock = 0;
+        stm32wb_lptim_device.timeout_reference = 0;
+    }
+
+    return true;
 }
 
 static void __svc_stm32wb_lptim_timeout_modify(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context)
@@ -514,6 +581,36 @@ static void __svc_stm32wb_lptim_timeout_modify(stm32wb_lptim_timeout_t *timeout,
             armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_LPTIM_TIMEOUT);
         }
     }
+}
+
+bool stm32wb_lptim_timeout_enable(void)
+{
+    if (armv7m_core_is_in_thread())
+    {
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_lptim_timeout_enable);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_lptim_timeout_enable();
+    }
+
+    return false;
+}
+
+bool stm32wb_lptim_timeout_disable(void)
+{
+    if (armv7m_core_is_in_thread())
+    {
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_lptim_timeout_disable);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_lptim_timeout_disable();
+    }
+
+    return false;
 }
 
 bool stm32wb_lptim_timeout_start(stm32wb_lptim_timeout_t *timeout, uint32_t ticks, stm32wb_lptim_timeout_callback_t callback, void *context)
@@ -596,7 +693,7 @@ __attribute__((optimize("O3"))) void LPTIM1_IRQHandler(void)
         stm32wb_lptim_device.timeout_epoch += 0x00010000;
     }
 
-    clock = stm32wb_lptim_timeout_clock();
+    clock = __stm32wb_lptim_timeout_clock();
 
     if ((clock - stm32wb_lptim_device.timeout_reference) >= (stm32wb_lptim_device.timeout_clock - stm32wb_lptim_device.timeout_reference))
     {

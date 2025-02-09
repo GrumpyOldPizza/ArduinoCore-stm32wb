@@ -37,6 +37,8 @@ SFLASHClass::SFLASHClass()
 bool SFLASHClass::begin()
 {
     if (_interface) {
+        (*_interface->enable)();
+        
         return true;
     }
 
@@ -47,12 +49,17 @@ bool SFLASHClass::begin()
 
     _busy = false;
     _status = STM32WB_SFLASH_STATUS_SUCCESS;
+
+    (*_interface->enable)();
     
     return true;
 }
 
 void SFLASHClass::end()
 {
+    if (_interface) {
+        (*_interface->disable)();
+    }
 }
 
 bool SFLASHClass::identify(uint8_t &MID, uint16_t &DID) const

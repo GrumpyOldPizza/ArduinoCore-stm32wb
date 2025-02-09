@@ -12,11 +12,10 @@ STM32WB		KEYWORD1
 # Methods and Functions (KEYWORD2)
 #######################################
 
-getSerial			KEYWORD2
 getUID				KEYWORD2
 readBattery			KEYWORD2
 readTemperature			KEYWORD2
-readVDDA			KEYWORD2
+readVREF			KEYWORD2
 resetCause			KEYWORD2
 wakeupReason			KEYWORD2
 setClocks			KEYWORD2

@@ -88,6 +88,8 @@ extern void __analogWriteDisable(uint32_t pin);
 #define STM32WB_TONE_IRQ_PRIORITY    ARMV7M_IRQ_PRIORITY_REALTIME
 #define STM32WB_SERVO_IRQ_PRIORITY   ARMV7M_IRQ_PRIORITY_REALTIME
 
+extern k_task_t *__arduino_task;
+  
 #ifdef __cplusplus
 } // extern "C"
 #endif

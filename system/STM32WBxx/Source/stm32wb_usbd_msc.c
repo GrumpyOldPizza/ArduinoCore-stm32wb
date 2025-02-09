@@ -31,6 +31,7 @@
 #include "stm32wb_usbd.h"
 #include "stm32wb_usbd_dcd.h"
 #include "stm32wb_usbd_msc.h"
+#include "dosfs_core.h"
 #include "dosfs_storage.h"
 
 /***********************************************************************************************************************/
@@ -45,6 +46,11 @@
 #define SCSI_OPCODE_READ_10                                       0x28
 #define SCSI_OPCODE_WRITE_10                                      0x2a
 #define SCSI_OPCODE_SYNCHRONIZE_CACHE_10                          0x35
+
+#define SCSI_STATE_READY                                          0
+#define SCSI_STATE_STARTED                                        1
+#define SCSI_STATE_STOPPED                                        2
+#define SCSI_STATE_EJECTED                                        3
 
 #define SCSI_STATUS_CSW_CMD_PASSED                                0
 #define SCSI_STATUS_CSW_CMD_FAILED                                1
@@ -78,46 +84,51 @@
 #define SCSI_ASC_NO_SENSE                                         0x0000
 #define SCSI_ASC_NO_SEEK_COMPLETE                                 0x0200
 #define SCSI_ASC_WRITE_FAULT                                      0x0300
+#define SCSI_ASC_LOGICAL_DRIVE_NOT_READY_CAUSE_NOT_REPORTABLE     0x0400
 #define SCSI_ASC_LOGICAL_DRIVE_NOT_READY_BECOMING_READY           0x0401
-#define SCSI_ASC_LOGICAL_DRIVE_NOT_READY_INITIALIZATION_REQUIRED  0x0402
-#define SCSI_ASC_LOGICAL_UNIT_NOT_READY_FORMAT_IN_PROGRESS        0x0404
-#define SCSI_ASC_LOGICAL_DRIVE_NOT_READY_DEVICE_IS_BUSY           0x04FF
-#define SCSI_ASC_NO_REFERENCE_POSITION_FOUND                      0x0600
-#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE               0x0800
-#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_TIMEOUT               0x0801
-#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_OVERRUN               0x0880
-#define SCSI_ASC_ID_CRC_ERROR                                     0x1000
-#define SCSI_ASC_UNRECOVERED_READ_ERROR                           0x1100
-#define SCSI_ASC_ADDRESS_MARK_NOT_FOUND_FOR_ID_FIELD              0x1200
-#define SCSI_ASC_ADDRESS_MARK_NOT_FOUND_FOR_DATA_FIELD            0x1300
-#define SCSI_ASC_RECORDED_ENTITY_NOT_FOUND                        0x1400
-#define SCSI_ASC_RECOVERED_DATA_WITH_RETRIES                      0x1701
-#define SCSI_ASC_RECOVERED_DATA_WITH_ECC                          0x1800
-#define SCSI_ASC_PARAMETER_LIST_LENGTH_ERROR                      0x1A00
-#define SCSI_ASC_INVALID_COMMAND_OPERATION_CODE                   0x2000
-#define SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE               0x2100
-#define SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET                  0x2400
-#define SCSI_ASC_LOGICAL_UNIT_NOT_SUPPORTED                       0x2500
-#define SCSI_ASC_INVALID_FIELD_IN_PARAMETER_LIST                  0x2600
-#define SCSI_ASC_PARAMETER_NOT_SUPPORTED                          0x2601
-#define SCSI_ASC_PARAMETER_VALUE_INVALID                          0x2602
-#define SCSI_ASC_WRITE_PROTECTED_MEDIA                            0x2700
-#define SCSI_ASC_NOT_READY_TO_READY_TRANSITION_MEDIA_CHANGED      0x2800
-#define SCSI_ASC_POWER_ON_RESET_OR_BUS_DEVICE_RESET_OCCURRED      0x2900
-#define SCSI_ASC_COMMANDS_CLEARED_BY_ANOTHER_INITIATOR            0x2F00
-#define SCSI_ASC_CANNOT_READ_MEDIUM_UNKNOWN_FORMAT                0x3001
-#define SCSI_ASC_FORMAT_COMMAND_FAILED                            0x3101
-#define SCSI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED                  0x3900
-#define SCSI_ASC_MEDIUM_NOT_PRESENT                               0x3A00
-#define SCSI_ASC_OVERLAPPED_COMMAND_ATTEMPTED                     0x4E00
-#define SCSI_ASC_MEDIA_REMOVAL_PREVENTED                          0x5302
-#define SCSI_ASC_USB_TO_HOST_SYSTEM_INTERFACE_FAILURE             0x5400
-#define SCSI_ASC_INSUFFICIENT_RESOURCES                           0x8000
-#define SCSI_ASC_UNKNOWN_ERROR                                    0xFFFF
+#define SCSI_ASC_LOGICAL_UNIT_NOT_READY_INITIALIZING_COMMAND_REQUIRED 0x0402
+#define SCSI_ASC_LOGICAL_UNIT_NOT_READY_MANUAL_INTERVENTION_REQUIRED  0x0403
+#define SCSI_ASC_LOGICAL_UNIT_NOT_READY_FORMAT_IN_PROGRESS            0x0404
+#define SCSI_ASC_LOGICAL_DRIVE_NOT_READY_DEVICE_IS_BUSY               0x04FF
+#define SCSI_ASC_NO_REFERENCE_POSITION_FOUND                          0x0600
+#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE                   0x0800
+#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_TIMEOUT                   0x0801
+#define SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_OVERRUN                   0x0880
+#define SCSI_ASC_ID_CRC_ERROR                                         0x1000
+#define SCSI_ASC_UNRECOVERED_READ_ERROR                               0x1100
+#define SCSI_ASC_ADDRESS_MARK_NOT_FOUND_FOR_ID_FIELD                  0x1200
+#define SCSI_ASC_ADDRESS_MARK_NOT_FOUND_FOR_DATA_FIELD                0x1300
+#define SCSI_ASC_RECORDED_ENTITY_NOT_FOUND                            0x1400
+#define SCSI_ASC_RECOVERED_DATA_WITH_RETRIES                          0x1701
+#define SCSI_ASC_RECOVERED_DATA_WITH_ECC                              0x1800
+#define SCSI_ASC_PARAMETER_LIST_LENGTH_ERROR                          0x1A00
+#define SCSI_ASC_INVALID_COMMAND_OPERATION_CODE                       0x2000
+#define SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE                   0x2100
+#define SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET                      0x2400
+#define SCSI_ASC_LOGICAL_UNIT_NOT_SUPPORTED                           0x2500
+#define SCSI_ASC_INVALID_FIELD_IN_PARAMETER_LIST                      0x2600
+#define SCSI_ASC_PARAMETER_NOT_SUPPORTED                              0x2601
+#define SCSI_ASC_PARAMETER_VALUE_INVALID                              0x2602
+#define SCSI_ASC_WRITE_PROTECTED_MEDIA                                0x2700
+#define SCSI_ASC_NOT_READY_TO_READY_TRANSITION_MEDIA_CHANGED          0x2800
+#define SCSI_ASC_POWER_ON_RESET_OR_BUS_DEVICE_RESET_OCCURRED          0x2900
+#define SCSI_ASC_COMMANDS_CLEARED_BY_ANOTHER_INITIATOR                0x2F00
+#define SCSI_ASC_CANNOT_READ_MEDIUM_UNKNOWN_FORMAT                    0x3001
+#define SCSI_ASC_FORMAT_COMMAND_FAILED                                0x3101
+#define SCSI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED                      0x3900
+#define SCSI_ASC_MEDIUM_NOT_PRESENT                                   0x3A00
+#define SCSI_ASC_INTERNAL_TARGET_FAILURE                              0x4400
+#define SCSI_ASC_OVERLAPPED_COMMAND_ATTEMPTED                         0x4E00
+#define SCSI_ASC_MEDIA_REMOVAL_PREVENTED                              0x5302
+#define SCSI_ASC_USB_TO_HOST_SYSTEM_INTERFACE_FAILURE                 0x5400
+#define SCSI_ASC_INSUFFICIENT_RESOURCES                               0x8000
+#define SCSI_ASC_UNKNOWN_ERROR                                        0xFFFF
 
 static void SCSI_ProcessStart(void);
 static void SCSI_ProcessStop(void);
 static void SCSI_ProcessReset(void);
+static void SCSI_ProcessAttach(void);
+static void SCSI_ProcessDetach(void);
 static void SCSI_ProcessCommand(void);
 static void SCSI_ProcessRead(void);
 static void SCSI_ProcessWrite(void);
@@ -158,17 +169,23 @@ static void SCSI_ProcessWrite(void);
 #define MSC_BOT_EVENT_START                    0x00000002
 #define MSC_BOT_EVENT_STOP                     0x00000004
 #define MSC_BOT_EVENT_RESET                    0x00000008
-#define MSC_BOT_EVENT_CLEAR_HALT_DATA_IN       0x00000010
-#define MSC_BOT_EVENT_CLEAR_HALT_DATA_OUT      0x00000020
-#define MSC_BOT_EVENT_TRANSMIT_0               0x00000040
-#define MSC_BOT_EVENT_TRANSMIT_1               0x00000080
-#define MSC_BOT_EVENT_RECEIVE_0                0x00000100
-#define MSC_BOT_EVENT_RECEIVE_1                0x00000200
-#define MSC_BOT_EVENT_RESPONSE                 0x00000400
-#define MSC_BOT_EVENT_CSW                      0x00000800
-#define MSC_BOT_EVENT_CBW                      0x00001000
+#define MSC_BOT_EVENT_ATTACH                   0x00000010
+#define MSC_BOT_EVENT_DETACH                   0x00000020
+#define MSC_BOT_EVENT_CLEAR_HALT_DATA_IN       0x00000040
+#define MSC_BOT_EVENT_CLEAR_HALT_DATA_OUT      0x00000080
+#define MSC_BOT_EVENT_TRANSMIT_0               0x00000100
+#define MSC_BOT_EVENT_TRANSMIT_1               0x00000200
+#define MSC_BOT_EVENT_RECEIVE_0                0x00000400
+#define MSC_BOT_EVENT_RECEIVE_1                0x00000800
+#define MSC_BOT_EVENT_RESPONSE                 0x00001000
+#define MSC_BOT_EVENT_CSW                      0x00002000
+#define MSC_BOT_EVENT_CBW                      0x00004000
 
-#define MSC_BOT_BUFFER_QUEUE_COUNT             2
+#define MSC_BOT_NOTIFY_START                   0x00000001
+#define MSC_BOT_NOTIFY_STOP                    0x00000002
+#define MSC_BOT_NOTIFY_EJECT                   0x00000004
+#define MSC_BOT_NOTIFY_ATTACH                  0x00000008
+#define MSC_BOT_NOTIFY_DETACH                  0x00000010
 
 static void MSC_BOT_Event(uint32_t events);
 static void MSC_BOT_Routine(void *context) __attribute__((noreturn));
@@ -189,6 +206,8 @@ static void MSC_BOT_ContinueTransmit(uint32_t length, uint8_t status);
 static void MSC_BOT_SetupReceive(uint32_t length);
 static void MSC_BOT_ContinueReceive(uint32_t length);
 static void MSC_BOT_FinishReceive(uint8_t status);
+
+static void MSC_BOT_Notify(uint32_t notify);
 
 /***********************************************************************************************************************/
 /***********************************************************************************************************************/
@@ -212,11 +231,11 @@ typedef struct
     uint8_t  bStatus;
 } USBD_MSC_BOT_CSWTypeDef;
 
-#define STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE          0xffffffff
-#define STM32WB_USBD_MSC_SCSI_BLK_FAULT_COMMUNICATION 0xfffffffe
-
 typedef struct _stm32wb_usbd_msc_control_t {
-    const dosfs_storage_interface_t *storage;
+    dosfs_device_t                    *device;
+    stm32wb_usbd_msc_event_callback_t callback;
+    void                              *context;
+
     uint8_t                  interface;  
     uint8_t                  max_lun;  
 
@@ -231,21 +250,22 @@ typedef struct _stm32wb_usbd_msc_control_t {
     volatile uint32_t        bot_tx_length;
     volatile uint32_t        bot_rx_length;
   
-    uint8_t                  scsi_medium_removal;
+    uint8_t                  scsi_state;
     uint8_t                  scsi_sense_skey;
     uint16_t                 scsi_sense_asc;
-    uint32_t                 scsi_sense_address;
+    uint8_t                  scsi_sense_data[SCSI_DATA_LENGTH_REQUEST_SENSE];
+    uint8_t                  scsi_medium_present;
+    uint8_t                  scsi_medium_removal;
+    uint8_t                  scsi_write_protected;
+    uint16_t                 scsi_blk_size;
     uint32_t                 scsi_blk_count;
-    uint32_t                 scsi_blk_size;
     uint32_t                 scsi_blk_address;
     uint32_t                 scsi_blk_length;
-    uint32_t                 scsi_blk_total;
-    uint32_t                 scsi_blk_fault;
     uint8_t                  scsi_blk_fua;
     uint8_t                  scsi_blk_busy;
+    uint8_t                  scsi_blk_fault;
     uint8_t                  scsi_blk_index;
     uint8_t                  *scsi_data[2];
-    const uint8_t            *scsi_inquiry_data;
 } stm32wb_usbd_msc_control_t;
 
 static stm32wb_usbd_msc_control_t stm32wb_usbd_msc_control;
@@ -260,10 +280,28 @@ static void stm32wb_usbd_msc_transmit_data(void *context, uint8_t ep_addr);
 static void stm32wb_usbd_msc_transmit_response(void *context, uint8_t ep_addr);
 static void stm32wb_usbd_msc_transmit_csw(void *context, uint8_t ep_addr);
 
-static void stm32wb_usbd_msc_receive_data(void *context, uint8_t ep_addr, uint16_t count);
-static void stm32wb_usbd_msc_receive_cbw(void *context, uint8_t ep_addr, uint16_t count);
+static void stm32wb_usbd_msc_receive_data(void *context, uint8_t ep_addr, uint32_t count);
+static void stm32wb_usbd_msc_receive_cbw(void *context, uint8_t ep_addr, uint32_t count);
 
 /***********************************************************************************************************************/
+
+#define STANDARD_INQUIRY_DATA_LEN 0x24
+
+static const uint8_t scsi_inquiry_data[] = {
+  /* LUN 0 */
+  0x00,         
+  0x80,         
+  0x06,         
+  0x02,
+  (STANDARD_INQUIRY_DATA_LEN - 5),
+  0x00,
+  0x00, 
+  0x00,
+  'S', 'T', 'M', '3', '2', 'W', 'B', ' ', /* Manufacturer : 8 bytes */
+  'U', 'S', 'B', ' ', 'S', 'T', 'O', 'R', /* Product      : 16 Bytes */
+  'A', 'G', 'E', ' ', '2', '.', '0', ' ',
+  ' ', ' ', ' ' ,' ',                     /* Version      : 4 Bytes */
+}; 
 
 /*
  * This code is more complex than expected. USB/MSC uses really only one logical connection
@@ -328,11 +366,44 @@ static void stm32wb_usbd_msc_receive_cbw(void *context, uint8_t ep_addr, uint16_
  * followed by a RESET_RECOVERY.
  */
 
-static void SCSI_SenseCode(uint8_t SKey, uint16_t ASC, uint32_t blk_address)
+static void SCSI_SenseCode(uint8_t SKey, uint16_t ASC)
 {
-    stm32wb_usbd_msc_control.scsi_sense_skey = SKey;
-    stm32wb_usbd_msc_control.scsi_sense_asc = ASC;
-    stm32wb_usbd_msc_control.scsi_sense_address = blk_address;
+    if (stm32wb_usbd_msc_control.scsi_sense_skey == SCSI_SKEY_NO_SENSE)
+    {
+        stm32wb_usbd_msc_control.scsi_sense_skey = SKey;
+        stm32wb_usbd_msc_control.scsi_sense_asc = ASC;
+    }
+}
+
+static void SCSI_SenseStatus(int status)
+{
+    if (status == F_ERR_READ)
+    {
+        SCSI_SenseCode(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_UNRECOVERED_READ_ERROR);
+    }
+
+    if (status == F_ERR_WRITE)
+    {
+        SCSI_SenseCode(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_WRITE_FAULT);
+    }
+        
+    if (status == F_ERR_CARDREMOVED)
+    {
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT);
+    }
+    
+    if (status == F_ERR_ONDRIVE)
+    {
+        SCSI_SenseCode(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_INTERNAL_TARGET_FAILURE);
+    }
+
+#if 0
+    if (status == F_ERR_IO)
+    {
+        SCSI_SenseCode(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE);
+    }
+#endif    
+    // #### FALLTHROU ?
 }
 
 static int SCSI_CommandPassed(void)
@@ -357,10 +428,8 @@ static int SCSI_CommandPassed(void)
     }
 }
 
-static int SCSI_CommandFailed(uint8_t SKey, uint16_t ASC, uint32_t blk_address)
+static int SCSI_CommandFailed(void)
 {
-    SCSI_SenseCode(SKey, ASC, blk_address);
-
     if (stm32wb_usbd_msc_control.bot_cbw.dDataLength == 0)
     {
         /* case (1) Hn = Dn */
@@ -381,12 +450,12 @@ static int SCSI_CommandFailed(uint8_t SKey, uint16_t ASC, uint32_t blk_address)
     }
 }
 
-static bool SCSI_CheckLength(uint32_t length, int *p_status)
+static bool SCSI_CheckLength(uint32_t length, int *p_status_return)
 {
     if (stm32wb_usbd_msc_control.bot_cbw.dDataLength == 0)
     {
         /* case (1) Hn = Dn */
-        *p_status = SCSI_STATUS_CSW_CMD_PASSED;
+        *p_status_return = SCSI_STATUS_CSW_CMD_PASSED;
 
         return false;
     }
@@ -395,7 +464,7 @@ static bool SCSI_CheckLength(uint32_t length, int *p_status)
         if (!(stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80))
         {
             /* case (10) Ho <> Di */
-            *p_status = SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
+            *p_status_return = SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
                 
             return false;
         }
@@ -404,14 +473,14 @@ static bool SCSI_CheckLength(uint32_t length, int *p_status)
     return true;
 }
 
-static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_status)
+static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_status_return)
 {
     if (allocation)
     {
         if (stm32wb_usbd_msc_control.bot_cbw.dDataLength == 0)
         {
             /* case (2) Hn < Di */
-            *p_status = SCSI_STATUS_DATA_IN_CSW_PHASE_ERROR;
+            *p_status_return = SCSI_STATUS_DATA_IN_CSW_PHASE_ERROR;
 
             return false;
         }
@@ -421,7 +490,9 @@ static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_st
             {
                 if (stm32wb_usbd_msc_control.bot_cbw.dDataLength != allocation)
                 {
-                    *p_status = SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET, 0);
+                    SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET);
+
+                    *p_status_return = SCSI_CommandFailed();
 
                     return false;
                 }
@@ -429,7 +500,7 @@ static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_st
             else
             {
                 /* case (10) Ho <> Di */
-                *p_status = SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
+                *p_status_return = SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
                 
                 return false;
             }
@@ -440,19 +511,19 @@ static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_st
         if (stm32wb_usbd_msc_control.bot_cbw.dDataLength == 0)
         {
             /* case (1) Hn = Dn */
-            *p_status =SCSI_STATUS_CSW_CMD_PASSED;
+            *p_status_return = SCSI_STATUS_CSW_CMD_PASSED;
         }
         else
         {
             if (stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80)
             {
                 /* case (4) Hi > Dn */
-                *p_status = SCSI_STATUS_DATA_IN_CSW_CMD_PASSED;
+                *p_status_return = SCSI_STATUS_DATA_IN_CSW_CMD_PASSED;
             }
             else
             {
                 /* case (9) Ho > Dn */
-                *p_status = SCSI_STATUS_DATA_OUT_CSW_CMD_PASSED;
+                *p_status_return =  SCSI_STATUS_DATA_OUT_CSW_CMD_PASSED;
             }
         }
 
@@ -462,72 +533,186 @@ static bool SCSI_CheckAllocation(uint32_t allocation, uint32_t length, int *p_st
     return true;
 }
 
+static dosfs_device_t * SCSI_QueryDevice(void)
+{
+    dosfs_device_t *device;
+    uint8_t media, write_protected;
+    uint32_t blk_count, au_size, serial;
+    int status = F_NO_ERROR;
+
+    if (!stm32wb_usbd_msc_control.scsi_medium_present)
+    {
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT);
+
+        return NULL;
+    }
+
+    if (stm32wb_usbd_msc_control.scsi_state == SCSI_STATE_EJECTED)
+    {
+        // SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_LOGICAL_UNIT_NOT_READY_MANUAL_INTERVENTION_REQUIRED);
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT);
+
+        return NULL;
+    }
+
+    if (stm32wb_usbd_msc_control.scsi_state == SCSI_STATE_STOPPED)
+    {
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_LOGICAL_UNIT_NOT_READY_INITIALIZING_COMMAND_REQUIRED);
+
+        return NULL;
+    }
+    
+    device = stm32wb_usbd_msc_control.device;
+    
+    if (stm32wb_usbd_msc_control.scsi_state != SCSI_STATE_STARTED)
+    {
+        status = (*device->interface->start)(device->context, &media, &write_protected, &blk_count, &au_size, &serial);
+        
+        if (status != F_NO_ERROR)
+        {
+            SCSI_SenseStatus(status);
+
+            return NULL;
+        }
+
+        stm32wb_usbd_msc_control.scsi_state = SCSI_STATE_STARTED;
+
+        stm32wb_usbd_msc_control.scsi_write_protected = write_protected;
+        stm32wb_usbd_msc_control.scsi_blk_count = blk_count;
+        stm32wb_usbd_msc_control.scsi_blk_size = 512;
+
+        MSC_BOT_Notify(MSC_BOT_NOTIFY_START);
+    }
+
+    return device;
+}
+
 static int SCSI_TestUnitReady(const uint8_t *params)
 {
+    dosfs_device_t *device;
+
     // armv7m_rtt_printf("SCSI_TestUnitReady()\n");
-    
-    if (!stm32wb_usbd_msc_control.storage->IsReady())
+
+    device = SCSI_QueryDevice();
+
+    if (!device)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
+        return SCSI_CommandFailed();
+    }
 
     return SCSI_CommandPassed();
 }
 
 static int SCSI_StartStopUnit(const uint8_t *params)
 {
-    bool start, loej, noflush;
+    dosfs_device_t *device;
+    bool start, loej;
+    uint8_t media, write_protected;
+    uint32_t blk_count, au_size, serial;
+    int status = F_NO_ERROR;
 
     start = !!(params[4] & 0x01);
     loej = !!(params[4] & 0x02);
-    noflush = !!(params[4] & 0x04);
 
-    // armv7m_rtt_printf("SCSI_StartStopUnit(start=%d, loej=%d, noflush=%d)\n", start, loej, noflush);
+    // armv7m_rtt_printf("SCSI_StartStopUnit(start=%d, loej=%d)\n", start, loej);
+
+    if (!stm32wb_usbd_msc_control.scsi_medium_present)
+    {
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT);
+
+        return SCSI_CommandFailed();
+    }
+
+    if (stm32wb_usbd_msc_control.scsi_state == SCSI_STATE_EJECTED)
+    {
+        // SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_LOGICAL_UNIT_NOT_READY_MANUAL_INTERVENTION_REQUIRED);
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT);
+
+        return SCSI_CommandFailed();
+    }
 
     if (!start && loej && !stm32wb_usbd_msc_control.scsi_medium_removal)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_MEDIA_REMOVAL_PREVENTED, 0);
-    }
-    
-    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_MEDIA_REMOVAL_PREVENTED);
 
-    if (!stm32wb_usbd_msc_control.storage->StartStopUnit(start, loej, noflush, &stm32wb_usbd_msc_control.scsi_blk_fault))
+        return SCSI_CommandFailed();
+    }
+
+    device = stm32wb_usbd_msc_control.device;
+
+    if (start)
     {
-        if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
+        if (stm32wb_usbd_msc_control.scsi_state != SCSI_STATE_STARTED)
         {
-            return SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_WRITE_FAULT, stm32wb_usbd_msc_control.scsi_blk_fault);
-        }
-        else
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
+            status = (*device->interface->start)(device->context, &media, &write_protected, &blk_count, &au_size, &serial);
+            
+            if (status != F_NO_ERROR)
+            {
+                SCSI_SenseStatus(status);
+
+                return SCSI_CommandFailed();
+            }
+            
+            stm32wb_usbd_msc_control.scsi_state = SCSI_STATE_STARTED;
+            
+            stm32wb_usbd_msc_control.scsi_write_protected = write_protected;
+            stm32wb_usbd_msc_control.scsi_blk_count = blk_count;
+            stm32wb_usbd_msc_control.scsi_blk_size = 512;
+
+            MSC_BOT_Notify(MSC_BOT_NOTIFY_START);
         }
     }
-    
+    else
+    {
+        if (stm32wb_usbd_msc_control.scsi_state != SCSI_STATE_STOPPED)
+        {
+            status = (*device->interface->stop)(device->context, !!loej);
+            
+            if (status != F_NO_ERROR)
+            {
+                SCSI_SenseStatus(status);
+
+                return SCSI_CommandFailed();
+            }
+
+            stm32wb_usbd_msc_control.scsi_state = (loej ? SCSI_STATE_EJECTED : SCSI_STATE_STOPPED);
+
+            MSC_BOT_Notify(loej ? MSC_BOT_NOTIFY_EJECT : MSC_BOT_NOTIFY_STOP);
+        }
+    }
+        
     return SCSI_CommandPassed();
 }
 
 static int SCSI_PreventAllowMediumRemoval(const uint8_t *params)
 {
+    dosfs_device_t *device;
     bool prevent;
-
+    int status = F_NO_ERROR;
+    
     prevent = !!(params[4] & 0x01);
-  
+    
     // armv7m_rtt_printf("SCSI_PreventAllowMediumRemoval(prevent=%d)\n", prevent);
 
-    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
+    device = SCSI_QueryDevice();
 
-    if (!stm32wb_usbd_msc_control.storage->PreventAllowMediumRemoval(prevent, &stm32wb_usbd_msc_control.scsi_blk_fault))
+    if (!device)
     {
-        if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_WRITE_FAULT, stm32wb_usbd_msc_control.scsi_blk_fault);
-        }
-        else
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        }
-    } 
+        return SCSI_CommandFailed();
+    }
 
+    if (!prevent && !stm32wb_usbd_msc_control.scsi_medium_removal)
+    {
+        status = (*device->interface->sync)(device->context);
+            
+        if (status != F_NO_ERROR)
+        {
+            SCSI_SenseStatus(status);
+            
+            return SCSI_CommandFailed();
+        }
+    }
+    
     stm32wb_usbd_msc_control.scsi_medium_removal = !prevent;
     
     return SCSI_CommandPassed();
@@ -535,22 +720,22 @@ static int SCSI_PreventAllowMediumRemoval(const uint8_t *params)
 
 static int SCSI_Inquiry(const uint8_t *params)
 {
-    const uint8_t *data;
     uint32_t length, allocation;
     int status;
 
+    
     // armv7m_rtt_printf("SCSI_Inquiry()\n");
     
     allocation = params[4];
 
     if ((params[1] & 0x01) || (params[2] != 0x00))
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET);
+
+        return SCSI_CommandFailed();
     }
 
-    data = (const uint8_t *)stm32wb_usbd_msc_control.scsi_inquiry_data;
-
-    length = data[4] + 5;
+    length = scsi_inquiry_data[4] + 5;
 
     if (!SCSI_CheckAllocation(allocation, length, &status))
     {
@@ -562,7 +747,7 @@ static int SCSI_Inquiry(const uint8_t *params)
 	length = allocation;
     }
     
-    MSC_BOT_Response(data, length);
+    MSC_BOT_Response(scsi_inquiry_data, length);
     
     return SCSI_STATUS_DATA;
 }
@@ -572,12 +757,12 @@ static int SCSI_RequestSense(const uint8_t *params)
     uint8_t *data;
     uint32_t length, allocation;
     int status;
-
-    // armv7m_rtt_printf("SCSI_RequestSense() -> SKEY=%02x, ASC=%04x, ADDRESS=%08x\n", stm32wb_usbd_msc_control.scsi_sense_skey, stm32wb_usbd_msc_control.scsi_sense_asc, stm32wb_usbd_msc_control.scsi_sense_address);
+    
+    // armv7m_rtt_printf("SCSI_RequestSense() -> SKEY=%02x, ASC=%04x\n", stm32wb_usbd_msc_control.scsi_sense_skey, stm32wb_usbd_msc_control.scsi_sense_asc);
     
     allocation = params[4];
 
-    data = stm32wb_usbd_msc_control.scsi_data[0];
+    data = stm32wb_usbd_msc_control.scsi_sense_data;
 
     data[0]  = 0x70;
     data[1]  = 0x00;
@@ -597,20 +782,9 @@ static int SCSI_RequestSense(const uint8_t *params)
     data[15] = 0x00;
     data[16] = 0x00;
     data[17] = 0x00;
-
-    if ((stm32wb_usbd_msc_control.scsi_sense_asc == SCSI_ASC_UNRECOVERED_READ_ERROR) || (stm32wb_usbd_msc_control.scsi_sense_asc == SCSI_ASC_WRITE_FAULT))
-    {
-        data[0] |= 0x80;
-
-        data[3]  = (uint8_t)(stm32wb_usbd_msc_control.scsi_sense_address >> 24);
-        data[4]  = (uint8_t)(stm32wb_usbd_msc_control.scsi_sense_address >> 16);
-        data[5]  = (uint8_t)(stm32wb_usbd_msc_control.scsi_sense_address >>  8);
-        data[6]  = (uint8_t)(stm32wb_usbd_msc_control.scsi_sense_address >>  0);
-    }
     
     stm32wb_usbd_msc_control.scsi_sense_skey = SCSI_SKEY_NO_SENSE;
     stm32wb_usbd_msc_control.scsi_sense_asc = SCSI_ASC_NO_SENSE;
-    stm32wb_usbd_msc_control.scsi_sense_address = 0;
 
     length = SCSI_DATA_LENGTH_REQUEST_SENSE;
     
@@ -631,10 +805,10 @@ static int SCSI_RequestSense(const uint8_t *params)
 
 static int SCSI_ModeSense6(const uint8_t *params)
 {
+    dosfs_device_t *device;
     uint8_t *data;
     uint8_t pc, page_code;
     uint32_t length;
-    bool write_protected;
     int status;
 
     pc = params[2] >> 6;
@@ -644,20 +818,24 @@ static int SCSI_ModeSense6(const uint8_t *params)
 
     if (pc == 3)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_SAVING_PARAMETERS_NOT_SUPPORTED);
+
+        return SCSI_CommandFailed();
+    }
+
+    device = SCSI_QueryDevice();
+
+    if (!device)
+    {
+        return SCSI_CommandFailed();
     }
     
-    if (!stm32wb_usbd_msc_control.storage->GetWriteProtected(&write_protected))
-    {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
-
     data = stm32wb_usbd_msc_control.scsi_data[0];
     length = SCSI_DATA_LENGTH_MODE_SENSE_6;
     
     data[0] = 0x03;
     data[1] = 0x00;
-    data[2] = write_protected ? 0x90 : 0x10;
+    data[2] = stm32wb_usbd_msc_control.scsi_write_protected ? 0x90 : 0x10;
     data[3] = 0x00;
 
     if ((page_code == 0x08) || (page_code == 0x3f))
@@ -716,16 +894,19 @@ static int SCSI_ModeSense6(const uint8_t *params)
 
 static int SCSI_ReadCapacity10(const uint8_t *params)
 {
+    dosfs_device_t *device;
     uint8_t *data;
     int status;
-
+    
     // armv7m_rtt_printf("SCSI_ReadCapacity10()\n");
 
-    if (!stm32wb_usbd_msc_control.storage->GetCapacity(&stm32wb_usbd_msc_control.scsi_blk_count, &stm32wb_usbd_msc_control.scsi_blk_size))
+    device = SCSI_QueryDevice();
+    
+    if (!device)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
-
+        return SCSI_CommandFailed();
+    }
+    
     data = stm32wb_usbd_msc_control.scsi_data[0];
     
     data[0] = (uint8_t)((stm32wb_usbd_msc_control.scsi_blk_count -1) >> 24);
@@ -749,142 +930,108 @@ static int SCSI_ReadCapacity10(const uint8_t *params)
 
 static int SCSI_Read10(const uint8_t *params)
 {
-    bool changed;
-
+    dosfs_device_t *device;
+    int status = F_NO_ERROR;
+    
     stm32wb_usbd_msc_control.scsi_blk_address = (params[2] << 24) | (params[3] << 16) | (params[4] << 8) | (params[5] << 0);
     stm32wb_usbd_msc_control.scsi_blk_length = (params[7] << 8) | (params[8] << 0);
 
     // armv7m_rtt_printf("SCSI_Read10(address=%08x, length=%d)\n", stm32wb_usbd_msc_control.scsi_blk_address, stm32wb_usbd_msc_control.scsi_blk_length);
-    
-    /* Check in Media is changed */
-    if (!stm32wb_usbd_msc_control.storage->GetChanged(&changed))
-    {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
 
-    if (changed)
+    device = SCSI_QueryDevice();
+
+    if (!device)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_UNIT_ATTENTION, SCSI_ASC_NOT_READY_TO_READY_TRANSITION_MEDIA_CHANGED, 0);
-    } 
-    
-    if (stm32wb_usbd_msc_control.scsi_blk_count == 0)
-    {
-        if (!stm32wb_usbd_msc_control.storage->GetCapacity(&stm32wb_usbd_msc_control.scsi_blk_count, &stm32wb_usbd_msc_control.scsi_blk_size))
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        } 
+        return SCSI_CommandFailed();
     }
     
     /* Check address range */
     if ((stm32wb_usbd_msc_control.scsi_blk_address + stm32wb_usbd_msc_control.scsi_blk_length) > stm32wb_usbd_msc_control.scsi_blk_count)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE);
+
+        return SCSI_CommandFailed();
     }
 
     if (stm32wb_usbd_msc_control.bot_cbw.dDataLength != (stm32wb_usbd_msc_control.scsi_blk_length * stm32wb_usbd_msc_control.scsi_blk_size))
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET);
+
+        return SCSI_CommandFailed();
     }
 
     if (stm32wb_usbd_msc_control.scsi_blk_length == 0)
     {
         return SCSI_CommandPassed();
     }
+
+    if (!(stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80))
+    {
+        /* case (10) Ho <> Di */
+        return SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
+    }
+
+    stm32wb_usbd_msc_control.scsi_blk_busy = true;
+    stm32wb_usbd_msc_control.scsi_blk_fault = false;
+    stm32wb_usbd_msc_control.scsi_blk_index = 0;
+
+    status = (*device->interface->read)(device->context,
+                                        stm32wb_usbd_msc_control.scsi_blk_address,
+                                        stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
+                                        1);
+
+    if (status != F_NO_ERROR)
+    {
+        SCSI_SenseStatus(status);
+
+        stm32wb_usbd_msc_control.scsi_blk_fault = true;
+    }
+    
+    MSC_BOT_SetupTransmit(stm32wb_usbd_msc_control.scsi_blk_length, (stm32wb_usbd_msc_control.scsi_blk_fault ? MSC_BOT_CSW_CMD_FAILED : MSC_BOT_CSW_CMD_PASSED));
+
+    stm32wb_usbd_msc_control.scsi_blk_address += 1;
+    stm32wb_usbd_msc_control.scsi_blk_length -= 1;
+    stm32wb_usbd_msc_control.scsi_blk_index ^= 1;
+    
+    if (!stm32wb_usbd_msc_control.scsi_blk_length)
+    {
+        stm32wb_usbd_msc_control.scsi_blk_busy = false;
+    }
     else
     {
-        if (!(stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80))
+        if (!stm32wb_usbd_msc_control.scsi_blk_fault)
         {
-            /* case (10) Ho <> Di */
-            return SCSI_STATUS_DATA_OUT_CSW_PHASE_ERROR;
+            status = (*device->interface->read)(device->context,
+                                                stm32wb_usbd_msc_control.scsi_blk_address,
+                                                stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
+                                                1);
+            
+            if (status != F_NO_ERROR)
+            {
+                SCSI_SenseStatus(status);
+                
+                stm32wb_usbd_msc_control.scsi_blk_fault = true;
+            }
         }
-
-        /* Acquire Media Lock */
-        if (!stm32wb_usbd_msc_control.storage->Acquire())
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        } 
-
-        stm32wb_usbd_msc_control.scsi_blk_busy = true;
-        stm32wb_usbd_msc_control.scsi_blk_index = 0;
-        stm32wb_usbd_msc_control.scsi_blk_total = stm32wb_usbd_msc_control.scsi_blk_length;
-        stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
-
-        if (!stm32wb_usbd_msc_control.storage->Read(stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
-                                                    stm32wb_usbd_msc_control.scsi_blk_address,
-                                                    1,
-                                                    stm32wb_usbd_msc_control.scsi_blk_total,
-                                                    &stm32wb_usbd_msc_control.scsi_blk_fault))
-        {
-            if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-            {
-                SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_UNRECOVERED_READ_ERROR, stm32wb_usbd_msc_control.scsi_blk_fault);
-            }
-            else
-            {
-                SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE, 0);
-
-                stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_COMMUNICATION;
-            }
-	}
-
-        MSC_BOT_SetupTransmit(stm32wb_usbd_msc_control.scsi_blk_length, ((stm32wb_usbd_msc_control.scsi_blk_fault== STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE) ? MSC_BOT_CSW_CMD_PASSED : MSC_BOT_CSW_CMD_FAILED));
-
+	    
+        MSC_BOT_ContinueTransmit(stm32wb_usbd_msc_control.scsi_blk_length, (stm32wb_usbd_msc_control.scsi_blk_fault ? MSC_BOT_CSW_CMD_FAILED : MSC_BOT_CSW_CMD_PASSED));
+	    
         stm32wb_usbd_msc_control.scsi_blk_address += 1;
         stm32wb_usbd_msc_control.scsi_blk_length -= 1;
         stm32wb_usbd_msc_control.scsi_blk_index ^= 1;
-        stm32wb_usbd_msc_control.scsi_blk_total = 0;
-
+        
         if (!stm32wb_usbd_msc_control.scsi_blk_length)
-	{
-            stm32wb_usbd_msc_control.storage->Release();
-
-	    stm32wb_usbd_msc_control.scsi_blk_busy = false;
+        {
+            stm32wb_usbd_msc_control.scsi_blk_busy = false;
 	}
-	else
-	{
-            if (stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-	    {
-		if (!stm32wb_usbd_msc_control.storage->Read(stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
-                                                            stm32wb_usbd_msc_control.scsi_blk_address,
-                                                            1,
-                                                            stm32wb_usbd_msc_control.scsi_blk_total,
-                                                            &stm32wb_usbd_msc_control.scsi_blk_fault))
-		{
-                    if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-                    {
-                        SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_UNRECOVERED_READ_ERROR, stm32wb_usbd_msc_control.scsi_blk_fault);
-                    }
-                    else
-                    {
-                        SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE, 0);
-                        
-                        stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_COMMUNICATION;
-                    }
-		}
-	    }
-	    
-	    MSC_BOT_ContinueTransmit(stm32wb_usbd_msc_control.scsi_blk_length, ((stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE) ? MSC_BOT_CSW_CMD_PASSED : MSC_BOT_CSW_CMD_FAILED));
-	    
-	    stm32wb_usbd_msc_control.scsi_blk_address += 1;
-	    stm32wb_usbd_msc_control.scsi_blk_length -= 1;
-	    stm32wb_usbd_msc_control.scsi_blk_index ^= 1;
-            stm32wb_usbd_msc_control.scsi_blk_total = 0;
-
-	    if (!stm32wb_usbd_msc_control.scsi_blk_length)
-	    {
-                stm32wb_usbd_msc_control.storage->Release();
-
-                stm32wb_usbd_msc_control.scsi_blk_busy = false;
-	    }
-	}
-
-        return SCSI_STATUS_DATA;
     }
+    
+    return SCSI_STATUS_DATA;
 }
 
 static int SCSI_Write10(const uint8_t *params)
 {
-    bool write_protected, changed;
+    dosfs_device_t *device;
 
     stm32wb_usbd_msc_control.scsi_blk_address = (params[2] << 24) | (params[3] << 16) | (params[4] << 8) | (params[5] << 0);
     stm32wb_usbd_msc_control.scsi_blk_length = (params[7] << 8) | (params[8] << 0);
@@ -892,105 +1039,77 @@ static int SCSI_Write10(const uint8_t *params)
 
     // armv7m_rtt_printf("SCSI_Write10(address=%08x, length=%d, fua=%d)\n", stm32wb_usbd_msc_control.scsi_blk_address, stm32wb_usbd_msc_control.scsi_blk_length, stm32wb_usbd_msc_control.scsi_blk_fua);
     
-    /* Check in Media is changed */
-    if (!stm32wb_usbd_msc_control.storage->GetChanged(&changed))
-    {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
+    device = SCSI_QueryDevice();
 
-    if (changed)
+    if (!device)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_UNIT_ATTENTION, SCSI_ASC_NOT_READY_TO_READY_TRANSITION_MEDIA_CHANGED, 0);
-    } 
+        return SCSI_CommandFailed();
+    }
     
     /* Check If media is write-protected */
-    if (!stm32wb_usbd_msc_control.storage->GetWriteProtected(&write_protected))
+    if (stm32wb_usbd_msc_control.scsi_write_protected)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
+        SCSI_SenseCode(SCSI_SKEY_NOT_READY, SCSI_ASC_WRITE_PROTECTED_MEDIA);
 
-    if (write_protected)
-    {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_WRITE_PROTECTED_MEDIA, 0);
+        return SCSI_CommandFailed();
     } 
-
-    if (stm32wb_usbd_msc_control.scsi_blk_count == 0)
-    {
-        if (!stm32wb_usbd_msc_control.storage->GetCapacity(&stm32wb_usbd_msc_control.scsi_blk_count, &stm32wb_usbd_msc_control.scsi_blk_size))
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        } 
-    }
     
     /* Check address range */
     if ((stm32wb_usbd_msc_control.scsi_blk_address + stm32wb_usbd_msc_control.scsi_blk_length) > stm32wb_usbd_msc_control.scsi_blk_count)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE);
+
+        return SCSI_CommandFailed();
     }
 
     if (stm32wb_usbd_msc_control.bot_cbw.dDataLength != (stm32wb_usbd_msc_control.scsi_blk_length * stm32wb_usbd_msc_control.scsi_blk_size))
     {
-        return SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_FIELD_IN_COMMAND_PACKET);
+
+        return SCSI_CommandFailed();
     }
 
     if (stm32wb_usbd_msc_control.scsi_blk_length == 0)
     {
         return SCSI_CommandPassed();
     }
-    else
+
+    if (stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80)
     {
-        if (stm32wb_usbd_msc_control.bot_cbw.bmFlags & 0x80)
-        {
-            /* case (8) Hi <> Do */
-            return SCSI_STATUS_DATA_IN_CSW_PHASE_ERROR;
-        }
-
-        /* Acquire Media Lock */
-        if (!stm32wb_usbd_msc_control.storage->Acquire())
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        } 
-
-        stm32wb_usbd_msc_control.scsi_blk_busy = true;
-        stm32wb_usbd_msc_control.scsi_blk_index = 0;
-        stm32wb_usbd_msc_control.scsi_blk_total = stm32wb_usbd_msc_control.scsi_blk_length;
-        stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
-	
-        MSC_BOT_SetupReceive(stm32wb_usbd_msc_control.scsi_blk_length);
-
-        return SCSI_STATUS_DATA;
+        /* case (8) Hi <> Do */
+        return SCSI_STATUS_DATA_IN_CSW_PHASE_ERROR;
     }
+    
+    stm32wb_usbd_msc_control.scsi_blk_busy = true;
+    stm32wb_usbd_msc_control.scsi_blk_fault = false;
+    stm32wb_usbd_msc_control.scsi_blk_index = 0;
+    
+    MSC_BOT_SetupReceive(stm32wb_usbd_msc_control.scsi_blk_length);
+
+    return SCSI_STATUS_DATA;
 }
 
 static int SCSI_SynchronizeCache10(const uint8_t *params)
 {
-    bool changed;
-
+    dosfs_device_t *device;
+    int status = F_NO_ERROR;
+    
     // armv7m_rtt_printf("SCSI_SynchronizeCache10()\n");
     
-    /* Check in Media is changed */
-    if (!stm32wb_usbd_msc_control.storage->GetChanged(&changed))
-    {
-        return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-    } 
+    device = SCSI_QueryDevice();
 
-    if (changed)
+    if (!device)
     {
-        return SCSI_CommandFailed(SCSI_SKEY_UNIT_ATTENTION, SCSI_ASC_NOT_READY_TO_READY_TRANSITION_MEDIA_CHANGED, 0);
-    } 
+        return SCSI_CommandFailed();
+    }
 
-    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
-
-    if (!stm32wb_usbd_msc_control.storage->SynchronizeCache(&stm32wb_usbd_msc_control.scsi_blk_fault))
+    status = (*device->interface->sync)(device->context);
+    
+    if (status != F_NO_ERROR)
     {
-        if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_WRITE_FAULT, stm32wb_usbd_msc_control.scsi_blk_fault);
-        }
-        else
-        {
-            return SCSI_CommandFailed(SCSI_SKEY_NOT_READY, SCSI_ASC_MEDIUM_NOT_PRESENT, 0);
-        }
+        SCSI_SenseStatus(status);
+        
+        return SCSI_CommandFailed();
     }
     
     return SCSI_CommandPassed();
@@ -998,43 +1117,71 @@ static int SCSI_SynchronizeCache10(const uint8_t *params)
 
 static void SCSI_ProcessStart(void)
 {
-    uint8_t *cache_data;
-    const uint8_t *inquiry_data;
-
-    stm32wb_usbd_msc_control.storage->Init(&cache_data, &inquiry_data);
-
-    stm32wb_usbd_msc_control.scsi_medium_removal = true;
-    
+    stm32wb_usbd_msc_control.scsi_state = SCSI_STATE_READY;
     stm32wb_usbd_msc_control.scsi_sense_skey = SCSI_SKEY_NO_SENSE;
     stm32wb_usbd_msc_control.scsi_sense_asc = SCSI_ASC_NO_SENSE;
-    stm32wb_usbd_msc_control.scsi_sense_address = 0;
     
-    stm32wb_usbd_msc_control.scsi_blk_size = 0;
+    stm32wb_usbd_msc_control.scsi_medium_removal = true;
+    
+    stm32wb_usbd_msc_control.scsi_write_protected = false;
+    stm32wb_usbd_msc_control.scsi_blk_size = 512;
     stm32wb_usbd_msc_control.scsi_blk_count = 0;
     stm32wb_usbd_msc_control.scsi_blk_address = 0;
     stm32wb_usbd_msc_control.scsi_blk_length = 0;
-    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE;
     stm32wb_usbd_msc_control.scsi_blk_fua = false;
     stm32wb_usbd_msc_control.scsi_blk_busy = false;
+    stm32wb_usbd_msc_control.scsi_blk_fault = false;
     stm32wb_usbd_msc_control.scsi_blk_index = 0;
-    stm32wb_usbd_msc_control.scsi_data[0] = cache_data;
-    stm32wb_usbd_msc_control.scsi_data[1] = cache_data + STM32WB_USBD_MSC_DATA_BLOCK_SIZE;
-
-    stm32wb_usbd_msc_control.scsi_inquiry_data = inquiry_data;
 }
 
 static void SCSI_ProcessStop(void)
 {
-    stm32wb_usbd_msc_control.storage->StartStopUnit(true, false, true, NULL);
-    
-    stm32wb_usbd_msc_control.storage->DeInit();
+    if (stm32wb_usbd_msc_control.scsi_medium_present)
+    {
+        if ((stm32wb_usbd_msc_control.scsi_state == SCSI_STATE_STARTED) || (stm32wb_usbd_msc_control.scsi_state == SCSI_STATE_STOPPED))
+        {
+            (*stm32wb_usbd_msc_control.device->interface->stop)(stm32wb_usbd_msc_control.device->context, true);
+
+            MSC_BOT_Notify(MSC_BOT_NOTIFY_EJECT);
+        }
+    }
 }
 
 static void SCSI_ProcessReset(void)
 {
-    stm32wb_usbd_msc_control.storage->Release();
+    stm32wb_usbd_msc_control.scsi_blk_fault = true;
+}
 
-    stm32wb_usbd_msc_control.scsi_blk_busy = false;
+static void SCSI_ProcessAttach(void)
+{
+    uint8_t *cache_data;
+
+    cache_data = stm32wb_usbd_msc_control.device->cache;
+    
+    stm32wb_usbd_msc_control.scsi_data[0] = cache_data;
+    stm32wb_usbd_msc_control.scsi_data[1] = cache_data + STM32WB_USBD_MSC_DATA_BLOCK_SIZE;
+
+    stm32wb_usbd_msc_control.scsi_medium_present = true;
+
+    MSC_BOT_Notify(MSC_BOT_NOTIFY_ATTACH);
+}
+
+static void SCSI_ProcessDetach(void)
+{
+    stm32wb_usbd_msc_control.scsi_blk_fault = true;
+
+    stm32wb_usbd_msc_control.scsi_medium_present = false;
+
+    stm32wb_usbd_msc_control.scsi_write_protected = false;
+    stm32wb_usbd_msc_control.scsi_blk_size = 512;
+    stm32wb_usbd_msc_control.scsi_blk_count = 0;
+
+    if (stm32wb_usbd_msc_control.device)
+    {
+        armv7m_atomic_and(&stm32wb_usbd_msc_control.device->lock, ~DOSFS_DEVICE_LOCK_SCSI);
+    }
+
+    MSC_BOT_Notify(MSC_BOT_NOTIFY_DETACH);
 }
 
 static void SCSI_ProcessCommand(void)
@@ -1086,7 +1233,9 @@ static void SCSI_ProcessCommand(void)
     default:
         // armv7m_rtt_printf("SCSI_OPCODE = %02x\n", params[0]);
 
-        status = SCSI_CommandFailed(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_COMMAND_OPERATION_CODE, 0);
+        SCSI_SenseCode(SCSI_SKEY_ILLEGAL_REQUEST, SCSI_ASC_INVALID_COMMAND_OPERATION_CODE);
+
+        status = SCSI_CommandFailed();
         break;
     }
 
@@ -1115,40 +1264,36 @@ static void SCSI_ProcessCommand(void)
 
 static void SCSI_ProcessRead(void)
 {
+    dosfs_device_t *device;
+    int status = F_NO_ERROR;
+    
     if (stm32wb_usbd_msc_control.scsi_blk_busy)
     {
-        if (stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
+        if (!stm32wb_usbd_msc_control.scsi_blk_fault)
         {
-            if (!stm32wb_usbd_msc_control.storage->Read(stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
-                                                        stm32wb_usbd_msc_control.scsi_blk_address,
-                                                        1,
-                                                        stm32wb_usbd_msc_control.scsi_blk_total,
-                                                        &stm32wb_usbd_msc_control.scsi_blk_fault))
+            device = stm32wb_usbd_msc_control.device;
+
+            status = (*device->interface->read)(device->context,
+                                                stm32wb_usbd_msc_control.scsi_blk_address,
+                                                stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
+                                                1);
+
+            if (status != F_NO_ERROR)
             {
-                if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-                {
-                    SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_UNRECOVERED_READ_ERROR, stm32wb_usbd_msc_control.scsi_blk_fault);
-                }
-                else
-                {
-                    SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE, 0);
-                    
-                    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_COMMUNICATION;
-                }
+                SCSI_SenseStatus(status);
+                
+                stm32wb_usbd_msc_control.scsi_blk_fault = true;
             }
         }
         
-        MSC_BOT_ContinueTransmit(stm32wb_usbd_msc_control.scsi_blk_length, ((stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE) ? MSC_BOT_CSW_CMD_PASSED : MSC_BOT_CSW_CMD_FAILED));
+        MSC_BOT_ContinueTransmit(stm32wb_usbd_msc_control.scsi_blk_length, (stm32wb_usbd_msc_control.scsi_blk_fault ? MSC_BOT_CSW_CMD_FAILED : MSC_BOT_CSW_CMD_PASSED));
         
         stm32wb_usbd_msc_control.scsi_blk_address += 1;
         stm32wb_usbd_msc_control.scsi_blk_length -= 1;
         stm32wb_usbd_msc_control.scsi_blk_index ^= 1;
-        stm32wb_usbd_msc_control.scsi_blk_total = 0;
         
         if (!stm32wb_usbd_msc_control.scsi_blk_length)
         {
-            stm32wb_usbd_msc_control.storage->Release();
-
             stm32wb_usbd_msc_control.scsi_blk_busy = false;
         }
     }
@@ -1156,34 +1301,32 @@ static void SCSI_ProcessRead(void)
 
 static void SCSI_ProcessWrite(void)
 {
+    dosfs_device_t *device;
+    int status = F_NO_ERROR;
+
     if (stm32wb_usbd_msc_control.scsi_blk_busy)
     {
-        if (stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
+        if (!stm32wb_usbd_msc_control.scsi_blk_fault)
         {
-            if (!stm32wb_usbd_msc_control.storage->Write(stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
-                                                         stm32wb_usbd_msc_control.scsi_blk_address,
-                                                         1,
-                                                         stm32wb_usbd_msc_control.scsi_blk_total,
-                                                         stm32wb_usbd_msc_control.scsi_blk_fua,
-                                                         &stm32wb_usbd_msc_control.scsi_blk_fault))
+            device = stm32wb_usbd_msc_control.device;
+
+            status = (*device->interface->write)(device->context,
+                                                 stm32wb_usbd_msc_control.scsi_blk_address,
+                                                 stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.scsi_blk_index],
+                                                 1,
+                                                 ((stm32wb_usbd_msc_control.scsi_blk_length == 1) ? stm32wb_usbd_msc_control.scsi_blk_fua : false));
+
+            if (status != F_NO_ERROR)
             {
-                if (stm32wb_usbd_msc_control.scsi_blk_fault != STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE)
-                {
-                    SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_WRITE_FAULT, stm32wb_usbd_msc_control.scsi_blk_fault);
-                }
-                else
-                {
-                    SCSI_CommandFailed(SCSI_SKEY_HARDWARE_ERROR, SCSI_ASC_LOGICAL_UNIT_COMMUNICATION_FAILURE, 0);
-                    
-                    stm32wb_usbd_msc_control.scsi_blk_fault = STM32WB_USBD_MSC_SCSI_BLK_FAULT_COMMUNICATION;
-                }
+                SCSI_SenseStatus(status);
+                
+                stm32wb_usbd_msc_control.scsi_blk_fault = true;
             }
         }
         
         stm32wb_usbd_msc_control.scsi_blk_address += 1;
         stm32wb_usbd_msc_control.scsi_blk_length -= 1;
         stm32wb_usbd_msc_control.scsi_blk_index ^= 1;
-        stm32wb_usbd_msc_control.scsi_blk_total = 0;
         
         if (stm32wb_usbd_msc_control.scsi_blk_length)
         {
@@ -1191,9 +1334,7 @@ static void SCSI_ProcessWrite(void)
         }
         else
         {
-            MSC_BOT_FinishReceive((stm32wb_usbd_msc_control.scsi_blk_fault == STM32WB_USBD_MSC_SCSI_BLK_FAULT_NONE) ? MSC_BOT_CSW_CMD_PASSED : MSC_BOT_CSW_CMD_FAILED);
-
-            stm32wb_usbd_msc_control.storage->Release();
+            MSC_BOT_FinishReceive((stm32wb_usbd_msc_control.scsi_blk_fault ? MSC_BOT_CSW_CMD_FAILED : MSC_BOT_CSW_CMD_PASSED));
             
             stm32wb_usbd_msc_control.scsi_blk_busy = false;
         }
@@ -1244,6 +1385,16 @@ static __attribute__((noreturn)) void MSC_BOT_Routine(void *context)
 	    SCSI_ProcessReset();
 	}
 
+	if (events & MSC_BOT_EVENT_ATTACH)
+	{
+	    SCSI_ProcessAttach();
+        }
+
+	if (events & MSC_BOT_EVENT_DETACH)
+	{
+	    SCSI_ProcessDetach();
+        }
+        
 	if (events & MSC_BOT_EVENT_CLEAR_HALT_DATA_IN)
 	{
 	    MSC_BOT_ClearHaltDataIn();
@@ -1549,6 +1700,14 @@ static void __svc_MSC_BOT_FinishReceive(uint8_t status)
     __svc_MSC_BOT_SendCSW(status);
 }
 
+static void __svc_MSC_BOT_Notify(uint32_t notify)
+{
+    if (stm32wb_usbd_msc_control.callback)
+    {
+        (*stm32wb_usbd_msc_control.callback)(stm32wb_usbd_msc_control.context, notify);
+    }
+}
+
 static void MSC_BOT_Start(void)
 {
     armv7m_svcall_0((uint32_t)&__svc_MSC_BOT_Start);
@@ -1619,12 +1778,28 @@ static void MSC_BOT_FinishReceive(uint8_t status)
     armv7m_svcall_1((uint32_t)&__svc_MSC_BOT_FinishReceive, (uint32_t)status);
 }
 
+static void MSC_BOT_Notify(uint32_t notify)
+{
+    armv7m_svcall_1((uint32_t)&__svc_MSC_BOT_Notify, (uint32_t)notify);
+}
+
 /***********************************************************************************************************************/
 
 static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_transmit_data(void *context, uint8_t ep_addr)
 {
-    MSC_BOT_Event((stm32wb_usbd_msc_control.bot_index & 1) ? MSC_BOT_EVENT_TRANSMIT_1 : MSC_BOT_EVENT_TRANSMIT_0);
+    if ((stm32wb_usbd_msc_control.bot_tx_length > 1) && (stm32wb_usbd_msc_control.bot_count > 1))
+    {
+        stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index ^ 1][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_transmit_data, NULL);
 
+        stm32wb_usbd_msc_control.bot_tx_busy = true;
+    }
+    else
+    {
+        stm32wb_usbd_msc_control.bot_tx_busy = false;
+    }
+
+    MSC_BOT_Event((stm32wb_usbd_msc_control.bot_index & 1) ? MSC_BOT_EVENT_TRANSMIT_1 : MSC_BOT_EVENT_TRANSMIT_0);
+    
     __armv7m_atomic_dec(&stm32wb_usbd_msc_control.bot_tx_length);
     
     stm32wb_usbd_msc_control.bot_csw.dDataResidue -= stm32wb_usbd_msc_control.scsi_blk_size;
@@ -1633,21 +1808,40 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_transmit_data(void 
     
     __armv7m_atomic_decb(&stm32wb_usbd_msc_control.bot_count);
 
-    stm32wb_usbd_msc_control.bot_tx_busy = false;
+    if (!stm32wb_usbd_msc_control.bot_tx_length)
+    {
+        stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.bot_csw, MSC_BOT_CSW_LENGTH, stm32wb_usbd_msc_transmit_csw, NULL);
+    }
+
+#if 0    
+    MSC_BOT_Event((stm32wb_usbd_msc_control.bot_index & 1) ? MSC_BOT_EVENT_TRANSMIT_1 : MSC_BOT_EVENT_TRANSMIT_0);
     
+    __armv7m_atomic_dec(&stm32wb_usbd_msc_control.bot_tx_length);
+    
+    stm32wb_usbd_msc_control.bot_csw.dDataResidue -= stm32wb_usbd_msc_control.scsi_blk_size;
+    
+    stm32wb_usbd_msc_control.bot_index ^= 1;
+    
+    __armv7m_atomic_decb(&stm32wb_usbd_msc_control.bot_count);
+
     if (stm32wb_usbd_msc_control.bot_tx_length)
     {
         if (stm32wb_usbd_msc_control.bot_count != 0)
         {
-            stm32wb_usbd_msc_control.bot_tx_busy = true;
-            
             stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_transmit_data, NULL);
+        }
+        else
+        {
+            stm32wb_usbd_msc_control.bot_tx_busy = false;
         }
     }
     else
     {
         stm32wb_usbd_dcd_ep_transmit(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.bot_csw, MSC_BOT_CSW_LENGTH, stm32wb_usbd_msc_transmit_csw, NULL);
+
+        stm32wb_usbd_msc_control.bot_tx_busy = false;
     }
+#endif    
 }
 
 static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_transmit_response(void *context, uint8_t ep_addr)
@@ -1662,12 +1856,38 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_transmit_csw(void *
 #endif /* STM32WB_USBD_DCD_LPM_SUPPORTED == 1 */
 
     stm32wb_usbd_dcd_ep_receive(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.bot_cbw, MSC_BOT_CBW_LENGTH, stm32wb_usbd_msc_receive_cbw, NULL);    
-        
+    
     MSC_BOT_Event(MSC_BOT_EVENT_CSW);
 }
 
-static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_data(void *context, uint8_t ep_addr, uint16_t count)
+static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_data(void *context, uint8_t ep_addr, uint32_t count)
 {
+    bool rx_busy;
+
+    if ((stm32wb_usbd_msc_control.bot_rx_length > 1) && (stm32wb_usbd_msc_control.bot_count < 1))
+    {
+        stm32wb_usbd_dcd_ep_receive(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index ^ 1][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_receive_data, NULL);
+
+        rx_busy = true;
+    }
+    else
+    {
+        rx_busy = false;
+    }
+    
+    MSC_BOT_Event((stm32wb_usbd_msc_control.bot_index & 1) ? MSC_BOT_EVENT_RECEIVE_1 : MSC_BOT_EVENT_RECEIVE_0);
+    
+    __armv7m_atomic_dec(&stm32wb_usbd_msc_control.bot_rx_length);
+    
+    stm32wb_usbd_msc_control.bot_csw.dDataResidue -= stm32wb_usbd_msc_control.scsi_blk_size;
+    
+    stm32wb_usbd_msc_control.bot_index ^= 1;
+    
+    __armv7m_atomic_incb(&stm32wb_usbd_msc_control.bot_count);
+
+    stm32wb_usbd_msc_control.bot_rx_busy = rx_busy;
+        
+#if 0  
     MSC_BOT_Event((stm32wb_usbd_msc_control.bot_index & 1) ? MSC_BOT_EVENT_RECEIVE_1 : MSC_BOT_EVENT_RECEIVE_0);
     
     __armv7m_atomic_dec(&stm32wb_usbd_msc_control.bot_rx_length);
@@ -1689,9 +1909,10 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_data(void *
 	    stm32wb_usbd_dcd_ep_receive(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, (uint8_t *)&stm32wb_usbd_msc_control.scsi_data[stm32wb_usbd_msc_control.bot_index][0], STM32WB_USBD_MSC_DATA_BLOCK_SIZE, stm32wb_usbd_msc_receive_data, NULL);
 	}
     }
+#endif    
 }
 
-static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_cbw(void *context, uint8_t ep_addr, uint16_t count)
+static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_cbw(void *context, uint8_t ep_addr, uint32_t count)
 {
 #if (STM32WB_USBD_DCD_LPM_SUPPORTED == 1)
     stm32wb_usbd_dcd_lpm_reference(STM32WB_USBD_DCD_EP_MASK(STM32WB_USBD_MSC_DATA_IN_EP_ADDR));
@@ -1716,15 +1937,12 @@ static void __attribute__((optimize("O3"))) stm32wb_usbd_msc_receive_cbw(void *c
 
 static void stm32wb_usbd_msc_configure(void *context, uint8_t interface)
 {
-    uint16_t pma_address;
-
-    stm32wb_usbd_msc_control.storage = &dosfs_storage_interface;
     stm32wb_usbd_msc_control.interface = interface;
     
     k_task_create(&stm32wb_usbd_msc_task, "USB/MSC", MSC_BOT_Routine, NULL, 15, &stm32wb_usbd_msc_stack[0], sizeof(stm32wb_usbd_msc_stack), 0);
 
-    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK_DBL, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE, 0, &pma_address);
-    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK_DBL, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE, pma_address, NULL);
+    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_IN_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE);
+    stm32wb_usbd_dcd_ep_configure(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR, STM32WB_USBD_DCD_EP_TYPE_BULK, STM32WB_USBD_MSC_DATA_MAX_PACKET_SIZE);
     
     MSC_BOT_Event(MSC_BOT_EVENT_CONFIGURE);
 }
@@ -1868,5 +2086,45 @@ const stm32wb_usbd_class_t stm32wb_usbd_msc_class = {
     STM32WB_USBD_MSC_INTERFACE_COUNT,
     (STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_IN_EP_ADDR) | STM32WB_USBD_EP_MASK(STM32WB_USBD_MSC_DATA_OUT_EP_ADDR)),
 };
+
+/************************************************************************************************************************************************************/
+
+bool stm32wb_usbd_msc_attach(dosfs_device_t *device, stm32wb_usbd_msc_event_callback_t callback, void *context)
+{
+    uint32_t o_lock, n_lock;
+
+    while (1)
+    {
+        o_lock = device->lock;
+        
+        if (o_lock & (DOSFS_DEVICE_LOCK_INIT | DOSFS_DEVICE_LOCK_SFLASH | DOSFS_DEVICE_LOCK_VOLUME | DOSFS_DEVICE_LOCK_SCSI))
+        {
+            return false;
+        }
+
+        n_lock = o_lock | DOSFS_DEVICE_LOCK_SCSI;
+        
+        if (armv7m_atomic_cas(&device->lock, o_lock, n_lock) == o_lock)
+        {
+            break;
+        }
+    }
+
+    stm32wb_usbd_msc_control.device = device;
+    stm32wb_usbd_msc_control.callback = callback;
+    stm32wb_usbd_msc_control.context = context;
+    
+    MSC_BOT_Event(MSC_BOT_EVENT_ATTACH);
+
+    return true;
+}
+
+bool stm32wb_usbd_msc_detach(void)
+{
+    MSC_BOT_Event(MSC_BOT_EVENT_DETACH);
+    
+    return true;
+}
+
 
 /************************************************************************************************************************************************************/

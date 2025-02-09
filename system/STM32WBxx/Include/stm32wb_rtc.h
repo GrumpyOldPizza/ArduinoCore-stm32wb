@@ -118,9 +118,6 @@ typedef struct _stm32wb_rtc_alarm_t {
 #define STM32WB_RTC_BKP16R_DFU_MASK                   0x00000200
 #define STM32WB_RTC_BKP16R_DFU_SHIFT                  9
 #define STM32WB_RTC_BKP16R_DFU                        STM32WB_RTC_BKP16R_DFU_MASK                 
-#define STM32WB_RTC_BKP16R_OTA_MASK                   0x00000400
-#define STM32WB_RTC_BKP16R_OTA_SHIFT                  10
-#define STM32WB_RTC_BKP16R_OTA                        STM32WB_RTC_BKP16R_OTA_MASK
   
 #define STM32WB_RTC_BKP17R_HSECLK_MASK                0x00000001
 #define STM32WB_RTC_BKP17R_HSECLK_SHIFT               0
@@ -163,8 +160,10 @@ extern void __stm32wb_rtc_initialize(void);
 extern uint32_t stm32wb_rtc_status(void);
 extern void stm32wb_rtc_notify(stm32wb_rtc_event_callback_t callback, void *context);
 
-extern int32_t stm32wb_rtc_get_calibration(void);
-extern void stm32wb_rtc_set_calibration(int32_t calibration);
+extern bool stm32wb_rtc_set_calibration(uint32_t clock, int32_t temp, int32_t tsense);
+extern bool stm32wb_rtc_set_compensation(int32_t temp_lo, int32_t temp_hi, int32_t coeff_lo, int32_t coeff_hi);
+extern bool stm32wb_rtc_start_compensation(uint32_t period);
+extern bool stm32wb_rtc_stop_compensation();
 
 extern void stm32wb_rtc_clock_capture(stm32wb_rtc_capture_t *data);
 extern uint64_t stm32wb_rtc_clock_convert(const stm32wb_rtc_capture_t *data);

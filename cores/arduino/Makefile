@@ -10,11 +10,12 @@ OBJCOPY  = $(TOOLS)/bin/arm-none-eabi-objcopy
 CFLAGS   = -c -g3 -Os $(WARNINGS) -std=gnu11 -ffast-math -ffunction-sections -fdata-sections -nostdlib -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 CXXFLAGS = -c -g3 -Os $(WARNINGS) -std=gnu++11 -ffast-math -ffunction-sections -fdata-sections -fno-threadsafe-statics -nostdlib -fno-use-cxa-atexit -fno-rtti -fno-exceptions -MMD $(EXTRAS) $(DEFINES) $(INCLUDES)
 ASFLAGS  = -c -g -x assembler-with-cpp $(EXTRAS) $(DEFINES) $(INCLUDES)
-LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LdScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
-#LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LinkScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs
+#LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LdScripts/STM32WB55xx_FLASH.ld --specs=nano.specs --specs=nosys.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
+LDFLAGS  = -g -Os $(EXTRAS) -Wl,--gc-sections,--no-undefined -T../../system/STM32WBxx/LdScripts/STM32WB55xx_COMPOSITE.ld --specs=nano.specs -Wl,--defsym=__RTC_EPOCH__=$(shell date +"%s")
 WARNINGS = -Wall -Wextra
-EXTRAS   = -mcpu=cortex-m4 -march=armv7e-m+fp -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-DEFINES  = -DSTM32WB55xx -D__SYSTEM_CORE_CLOCK__=64000000 -DDOSFS_SDCARD=0 -DDOSFS_SFLASH=0 -DARDUINO_MAKEFILE
+EXTRAS   = -mcpu=cortex-m4 -march=armv7e-m+fp -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -falign-functions=6
+#DEFINES  = -DSTM32WB55xx -D__SYSTEM_CORE_CLOCK__=64000000 -DSTORAGE_TYPE=2 -DARDUINO_MAKEFILE
+DEFINES  = -DSTM32WB55xx -D__SYSTEM_CORE_CLOCK__=64000000 -DSTORAGE_TYPE=0 -DARDUINO_MAKEFILE -DUSB_VID=0x1209 -DUSB_PID=0x6677 -DUSB_MANUFACTURER="\"Sparkfun\"" -DUSB_PRODUCT="\"MicroMod-WB5MMG\"" -DUSB_TYPE=1
 EPOCH    = $(shell date +"%s")
 
 INCLUDES = \
@@ -22,7 +23,7 @@ INCLUDES = \
 	-I../../system/CMSIS/Device/ST/STM32WBxx/Include \
 	-I../../system/CMSIS/RTOS2/Include \
 	-I../../system/STM32WBxx/Include \
-	-I../../variants/Firefly-WB55CG \
+	-I../../variants/MicroMod-WB5MMG \
 	-I../../libraries/BLE/src \
 	-I../../libraries/DOSFS/src \
 	-I../../libraries/EEPROM/src \
@@ -36,6 +37,7 @@ INCLUDES = \
 	-I../../libraries/SPI/src \
 	-I../../libraries/STM32WB/src \
 	-I../../libraries/TimerMillis/src \
+	-I../../libraries/USBStorage/src \
 	-I../../libraries/Wire/src \
 	-I.
 SRCS = \
@@ -52,8 +54,9 @@ SRCS = \
 	../../libraries/SPI/src/SPI.cpp \
 	../../libraries/STM32WB/src/STM32WB.cpp \
 	../../libraries/TimerMillis/src/TimerMillis.cpp \
+	../../libraries/USBStorage/src/USBStorage.cpp \
 	../../libraries/Wire/src/Wire.cpp \
-	../../variants/Firefly-WB55CG/variant.cpp \
+	../../variants/MicroMod-WB5MMG/variant.cpp \
 	avr/dtostrf.c \
 	avr/eeprom.c \
 	Callback.cpp \
@@ -75,11 +78,10 @@ SRCS = \
 	delay.c \
 	hooks.c \
 	itoa.c \
-	main.cpp \
 	new.cpp \
 	syscalls_stm32wb.c \
 	wiring.c \
-	wiring_analog.c \
+	wiring_analog.cpp \
 	wiring_digital.c \
 	wiring_pulse.c \
 	wiring_shift.c
@@ -98,8 +100,9 @@ OBJS = \
 	../../libraries/SPI/src/SPI.o \
 	../../libraries/STM32WB/src/STM32WB.o \
 	../../libraries/TimerMillis/src/TimerMillis.o \
+	../../libraries/USBStorage/src/USBStorage.o \
 	../../libraries/Wire/src/Wire.o \
-	../../variants/Firefly-WB55CG/variant.o \
+	../../variants/MicroMod-WB5MMG/variant.o \
 	avr/dtostrf.o \
 	avr/eeprom.o \
 	Callback.o \
@@ -121,7 +124,6 @@ OBJS = \
 	delay.o \
 	hooks.o \
 	itoa.o \
-	main.o \
 	new.o \
 	syscalls_stm32wb.o \
 	wiring.o \
@@ -141,12 +143,18 @@ all:: flash.elf flash.bin
 %.o: %.S
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-flash.elf: $(OBJS) ../../system/STM32WBxx/Lib/libstm32wb55xx.a
-	$(CC) $(LDFLAGS) $(OBJS) -L../../system/STM32WBxx/Lib -lstm32wb55xx -lm -lc -lgcc -lstm32wb55xx -o flash.elf
+libarduino.a:: $(OBJS)
+	$(AR) rcs $@ $^
 
-flash.bin: flash.elf
-	$(OBJCOPY) -O binary flash.elf flash.bin
+flash.elf: main.o libarduino.a ../../system/STM32WBxx/Source/_out/stm32wb55xx/stm32wb_boot.o ../../system/STM32WBxx/Lib/libstm32wb55xx.a
+	$(CC) $(LDFLAGS) main.o ../../system/STM32WBxx/Source/_out/stm32wb55xx/stm32wb_boot.o -Wl,--gc-sections,--no-undefined,-Map=flash.map -Wl,--start-group -L. -larduino -L../../system/STM32WBxx/Lib -lstm32wb55xx -lm -lc -Wl,--end-group -o flash.elf
+#	$(CC) $(LDFLAGS) main.o ../../system/STM32WBxx/Source/_out/stm32wb55xx/stm32wb_boot.o -Wl,--gc-sections,--no-undefined,-Map=flash.map -Wl,--start-group -L. -larduino -L../../system/STM32WBxx/Lib -lstm32wb55xx_debug -lm -lc -Wl,--end-group -o flash.elf
+#	$(CC) $(LDFLAGS) main.o -Wl,--gc-sections,--no-undefined,-Map=flash.map -Wl,--start-group -L. -larduino -L../../system/STM32WBxx/Lib -lstm32wb55xx_debug -lm -lc -Wl,--end-group -o flash.elf
+#	../../tools/linux/elfsign -u eafee6d0-b575-4412-aeb4-c30ecb0d3c6e -v 1209 -p 6675 -e ../../libraries/STM32WB/keys/aes128_key.bin -s ../../libraries/STM32WB/keys/ecc256_key.pem -b flash.bin -d flash.dfu -o flash.ota -x flash.hex flash.elf flash.elf
+	../../tools/linux/elfsign -u eafee6d0-b575-4412-aeb4-c30ecb0d3c6e -v 1209 -p 6675 -b flash.bin -d flash.dfu -o flash.ota -x flash.hex flash.elf flash.elf
+#	../../tools/linux/elfsign -u 07fcdd24-aa7d-4bd5-93b1-9923e90c457c -v 1209 -p 6675 -b flash.bin -d flash.dfu -o flash.ota -x flash.hex flash.elf flash.elf
+
 clean::
-	rm -f flash.elf flash.bin *~ *.o *.d $(OBJS)
+	rm -f flash.elf flash.bin flash.dfu flash.ota flash.hex flash.map libarduino.a *~ *.o *.d main.o $(OBJS)
 
 -include $(OBJS:.o=.d)

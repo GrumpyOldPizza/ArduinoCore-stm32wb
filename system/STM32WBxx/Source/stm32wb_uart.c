@@ -73,8 +73,8 @@ static stm32wb_uart_device_t stm32wb_uart_device;
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
 
-static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_rx_none;
-static __attribute__((section(".dma"))) uint8_t stm32wb_uart_spi_dma_tx_default;
+static __attribute__((section(".noinit"))) uint8_t stm32wb_uart_spi_dma_rx_none;
+static __attribute__((section(".noinit"))) uint8_t stm32wb_uart_spi_dma_tx_default;
 
 #define STM32WB_UART_SPI_RX_DMA_OPTION_RECEIVE    \
     (STM32WB_DMA_OPTION_PERIPHERAL_TO_MEMORY |    \
@@ -174,9 +174,9 @@ static inline void stm32wb_uart_stop_leave(stm32wb_uart_t *uart)
     }
 }
 
-static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *context, uint32_t notify)
+static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *context, uint32_t event)
 {
-    if (notify & STM32WB_SYSTEM_NOTIFY_STOP_ENTER)
+    if (event & STM32WB_SYSTEM_EVENT_STOP_ENTER)
     {
         if (stm32wb_uart_device.wakeup & (1 << STM32WB_UART_INSTANCE_LPUART1))
         {
@@ -192,7 +192,7 @@ static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *c
         }
     }
 
-    if (notify & STM32WB_SYSTEM_NOTIFY_STOP_LEAVE)
+    if (event & STM32WB_SYSTEM_EVENT_STOP_LEAVE)
     {
         if (stm32wb_uart_device.wakeup & (1 << STM32WB_UART_INSTANCE_LPUART1))
         {
@@ -209,7 +209,7 @@ static __attribute__((optimize("O3"))) void stm32wb_uart_notify_callback(void *c
     }
 
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
-    if (notify & STM32WB_SYSTEM_NOTIFY_CLOCKS_EPILOGUE)
+    if (event & STM32WB_SYSTEM_EVENT_CLOCKS_EPILOGUE)
     {
         if (stm32wb_uart_device.instances[STM32WB_UART_INSTANCE_USART1])
         {
@@ -968,9 +968,9 @@ bool stm32wb_uart_create(stm32wb_uart_t *uart, const stm32wb_uart_params_t *para
     if (!stm32wb_uart_device.notify.callback)
     {
 #if (STM32WB_UART_SPI_SUPPORTED == 1)
-        stm32wb_system_register(&stm32wb_uart_device.notify, stm32wb_uart_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_STOP_ENTER | STM32WB_SYSTEM_NOTIFY_STOP_LEAVE | STM32WB_SYSTEM_NOTIFY_CLOCKS_EPILOGUE));
+        stm32wb_system_notify(&stm32wb_uart_device.notify, stm32wb_uart_notify_callback, NULL, (STM32WB_SYSTEM_EVENT_STOP_ENTER | STM32WB_SYSTEM_EVENT_STOP_LEAVE | STM32WB_SYSTEM_EVENT_CLOCKS_EPILOGUE));
 #else /* (STM32WB_UART_SPI_SUPPORTED == 1) */
-        stm32wb_system_register(&stm32wb_uart_device.notify, stm32wb_uart_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_STOP_ENTER | STM32WB_SYSTEM_NOTIFY_STOP_LEAVE));
+        stm32wb_system_notify(&stm32wb_uart_device.notify, stm32wb_uart_notify_callback, NULL, (STM32WB_SYSTEM_EVENT_STOP_ENTER | STM32WB_SYSTEM_EVENT_STOP_LEAVE));
 #endif /* (STM32WB_UART_SPI_SUPPORTED == 1) */
     }
 

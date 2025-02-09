@@ -11,11 +11,19 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
  * [Firefly-STM32WB55CG](https://www.tindie.com/products/TleraCorp/firefly-ble-development-board)
  * [Katydid-STM32WB55CG](https://www.tindie.com/products/tleracorp/katydid-wearable-ble-sensor-board)
 
+### Sparkfun
+ * [MicroMod-STM32WB5MMG](https://www.sparkfun.com/products/21438)
+
 ### STMicroelectronics
  * [NUCLEO-WB55RG](https://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/stm32-nucleo-expansion-boards/p-nucleo-wb55.html)
 
 
 ## Installing
+
+ The Arduino Core for STM32WB does use Secure Boot / Secure Firmware Update. To do so, a special bootloader is installed the first time a sketch is uploaded. To change the bootloader to a newer version, or to switch security settings between `None` and `Signature & Encryption` the STM32WB board has to be reset by toggle the RESET button while holding down the BOOT button, and then uploading a sketch with the new boot code or settings.
+
+ PLEASE ALWAYS WHEN UGRADING, TOGGLE THE RESET BUTTON WHILE HOLDING DOWN THE BOOT BUTTON BEFORE UPLOADING THE FIRST SKETCH.
+
 
 ### Board Manager
 
@@ -60,11 +68,15 @@ ArduinoCore-stm32wb is targeted at ultra low power scenarios, sensor hubs, with 
 
 ## BLE / Wireless stack firmware installation
 
- STM32WB uses encrypted/signed firmware images for the BLE stack. Please flash the `FWUpdate` sketch under the `STM32WB` examples before using BLE. The update will take up few seconds/minutes. During that time the LED will stay on, while the serial monitor will say disconnected. When done the LED will blink if the update was succesful, or simply be turned off if an error was encountered. The serial monitor should pop up again and report back the newly updated firmware versions. The `FWInfo` sketch can be used to verify what version is installed. At this time it should report back 1.10.0 for the BLE stack.
+ STM32WB uses a signed/encrypted firmware image for the BLE stack. Please flash the `FWUpdate` sketch under the `STM32WB` examples before using BLE. The update will take up few seconds/minutes. During that time the LED will stay on, while the serial monitor will say disconnected. When done the LED will blink if the update was succesful, or simply be turned off if an error was encountered. The serial monitor should pop up again and report back the newly updated firmware versions. The `FWInfo` sketch can be used to verify what version is installed. At this time it should report back 1.14.2 for the BLE stack.
 
-## Recovering from a faulty sketch for Tlera Corp Boards
+## Secure Boot / Secure Firmware Update / BLE OTA
 
- Sometimes a faulty sketch can render the normal USB Serial based integration into the Arduindo IDE not working. In this case plugin the STM32WB board and toggle the RESET button while holding down the BOOT button and program a known to be working sketch to go ack to a working USB Serial setup.
+ STM32WB can use a signed/encrypted firmware image for the Arduino application/sketche. With the `Export compiled Binary` entry in the `Sketch` menu 5 files are exported. The *.dfu file is used for secure firmware update via USB/DFU, while the *.ota file is use BLE/OTA. This can be used/tested with either the "ST BLE Toolbox" application for Android/iOS (the file might have to be renamed to fit ST's naming conventions), or with the supplied `stm32wb-ota.py` python3 script (requires `python3` and `bleak`). USB/DFU uses signature/encryption, while BLE/OTA uses signature/encryption/compression.
+
+## Recovering from a faulty sketch for Tlera Corp / Sparkfun Boards
+
+ Sometimes a faulty sketch can render the normal USB DUF based integration into the Arduindo IDE not working. In this case plugin the STM32WB board and toggle the RESET button while holding down the BOOT button and program a known to be working sketch to go back to a working USB DFU setup.
 
 ## Credits
 

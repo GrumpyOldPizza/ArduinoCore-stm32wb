@@ -35,8 +35,6 @@ typedef struct _armv7m_core_control_t {
 
 static __attribute__((section(".noinit"))) armv7m_core_control_t armv7m_core_control;
 
-__attribute__((section(".fatal_info"))) armv7m_core_fatal_info_t armv7m_core_fatal_info;
-
 void __armv7m_core_initialize(void)
 {
     armv7m_core_control.udelay_scale = SystemCoreClock / 15625;
@@ -46,7 +44,8 @@ void __armv7m_core_initialize(void)
     NVIC_SetPriority(UsageFault_IRQn, ARMV7M_IRQ_PRIORITY_USAGEFAULT);
     NVIC_SetPriority(DebugMon_IRQn, ARMV7M_IRQ_PRIORITY_DEBUGMON);
 
-    SCB->CCR = 0;
+    // SCB->CCR = 0;
+    SCB->CCR = SCB_CCR_STKALIGN_Msk | SCB_CCR_DIV_0_TRP_Msk;
     SCB->SHCSR = (SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk);
 #if (__FPU_PRESENT == 1)
     SCB->CPACR = 0x00f00000;
@@ -103,54 +102,139 @@ void armv7m_core_cxx_method(const void *method, const void *object, armv7m_core_
     *p_context_return = (void*)((uintptr_t)object + adj);
 }
 
-void __attribute__((noreturn, used)) armv7m_core_fatal(uint32_t code, uint32_t pc, uint32_t lr, uint32_t sp)
-{
-    armv7m_core_fatal_info.signature = 0xdead0000 | code;
-    armv7m_core_fatal_info.pc = pc;
-    armv7m_core_fatal_info.lr = lr;
-    armv7m_core_fatal_info.sp = sp;
+__SECTION_FATAL __attribute__((used)) armv7m_assert_info_t armv7m_assert_info;
 
-    stm32wb_system_fatal();
-}
-
-static __attribute__((naked)) void armv7m_core_fault(void)
+__attribute__((naked)) void __aeabi_assert(const char *assertion, const char *file, uint32_t line)
 {
     __asm__(
-        "    cpsid    i                                        \n"
-        "    movw     r7, #:lower16:armv7m_core_fatal_info     \n"
-        "    movt     r7, #:upper16:armv7m_core_fatal_info     \n"
-        "    tst      lr, #0x00000004                          \n" // LR bit 2 is SPSEL
-        "    ite      ne                                       \n"
-        "    mrsne    r6, PSP                                  \n"
-        "    moveq    r6, sp                                   \n"
-        "    ldr      r0, [r6, #28]                            \n" // XPSR
-        "    ldr      r1, [r6, #24]                            \n" // PC
-        "    ldr      r2, [r6, #20]                            \n" // LR
-#if (__FPU_PRESENT == 1)
-        "    tst      lr, #0x00000010                          \n" // LR bit 4 is nFPCA
-        "    ite      ne                                       \n"
-        "    addne    r3, r6, #0x68                            \n"
-        "    addeq    r3, r6, #0x20                            \n"
-#else  /* __FPU_PRESENT == 1 */
-        "    add      r3, r6, #0x20                            \n"
-#endif /* __FPU_PRESENT == 1 */
-        "    lsr      r5, r0, #7                               \n"
-        "    and      r5, #4                                   \n"
-        "    add      r3, r5                                   \n" // drop aligner if needed
-        "    ldr      r4, [r1, #1]                             \n" // PC
-        "    cmp      r4, #0xbe                                \n" // PC
-        "    ite      eq                                       \n"
-        "    moveq    r0, #0                                   \n"
-        "    andne    r0, #255                                 \n"
-        "    b        armv7m_core_fatal                        \n"
+        "    push    { r0, r1, r3, lr }                        \n"
+        "    .cfi_def_cfa_offset 16                            \n"
+        "    .cfi_offset  0, -16                               \n"
+        "    .cfi_offset  1, -12                               \n"
+        "    .cfi_offset  3, -8                                \n"
+        "    .cfi_offset 14, -4                                \n"
+	"    ldr     r3, =armv7m_assert_info                   \n"
+        "    str     r0, [r3, #0x00]                           \n"
+        "    str     r1, [r3, #0x04]                           \n"
+        "    str     r2, [r3, #0x08]                           \n"
+        "    movs    r0, %[const_RESET_CAUSE_ASSERT]           \n"
+	"    mov     r1, #0                                    \n"
+        "    bl      stm32wb_system_fatal                      \n"
+        :
+        : [const_RESET_CAUSE_ASSERT] "I" (STM32WB_SYSTEM_RESET_CAUSE_ASSERT)
         );
 }
 
-void NMI_Handler(void) __attribute__ ((weak, alias("armv7m_core_fault")));
-void HardFault_Handler(void) __attribute__ ((alias("armv7m_core_fault")));
-void MemManage_Handler(void) __attribute__ ((alias("armv7m_core_fault")));
-void BusFault_Handler(void) __attribute__ ((alias("armv7m_core_fault")));
-void UsageFault_Handler(void) __attribute__ ((alias("armv7m_core_fault")));
-void DebugMon_Handler(void) __attribute__ ((alias("armv7m_core_fault")));
+__attribute__((naked)) void __assert_func(const char *file, int line, const char *function, const char *assertion)
+{
+    __asm__(
+        "    push    { r0, r1, r2, lr }                        \n"
+        "    .cfi_def_cfa_offset 16                            \n"
+        "    .cfi_offset  0, -16                               \n"
+        "    .cfi_offset  1, -12                               \n"
+        "    .cfi_offset  2, -8                                \n"
+        "    .cfi_offset 14, -4                                \n"
+	"    ldr     r2, =armv7m_assert_info                   \n"
+        "    str     r3, [r2, #0x00]                           \n"
+        "    str     r0, [r2, #0x04]                           \n"
+        "    str     r1, [r2, #0x08]                           \n"
+        "    movs    r0, %[const_RESET_CAUSE_ASSERT]           \n"
+	"    mov     r1, #0                                    \n"
+        "    bl      stm32wb_system_fatal                      \n"
+        :
+        : [const_RESET_CAUSE_ASSERT] "I" (STM32WB_SYSTEM_RESET_CAUSE_ASSERT)
+        );
+}
+
+__attribute__((naked)) void __assert(const char *file, uint32_t line, const char *assertion)
+{
+    __asm__(
+        "    push    { r0, r1, r3, lr }                        \n"
+        "    .cfi_def_cfa_offset 16                            \n"
+        "    .cfi_offset  0, -16                               \n"
+        "    .cfi_offset  1, -12                               \n"
+        "    .cfi_offset  3, -8                                \n"
+        "    .cfi_offset 14, -4                                \n"
+	"    ldr     r3, =armv7m_assert_info                   \n"
+        "    str     r2, [r3, #0x00]                           \n"
+        "    str     r0, [r3, #0x04]                           \n"
+        "    str     r1, [r3, #0x08]                           \n"
+        "    movs    r0, %[const_RESET_CAUSE_ASSERT]           \n"
+	"    mov     r1, #0                                    \n"
+        "    bl      stm32wb_system_fatal                      \n"
+        :
+        : [const_RESET_CAUSE_ASSERT] "I" (STM32WB_SYSTEM_RESET_CAUSE_ASSERT)
+        );
+}
+
+__SECTION_FATAL __attribute__((used)) armv7m_fault_info_t armv7m_fault_info;
+
+static __attribute__((naked)) void armv7m_core_exception(void)
+{
+    __asm__(
+        "    mov      r2, sp                                   \n"
+        "    mov      r3, lr                                   \n"
+        "    lsrs     r0, r3, #(2+1)                           \n" // bit 2 is SPSEL
+	"    bcc      1f                                       \n"
+        "    mrs      r2, PSP                                  \n"
+        "1:  push     { r2, r3 }                               \n"
+        "   .cfi_def_cfa_offset 8                              \n"
+        "   .cfi_offset 14, -4                                 \n"
+        "    ldr      r1, =armv7m_fault_info                   \n"
+        "    ldr      r0, [r2, #0x00]                          \n" // R0
+        "    str      r0, [r1, #0x00]                          \n"
+        "    ldr      r0, [r2, #0x04]                          \n" // R1
+        "    str      r0, [r1, #0x04]                          \n"
+        "    ldr      r0, [r2, #0x08]                          \n" // R2
+        "    str      r0, [r1, #0x08]                          \n"
+        "    ldr      r0, [r2, #0x0c]                          \n" // R3
+        "    str      r0, [r1, #0x0c]                          \n"
+        "    str      r4, [r1, #0x10]                          \n" // R4
+        "    str      r5, [r1, #0x14]                          \n" // R5
+        "    str      r6, [r1, #0x18]                          \n" // R6
+        "    str      r7, [r1, #0x1c]                          \n" // R7
+        "    mov      r0, r8                                   \n" // R8
+        "    str      r0, [r1, #0x20]                          \n"
+        "    mov      r0, r9                                   \n" // R9
+        "    str      r0, [r1, #0x24]                          \n"
+        "    mov      r0, r10                                  \n" // R10
+        "    str      r0, [r1, #0x28]                          \n"
+        "    mov      r0, r11                                  \n" // R11
+        "    str      r0, [r1, #0x2c]                          \n"
+        "    ldr      r0, [r2, #0x10]                          \n" // R12
+        "    str      r0, [r1, #0x30]                          \n"
+        "    ldr      r0, [r2, #0x14]                          \n" // LR
+        "    str      r0, [r1, #0x38]                          \n"
+        "    ldr      r0, [r2, #0x18]                          \n" // PC
+        "    str      r0, [r1, #0x3c]                          \n"
+        "    ldr      r0, [r2, #0x1c]                          \n" // XPSR
+        "    str      r0, [r1, #0x40]                          \n"
+        "    lsrs     r0, r0, #(9+1)                           \n" // bit 9 is filler
+        "    bcc      2f                                       \n"
+        "    adds     r2, #0x04                                \n"
+        "2:  adds     r2, #0x20                                \n"
+#if (__FPU_PRESENT == 1)
+        "    lsrs     r0, r3, #(4+1)                           \n" // bit 4 is nFPCA
+        "    bcs      3f                                       \n"
+        "    adds     r2, #(0x68-0x20)                         \n"
+#endif /* __FPU_PRESENT == 1 */
+        "3:  str      r2, [r1, #0x34]                          \n"
+        "    ldr      r3, =0xe000ed00                          \n"
+        "    ldr      r1, [r3, 0x28]                           \n" // CFSR
+        "    ldr      r2, [r3, 0x2c]                           \n" // HFSR
+        "    orrs     r1, r2                                   \n"
+        "    movs     r0, %[const_RESET_CAUSE_FAULT]           \n"
+        "    bl       stm32wb_system_fatal                     \n"
+        :
+        : [const_RESET_CAUSE_FAULT] "I" (STM32WB_SYSTEM_RESET_CAUSE_FAULT)
+        );
+}
+
+void NMI_Handler(void) __attribute__ ((weak, alias("armv7m_core_exception")));
+void HardFault_Handler(void) __attribute__ ((alias("armv7m_core_exception")));
+void MemManage_Handler(void) __attribute__ ((alias("armv7m_core_exception")));
+void BusFault_Handler(void) __attribute__ ((alias("armv7m_core_exception")));
+void UsageFault_Handler(void) __attribute__ ((alias("armv7m_core_exception")));
+void DebugMon_Handler(void) __attribute__ ((alias("armv7m_core_exception")));
 
         

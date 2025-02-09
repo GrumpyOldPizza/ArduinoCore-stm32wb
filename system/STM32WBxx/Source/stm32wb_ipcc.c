@@ -36,8 +36,6 @@
 
 #include "BLE/ble_defs.h"
 
-#define STM32WB_IPCC_TRACE_SUPPORTED 0
-
 #if (STM32WB_IPCC_TRACE_SUPPORTED == 1)
 
 #include <stdio.h>
@@ -388,12 +386,13 @@ typedef struct _MB_Node_t {
 
 typedef struct _MB_SysCommand_t {
     MB_Node_t                     node;
-  // uint8_t                       data[68]; /* type (1), opcode (2), length(1), payload(64) */
+ // uint8_t                       data[132]; /* type (1), opcode (2), length(1), payload(128) */
     uint8_t                       data[260]; /* type (1), opcode (2), length(1), payload(255), pad(1) */
 } MB_SysCommand_t;
 
 typedef struct _MB_SysEvent_t {
     MB_Node_t                     node;
+ // uint8_t                       data[36];  /* type (1), evtcode (1), length(1), payload(32) */
     uint8_t                       data[260]; /* type (1), evtcode (1), length(1), payload(255), pad(1) */
 } MB_SysEvent_t;
 
@@ -520,22 +519,32 @@ typedef struct _MB_RefTable_t {
 
 #define STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES 5
 
-static __attribute__((section(".ipcc.ref_table"), used)) MB_RefTable_t MB_RefTable;
-static __attribute__((section(".ipcc.sys_state"), used)) volatile uint32_t MB_SysState;
-static __attribute__((section(".ipcc.info_table"))) MB_DeviceInfoTable_t MB_DeviceInfoTable;
-static __attribute__((section(".ipcc.sys_table"))) MB_SysTable_t MB_SysTable;
-static __attribute__((section(".ipcc.ble_table"))) MB_BleTable_t MB_BleTable;
-static __attribute__((section(".ipcc.mm_table"))) MB_MemManagerTable_t MB_MemManagerTable;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_SysEvtQueue;
-static __attribute__((section(".ipcc"))) MB_SysEvent_t MB_SpareSysBuffer;
-static __attribute__((section(".ipcc"))) MB_SysCommand_t MB_SysCmdBuffer;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_BleEvtQueue;
-static __attribute__((section(".ipcc"))) MB_BleEvent_t MB_SpareBleBuffer;
-static __attribute__((section(".ipcc"))) MB_Queue_t MB_EvtFreeBufferQueue;
-static __attribute__((section(".ipcc"))) MB_BleCommand_t MB_BleCmdBuffer;
-static __attribute__((section(".ipcc"))) MB_BleCsEvent_t MB_BleCsBuffer;
-static __attribute__((section(".ipcc"))) MB_BleAclData_t MB_BleAclDataBuffer;
-static __attribute__((section(".ipcc"))) uint8_t MB_BlePool[((sizeof(MB_BleEvent_t) + 3) & ~3) * STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES];
+typedef struct _MB_Data_t {
+    MB_RefTable_t                 MB_RefTable;
+    volatile uint32_t             MB_SysState;
+    MB_DeviceInfoTable_t          MB_DeviceInfoTable;
+    MB_BleTable_t                 MB_BleTable;
+    MB_SysTable_t                 MB_SysTable;
+    MB_MemManagerTable_t          MB_MemManagerTable;
+    MB_Queue_t                    MB_SysEvtQueue;
+    MB_SysEvent_t                 MB_SpareSysBuffer;
+    MB_SysCommand_t               MB_SysCmdBuffer;
+    MB_Queue_t                    MB_EvtFreeBufferQueue;
+    MB_Queue_t                    MB_BleEvtQueue;
+    MB_BleEvent_t                 MB_SpareBleBuffer;
+    MB_BleCommand_t               MB_BleCmdBuffer;
+    MB_BleCsEvent_t               MB_BleCsBuffer;
+    uint8_t                       MB_BlePool[((sizeof(MB_BleEvent_t) + 3) & ~3) * STM32WB_IPCC_BLE_EVENT_POOL_ENTRIES];
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+    MB_BleAclData_t               MB_BleAclDataBuffer;
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
+} MB_Data_t;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+static __attribute__((section(".ipcc"), used)) MB_Data_t MB_Data;
+#else /* defined(__STM32WB_BOOT_CODE__) */
+#define MB_Data (*((MB_Data_t*)STM32WB_IPCC_MB_BASE))
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
 static void MB_QueueInit(MB_Queue_t *queue)
 {
@@ -588,19 +597,18 @@ static void MB_QueueCopy(MB_Queue_t *destination, MB_Queue_t *source)
 
 typedef struct _stm32wb_ipcc_device_t {
     volatile uint8_t                      state;
-    volatile uint8_t                      acl_busy;
+#if !defined(__STM32WB_BOOT_CODE__)
     volatile uint8_t                      mm_busy;
-    stm32wb_ipcc_sys_command_t            *sys_head;
-    stm32wb_ipcc_sys_command_t            *sys_tail;
-    stm32wb_ipcc_sys_command_t * volatile sys_submit;
+    MB_Queue_t                            mm_queue;
     stm32wb_ipcc_sys_command_t            *sys_current;
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
     stm32wb_ipcc_ble_command_t            *ble_head;
     stm32wb_ipcc_ble_command_t            *ble_tail;
     stm32wb_ipcc_ble_command_t * volatile ble_submit;
     stm32wb_ipcc_ble_command_t            *ble_current;
-    volatile uint8_t                      *acl_status;
-    stm32wb_ipcc_ble_acldata_callback_t   acl_callback;
-    void                                  *acl_context;
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+    stm32wb_ipcc_ble_acldata_t            *acl_current;
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
     stm32wb_ipcc_ble_event_callback_t     evt_callback;
     void                                  *evt_context;
     MB_BleEvent_t                         *evt_head;
@@ -608,74 +616,87 @@ typedef struct _stm32wb_ipcc_device_t {
     MB_BleEvent_t * volatile              evt_acquire;
     MB_BleEvent_t * volatile              evt_release;
     MB_BleEvent_t                         *evt_current;
-    MB_Queue_t                            mm_queue;
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 } stm32wb_ipcc_device_t;
 
 static stm32wb_ipcc_device_t stm32wb_ipcc_device;
 
 /*********************************************************************************************/
 
-void __stm32wb_ipcc_initialize(void)
-{
-    if (MB_RefTable.p_device_info_table == NULL)
-    {
-        MB_QueueInit(&MB_SysEvtQueue);
-        MB_QueueInit(&MB_BleEvtQueue);
-        MB_QueueInit(&MB_EvtFreeBufferQueue);
-
-        MB_BleTable.pcmd_buffer = &MB_BleCmdBuffer; 
-        MB_BleTable.pcs_buffer = &MB_BleCsBuffer; 
-        MB_BleTable.pevt_queue = &MB_BleEvtQueue; 
-        // MB_BleTable.pacl_data_buffer = &MB_BleAclDataBuffer;
-        MB_BleTable.pacl_data_buffer = NULL;
-        
-        MB_SysTable.pcmd_buffer = &MB_SysCmdBuffer; 
-        MB_SysTable.pevt_queue = &MB_SysEvtQueue; 
-        
-        MB_MemManagerTable.spare_ble_buffer = &MB_SpareBleBuffer;
-        MB_MemManagerTable.spare_sys_buffer = &MB_SpareSysBuffer;
-        MB_MemManagerTable.pevt_free_buffer_queue = &MB_EvtFreeBufferQueue;
-        MB_MemManagerTable.blepool = MB_BlePool;
-        MB_MemManagerTable.blepoolsize = sizeof(MB_BlePool);
-
-        MB_RefTable.p_device_info_table = &MB_DeviceInfoTable;
-        MB_RefTable.p_ble_table = &MB_BleTable;
-        MB_RefTable.p_sys_table = &MB_SysTable;
-        MB_RefTable.p_mem_manager_table = &MB_MemManagerTable;
-    }
-}
-
 bool stm32wb_ipcc_sys_enable(void)
 {
+    if (!(PWR->CR4 & PWR_CR4_C2BOOT))
+    {
+#if !defined(__STM32WB_BOOT_CODE__)
+        memset((void*)STM32WB_IPCC_MB_BASE, 0, STM32WB_IPCC_MB_SIZE);
+#else /* defined(__STM32WB_BOOT_CODE__) */
+        stm32wb_boot_memset((void*)STM32WB_IPCC_MB_BASE, 0, STM32WB_IPCC_MB_SIZE);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+        MB_QueueInit(&MB_Data.MB_BleEvtQueue);
+        MB_QueueInit(&MB_Data.MB_SysEvtQueue);
+        MB_QueueInit(&MB_Data.MB_EvtFreeBufferQueue);
+
+        MB_Data.MB_RefTable.p_device_info_table = &MB_Data.MB_DeviceInfoTable;
+        MB_Data.MB_RefTable.p_ble_table = &MB_Data.MB_BleTable;
+        MB_Data.MB_RefTable.p_sys_table = &MB_Data.MB_SysTable;
+        MB_Data.MB_RefTable.p_mem_manager_table = &MB_Data.MB_MemManagerTable;
+
+        MB_Data.MB_BleTable.pcmd_buffer = &MB_Data.MB_BleCmdBuffer; 
+        MB_Data.MB_BleTable.pcs_buffer = &MB_Data.MB_BleCsBuffer; 
+        MB_Data.MB_BleTable.pevt_queue = &MB_Data.MB_BleEvtQueue; 
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+        MB_Data.MB_BleTable.pacl_data_buffer = &MB_Data.MB_BleAclDataBuffer;
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
+        
+        MB_Data.MB_SysTable.pcmd_buffer = &MB_Data.MB_SysCmdBuffer; 
+        MB_Data.MB_SysTable.pevt_queue = &MB_Data.MB_SysEvtQueue; 
+
+        MB_Data.MB_MemManagerTable.spare_sys_buffer = &MB_Data.MB_SpareSysBuffer;
+        MB_Data.MB_MemManagerTable.spare_ble_buffer = &MB_Data.MB_SpareBleBuffer;
+        MB_Data.MB_MemManagerTable.pevt_free_buffer_queue = &MB_Data.MB_EvtFreeBufferQueue;
+        MB_Data.MB_MemManagerTable.blepool = MB_Data.MB_BlePool;
+        MB_Data.MB_MemManagerTable.blepoolsize = sizeof(MB_Data.MB_BlePool);
+
+        MB_Data.MB_DeviceInfoTable.Fus.DeviceInfoTableState = 0;
+    }
+
     if (stm32wb_ipcc_device.state != STM32WB_IPCC_STATE_NONE)
     {
         return false;
     }
     
-    stm32wb_ipcc_device.state = (MB_SysState == STM32WB_IPCC_SYS_STATE_NONE) ? STM32WB_IPCC_STATE_NOT_READY : STM32WB_IPCC_STATE_READY;
-    stm32wb_ipcc_device.acl_busy = false;
-    stm32wb_ipcc_device.mm_busy = false;
+    stm32wb_ipcc_device.state = (MB_Data.MB_SysState == STM32WB_IPCC_SYS_STATE_NONE) ? STM32WB_IPCC_STATE_NOT_READY : STM32WB_IPCC_STATE_READY;
 
-    stm32wb_ipcc_device.sys_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
-    stm32wb_ipcc_device.sys_tail = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
-    stm32wb_ipcc_device.sys_submit = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
+#if !defined(__STM32WB_BOOT_CODE__)
+    stm32wb_ipcc_device.mm_busy = false;
+    MB_QueueInit(&stm32wb_ipcc_device.mm_queue);
+
     stm32wb_ipcc_device.sys_current = NULL;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
     stm32wb_ipcc_device.ble_head = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
     stm32wb_ipcc_device.ble_tail = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
     stm32wb_ipcc_device.ble_submit = STM32WB_IPCC_BLE_COMMAND_SENTINEL;
     stm32wb_ipcc_device.ble_current = NULL;
 
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+    stm32wb_ipcc_device.acl_current = NULL;
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
+    
     stm32wb_ipcc_device.evt_head = NULL;
     stm32wb_ipcc_device.evt_tail = NULL;
     stm32wb_ipcc_device.evt_acquire = NULL;
     stm32wb_ipcc_device.evt_release = NULL;
     stm32wb_ipcc_device.evt_current = NULL;
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
+
+    armv7m_atomic_or(&RCC->AHB3ENR, RCC_AHB3ENR_IPCCEN);
+    RCC->AHB3ENR;
     
-    MB_QueueInit(&stm32wb_ipcc_device.mm_queue);
-    
-    stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_IPCC);
-    
+#if !defined(__STM32WB_BOOT_CODE__)
     NVIC_SetPriority(IPCC_C1_RX_IRQn, STM32WB_IPCC_IRQ_PRIORITY);
     NVIC_SetPriority(IPCC_C1_TX_IRQn, STM32WB_IPCC_IRQ_PRIORITY);
     NVIC_EnableIRQ(IPCC_C1_RX_IRQn);
@@ -693,12 +714,32 @@ bool stm32wb_ipcc_sys_enable(void)
 
         return false;
     }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    RCC->EXTCFGR = (RCC->EXTCFGR & ~(RCC_EXTCFGR_C2HPRE | RCC_EXTCFGR_C2HPREF)) | RCC_EXTCFGR_C2HPRE_DIV2;
+    
+    while ((RCC->EXTCFGR & (RCC_EXTCFGR_C2HPREF)) != (RCC_EXTCFGR_C2HPREF))
+    {
+    }
 
+    PWR->CR4 |= PWR_CR4_C2BOOT;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+    while (stm32wb_ipcc_device.state != STM32WB_IPCC_STATE_READY)
+    {
+        if ((volatile uint32_t)MB_Data.MB_DeviceInfoTable.Fus.DeviceInfoTableState == 0xa94656b9)
+        {
+            MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_FUS;
+            
+            stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_READY;
+        }
+    }
+    
     return true;
 }
 
 void stm32wb_ipcc_sys_disable(void)
 {
+#if !defined(__STM32WB_BOOT_CODE__)
     armv7m_atomic_and(&EXTI->IMR2, ~EXTI_IMR2_IM36);
 
     armv7m_atomic_or(&IPCC->C1MR, IPCC_C1MR_CH2OM);
@@ -707,8 +748,9 @@ void stm32wb_ipcc_sys_disable(void)
 
     NVIC_DisableIRQ(IPCC_C1_RX_IRQn);
     NVIC_DisableIRQ(IPCC_C1_TX_IRQn);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
-    stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_IPCC);
+    armv7m_atomic_and(&RCC->AHB3ENR, ~RCC_AHB3ENR_IPCCEN);
     
     stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_NONE;
 }
@@ -720,7 +762,7 @@ uint32_t stm32wb_ipcc_sys_state(void)
         return STM32WB_IPCC_SYS_STATE_NONE;
     }
 
-    return MB_SysState;
+    return MB_Data.MB_SysState;
 }
 
 bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return)
@@ -730,21 +772,23 @@ bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return)
         return false;
     }
     
-    if (MB_SysState == STM32WB_IPCC_SYS_STATE_FUS)
+    if (MB_Data.MB_SysState == STM32WB_IPCC_SYS_STATE_FUS)
     {
-        p_info_return->FusVersion = MB_DeviceInfoTable.Fus.FusVersion;
-        p_info_return->FusMemorySize = MB_DeviceInfoTable.Fus.FusMemorySize;
-        p_info_return->WirelessStackVersion = MB_DeviceInfoTable.Fus.WirelessStackVersion;
-        p_info_return->WirelessStackMemorySize = MB_DeviceInfoTable.Fus.WirelessStackMemorySize;
-        p_info_return->WirelessStackType = MB_DeviceInfoTable.Fus.WirelessFirmwareBleInfo & 0x000000ff;
+        p_info_return->SafeBootVersion = MB_Data.MB_DeviceInfoTable.Fus.SafeBootVersion;
+        p_info_return->FusVersion = MB_Data.MB_DeviceInfoTable.Fus.FusVersion;
+        p_info_return->FusMemorySize = MB_Data.MB_DeviceInfoTable.Fus.FusMemorySize;
+        p_info_return->WirelessStackVersion = MB_Data.MB_DeviceInfoTable.Fus.WirelessStackVersion;
+        p_info_return->WirelessStackMemorySize = MB_Data.MB_DeviceInfoTable.Fus.WirelessStackMemorySize;
+        p_info_return->WirelessStackType = MB_Data.MB_DeviceInfoTable.Fus.CurrentWirelessStackType;
     }
     else
     {
-        p_info_return->FusVersion = MB_DeviceInfoTable.Wireless.FusInfoTable.Version;
-        p_info_return->FusMemorySize = MB_DeviceInfoTable.Wireless.FusInfoTable.MemorySize;
-        p_info_return->WirelessStackVersion = MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.Version;
-        p_info_return->WirelessStackMemorySize = MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.MemorySize;
-        p_info_return->WirelessStackType = MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.InfoStack & 0x000000ff;
+        p_info_return->SafeBootVersion = MB_Data.MB_DeviceInfoTable.Wireless.SafeBootInfoTable.Version;
+        p_info_return->FusVersion = MB_Data.MB_DeviceInfoTable.Wireless.FusInfoTable.Version;
+        p_info_return->FusMemorySize = MB_Data.MB_DeviceInfoTable.Wireless.FusInfoTable.MemorySize;
+        p_info_return->WirelessStackVersion = MB_Data.MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.Version;
+        p_info_return->WirelessStackMemorySize = MB_Data.MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.MemorySize;
+        p_info_return->WirelessStackType = MB_Data.MB_DeviceInfoTable.Wireless.WirelessFwInfoTable.InfoStack & 0x000000ff;
     }
 
     return true;
@@ -752,50 +796,118 @@ bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return)
 
 bool stm32wb_ipcc_sys_command(stm32wb_ipcc_sys_command_t *command)
 {
-    stm32wb_ipcc_sys_command_t *command_submit;
+#if defined(__STM32WB_BOOT_CODE__)
+    uint32_t length;
+    const uint8_t *data;
+#endif /* defined(__STM32WB_BOOT_CODE__) */
     
+#if !defined(__STM32WB_BOOT_CODE__)
     if (stm32wb_ipcc_device.state <= STM32WB_IPCC_STATE_NOT_READY)
     {
         return false;
     }
 
-    if (armv7m_atomic_cas((volatile uint32_t*)&command->next, (uint32_t)NULL, (uint32_t)STM32WB_IPCC_SYS_COMMAND_SENTINEL) != (uint32_t)NULL)
+    if (armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.sys_current, (uint32_t)NULL, (uint32_t)command) != (uint32_t)NULL)
     {
         return false;
     }
 
     command->status = STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY;
-
-    do
-    {
-        command_submit = stm32wb_ipcc_device.sys_submit;
-
-        command->next = command_submit;
-    }
-    while ((stm32wb_ipcc_sys_command_t*)armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.sys_submit, (uint32_t)command_submit, (uint32_t)command) != command_submit);
     
-    if (command_submit == STM32WB_IPCC_SYS_COMMAND_SENTINEL)
+    MB_Data.MB_SysCmdBuffer.data[0] = SYS_COMMAND_PACKET;
+    MB_Data.MB_SysCmdBuffer.data[1] = (command->opcode >> 0);
+    MB_Data.MB_SysCmdBuffer.data[2] = (command->opcode >> 8);
+    MB_Data.MB_SysCmdBuffer.data[3] = command->clen;
+    
+    if (command->clen)
     {
-        if (__current_irq() != IPCC_C1_TX_IRQn)
-        {
-            NVIC_SetPendingIRQ(IPCC_C1_TX_IRQn);
-        }
+        memcpy(&MB_Data.MB_SysCmdBuffer.data[4], command->cparam, command->clen);
     }
+    
+    IPCC->C1SCR = IPCC_C1SCR_CH2S;
+    
+    armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH2FM);
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    if ((stm32wb_ipcc_device.state < STM32WB_IPCC_STATE_NOT_READY) || ((stm32wb_ipcc_device.state == STM32WB_IPCC_STATE_NOT_READY) && (command->opcode != STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE)))
+    {
+        return false;
+    }
+
+    command->status = STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY;
+    
+    MB_Data.MB_SysCmdBuffer.data[0] = SYS_COMMAND_PACKET;
+    MB_Data.MB_SysCmdBuffer.data[1] = (command->opcode >> 0);
+    MB_Data.MB_SysCmdBuffer.data[2] = (command->opcode >> 8);
+    MB_Data.MB_SysCmdBuffer.data[3] = command->clen;
+    
+    if (command->clen)
+    {
+        stm32wb_boot_memcpy(&MB_Data.MB_SysCmdBuffer.data[4], command->cparam, command->clen);
+    }
+
+    IPCC->C1SCR = IPCC_C1SCR_CH2S;
+
+    while (IPCC->C1TOC2SR & IPCC_C1TOC2SR_CH2F)
+    {
+    }
+
+    data = (const uint8_t*)&MB_Data.MB_SysCmdBuffer;
+
+    if (command->opcode == STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE)
+    {
+        if (stm32wb_ipcc_device.state == STM32WB_IPCC_STATE_NOT_READY)
+        {
+            if ((data[6] == STM32WB_IPCC_FUS_STATE_ERROR) && (data[7] == STM32WB_IPCC_FUS_ERROR_CODE_NOT_RUNNING))
+            {
+                MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_WIRELESS;
+            }
+            else
+            {
+                MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_FUS;
+            }
             
+            stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_READY;
+        }
+        
+        command->status = STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS;
+    }
+    else
+    {
+        command->status = data[6] ? STM32WB_IPCC_SYS_COMMAND_STATUS_FAILURE : STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS;
+    }
+    
+    if (command->rparam)
+    {
+        length = data[2] - 3;
+                
+        if (length > command->rsize)
+        {
+            length = command->rsize;
+        }
+        
+        if (length)
+        {
+            stm32wb_boot_memcpy(command->rparam, (const void*)&data[6], length);
+        }
+        
+        command->rlen = length;
+    }
+    
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+    
     return true;
 }
 
-static uint32_t stm32wb_ipcc_sys_fus_command(uint16_t opcode)
+bool stm32wb_ipcc_fus_state(stm32wb_ipcc_fus_state_t *p_state_return)
 {
     stm32wb_ipcc_sys_command_t command;
-    uint8_t status;
     
-    command.next = NULL;
-    command.opcode = opcode;
+    command.opcode = STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE;
     command.cparam = NULL;
     command.clen = 0;
-    command.rparam = &status;
-    command.rsize = sizeof(status);
+    command.rparam = (void*)p_state_return;
+    command.rsize = sizeof(stm32wb_ipcc_fus_state_t);
+#if !defined(__STM32WB_BOOT_CODE__)
     command.callback = NULL;
     command.context = NULL;
             
@@ -804,16 +916,46 @@ static uint32_t stm32wb_ipcc_sys_fus_command(uint16_t opcode)
     while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY)
     {
     }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    stm32wb_ipcc_sys_command(&command);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
-    return status;
+    return (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS);
 }
+
+bool stm32wb_ipcc_fus_command(uint16_t opcode)
+{
+    stm32wb_ipcc_sys_command_t command;
+    
+    command.opcode = opcode;
+    command.cparam = NULL;
+    command.clen = 0;
+    command.rparam = NULL;
+    command.rsize = 0;
+#if !defined(__STM32WB_BOOT_CODE__)
+    command.callback = NULL;
+    command.context = NULL;
+            
+    stm32wb_ipcc_sys_command(&command);
+
+    while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY)
+    {
+    }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    stm32wb_ipcc_sys_command(&command);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+    return (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS);
+}
+
+#if !defined(__STM32WB_BOOT_CODE__)
 
 bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return)
 {
     static uint8_t firmware_data[1024];
     const uint8_t *firmware_image;
     uint32_t firmware_address, firmware_size, firmware_offset, firmware_chunk, firmware_index;
-    uint8_t state, status;
+    stm32wb_ipcc_fus_state_t fus_state;
     stm32wb_ipcc_sys_info_t sys_info;
     stm32wb_flash_request_t request;
 
@@ -843,8 +985,8 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     {
         if (stm32wb_ipcc_sys_state() == STM32WB_IPCC_SYS_STATE_WIRELESS)
         {
-            stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
-            stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+            stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+            stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
             
             while (1)
             {
@@ -853,11 +995,11 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
 
         do
         {
-            state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+            stm32wb_ipcc_fus_state(&fus_state);
 
-            if (state != STM32WB_IPCC_SYS_FUS_STATE_IDLE)
+            if (fus_state.State != STM32WB_IPCC_FUS_STATE_IDLE)
             {
-                if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
+                if ((fus_state.State >= STM32WB_IPCC_FUS_STATE_FW_UPGRD_ONGOING_START) && (fus_state.State <= STM32WB_IPCC_FUS_STATE_SERVICE_ONGOING_END))
                 {
                     armv7m_core_udelay(100000);
                 }
@@ -867,24 +1009,22 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
                 }
             }
         }
-        while (state != STM32WB_IPCC_SYS_FUS_STATE_IDLE);
+        while (fus_state.State != STM32WB_IPCC_FUS_STATE_IDLE);
 
         if (sys_info.WirelessStackMemorySize)
         {
-            status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE);
-            
-            if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+            if (!stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE))
             {
-                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE << 16) | status;
+                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_DELETE << 16);
 
                 return false;
             }
 
             while (1)
             {
-                state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+                stm32wb_ipcc_fus_state(&fus_state);
 
-                if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
+                if ((fus_state.State >= STM32WB_IPCC_FUS_STATE_FW_UPGRD_ONGOING_START) && (fus_state.State <= STM32WB_IPCC_FUS_STATE_SERVICE_ONGOING_END))
                 {
                     armv7m_core_udelay(100000);
                 }
@@ -967,20 +1107,18 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
             }
         }
         
-        status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE);
-            
-        if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+        if (!stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE))
         {
-            *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE << 16) | status;
+            *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_FW_UPGRADE << 16);
 
             return false;
         }
 
         while (1)
         {
-            state = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE);
+            stm32wb_ipcc_fus_state(&fus_state);
 
-            if ((state >= STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START) && (state <= STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END))
+            if ((fus_state.State >= STM32WB_IPCC_FUS_STATE_FW_UPGRD_ONGOING_START) && (fus_state.State <= STM32WB_IPCC_FUS_STATE_SERVICE_ONGOING_END))
             {
                 armv7m_core_udelay(100000);
             }
@@ -994,11 +1132,9 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     {
         if (stm32wb_ipcc_sys_state() != STM32WB_IPCC_SYS_STATE_WIRELESS)
         {
-            status = stm32wb_ipcc_sys_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_START_WS);
-
-            if (status != STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS)
+            if (!stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_START_WS))
             {
-                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_START_WS << 16) | status;
+                *p_code_return = (STM32WB_IPCC_SYS_OPCODE_FUS_START_WS << 16);
 
                 return false;
             }
@@ -1012,9 +1148,11 @@ bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address
     return true;
 }
 
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
+
 bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32wb_ipcc_ble_event_callback_t callback, void *context)
 {
-    uint8_t sys_status;
+    uint8_t activity_control;
     stm32wb_ipcc_sys_command_t command;
 
     if (stm32wb_ipcc_device.state != STM32WB_IPCC_STATE_READY)
@@ -1022,30 +1160,38 @@ bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32
         return false;
     }
     
-    if (MB_SysState != STM32WB_IPCC_SYS_STATE_WIRELESS)
+    if (MB_Data.MB_SysState == STM32WB_IPCC_SYS_STATE_FUS)
     {
-        return false;
+        if (!MB_Data.MB_DeviceInfoTable.Fus.WirelessStackMemorySize)
+        {
+            return false;
+        }
+        
+        if (!stm32wb_ipcc_fus_command(STM32WB_IPCC_SYS_OPCODE_FUS_START_WS))
+        {
+            return false;
+        }
+
+        while ((volatile uint32_t)MB_Data.MB_DeviceInfoTable.Fus.DeviceInfoTableState == 0xa94656b9)
+        {
+        }
+
+        MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_WIRELESS;
     }
 
     if (!stm32wb_system_wireless_enable())
     {
         return false;
     }
-    
-    stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_WIRELESS;
 
-    stm32wb_ipcc_device.evt_callback = callback;
-    stm32wb_ipcc_device.evt_context = context;
+    activity_control = STM32WB_IPCC_SYS_SET_FLASH_ACTIVITY_CONTROL_HSEM;
     
-    armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH1OM);
-
-    command.next = NULL;
-    command.opcode = STM32WB_IPCC_SYS_OPCODE_BLE_INIT;
+    command.opcode = STM32WB_IPCC_SYS_OPCODE_SET_FLASH_ACTIVITY_CONTROL; 
     command.event = 0;
-    command.cparam = params;
-    command.clen = sizeof(stm32wb_ipcc_ble_init_params_t);
-    command.rparam = &sys_status;
-    command.rsize = sizeof(sys_status);
+    command.cparam = &activity_control;
+    command.clen = sizeof(activity_control);
+    command.rparam = NULL;
+    command.rsize = 0;
     command.callback = NULL;
     command.context = NULL;
     
@@ -1053,7 +1199,32 @@ bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32
 
     while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
     
-    if (sys_status != 0x00)
+    if (command.status != STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS)
+    {
+        stm32wb_system_wireless_disable();
+
+        return false;
+    }
+
+    stm32wb_ipcc_device.evt_callback = callback;
+    stm32wb_ipcc_device.evt_context = context;
+    
+    armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH1OM);
+
+    command.opcode = STM32WB_IPCC_SYS_OPCODE_BLE_INIT;
+    command.event = 0;
+    command.cparam = params;
+    command.clen = sizeof(stm32wb_ipcc_ble_init_params_t);
+    command.rparam = NULL;
+    command.rsize = 0;
+    command.callback = NULL;
+    command.context = NULL;
+    
+    stm32wb_ipcc_sys_command(&command);
+
+    while (command.status == STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY) { __WFE(); }
+    
+    if (command.status != STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS)
     {
         armv7m_atomic_or(&IPCC->C1MR, IPCC_C1MR_CH1OM);
         
@@ -1061,6 +1232,8 @@ bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32
 
         return false;
     }
+    
+    stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_WIRELESS;
     
     return true;
 }
@@ -1071,12 +1244,12 @@ bool stm32wb_ipcc_ble_disable(void)
     {
         return false;
     }
+
+    stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_READY;
     
     armv7m_atomic_or(&IPCC->C1MR, IPCC_C1MR_CH1OM);
         
     stm32wb_system_wireless_disable();
-
-    stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_READY;
     
     return true;
 }
@@ -1095,7 +1268,7 @@ bool stm32wb_ipcc_ble_command(stm32wb_ipcc_ble_command_t *command)
         return false;
     }
 
-    command->status = STM32WB_IPCC_BLE_STATUS_BUSY;
+    command->status = STM32WB_IPCC_BLE_COMMAND_STATUS_BUSY;
 
     do
     {
@@ -1116,9 +1289,11 @@ bool stm32wb_ipcc_ble_command(stm32wb_ipcc_ble_command_t *command)
     return true;
 }
 
-bool stm32wb_ipcc_ble_acldata(const uint8_t *data, uint32_t count, volatile uint8_t *p_status_return, stm32wb_ipcc_ble_acldata_callback_t callback, void *context)
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+
+bool stm32wb_ipcc_ble_acldata(stm32wb_ipcc_ble_acldata_t *acl_data)
 {
-    if (count > (sizeof(MB_BleAclDataBuffer.data) -1))
+    if (acl_data->count > (sizeof(MB_Data.MB_BleAclDataBuffer.data) -1))
     {
         return false;
     }
@@ -1127,23 +1302,16 @@ bool stm32wb_ipcc_ble_acldata(const uint8_t *data, uint32_t count, volatile uint
     {
         return false;
     }
-    
-    if (armv7m_atomic_casb(&stm32wb_ipcc_device.acl_busy, false, true) != false)
+
+    if (armv7m_atomic_cas((volatile uint32_t*)&stm32wb_ipcc_device.acl_current, (uint32_t)NULL, (uint32_t)acl_data) != (uint32_t)NULL)
     {
         return false;
     }
+ 
+    acl_data->status = STM32WB_IPCC_BLE_ACLDATA_STATUS_BUSY;
 
-    stm32wb_ipcc_device.acl_status = p_status_return;
-    stm32wb_ipcc_device.acl_callback = callback;
-    stm32wb_ipcc_device.acl_context = context;
-
-    if (p_status_return)
-    {
-        *p_status_return = STM32WB_IPCC_BLE_STATUS_BUSY;
-    }
-
-    MB_BleAclDataBuffer.data[0] = HCI_ACL_DATA_PACKET;
-    memcpy(&MB_BleAclDataBuffer.data[1], data, count);
+    MB_Data.MB_BleAclDataBuffer.data[0] = HCI_ACL_DATA_PACKET;
+    memcpy(&MB_Data.MB_BleAclDataBuffer.data[1], acl_data->data, acl_data->count);
 
     IPCC->C1SCR = IPCC_C1SCR_CH6S;
             
@@ -1151,6 +1319,8 @@ bool stm32wb_ipcc_ble_acldata(const uint8_t *data, uint32_t count, volatile uint
 
     return true;
 }
+
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
 
 uint8_t *stm32wb_ipcc_ble_event(void)
 {
@@ -1289,7 +1459,7 @@ uint8_t *stm32wb_ipcc_ble_event(void)
         {
             armv7m_rtt_printf("?? UNEXPECTED EVENT PACKET = %02x\r\n", ble_event->data[0]);
         }
-#endif /* (STM32WB_IPCC_TRACE_SUPPORTED == 1) */
+#endif /* STM32WB_IPCC_TRACE_SUPPORTED == 1 */
         
         return &ble_event->data[0];
     }
@@ -1297,29 +1467,34 @@ uint8_t *stm32wb_ipcc_ble_event(void)
     return NULL;
 }
 
-void IPCC_C1_RX_IRQHandler(void)
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
+
+static void stm32wb_ipcc_rx_interrupt(void)
 {
     uint32_t ipcc_c1mr, ipcc_c2toc1sr, evt_code, evt_count, length;
-    uint16_t opcode;
     const uint8_t *data;
+    MB_SysEvent_t *sys_event;
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
+    uint16_t opcode;
     stm32wb_ipcc_ble_command_t *ble_command, *ble_command_submit, *ble_command_next, *ble_command_head, *ble_command_tail;
     stm32wb_ipcc_ble_command_callback_t ble_callback;
     void *ble_context;
     MB_BleEvent_t *ble_event, *ble_event_next, *ble_event_acquire, *ble_event_release;
-    MB_SysEvent_t *sys_event;
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
     
     ipcc_c1mr = IPCC->C1MR;
     ipcc_c2toc1sr = IPCC->C2TOC1SR;
 
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
     if (!(ipcc_c1mr & IPCC_C1MR_CH1OM) && (ipcc_c2toc1sr & IPCC_C2TOC1SR_CH1F))
     {
         /* BLE RX EVT */
 
         evt_count = 0;
         
-        while (!MB_QueueIsEmpty(MB_BleTable.pevt_queue))
+        while (!MB_QueueIsEmpty(MB_Data.MB_BleTable.pevt_queue))
         {
-            ble_event = (MB_BleEvent_t*)MB_QueueRemove(MB_BleTable.pevt_queue);
+            ble_event = (MB_BleEvent_t*)MB_QueueRemove(MB_Data.MB_BleTable.pevt_queue);
 
             data = &ble_event->data[0];
 
@@ -1353,7 +1528,7 @@ void IPCC_C1_RX_IRQHandler(void)
                             
                             ble_command->rlen = length;
                             
-                            if (((void*)ble_event >= (void*)(&MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
+                            if (((void*)ble_event >= (void*)(&MB_Data.MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_Data.MB_BlePool[0] + sizeof(MB_Data.MB_BlePool))))
                             {
                                 MB_QueueInsert(&stm32wb_ipcc_device.mm_queue, &ble_event->node);
                             }
@@ -1370,7 +1545,7 @@ void IPCC_C1_RX_IRQHandler(void)
 
                         ble_command->next = NULL;
                         
-                        ble_command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
+                        ble_command->status = STM32WB_IPCC_BLE_COMMAND_STATUS_SUCCESS;
                         
                         if (ble_callback)
                         {
@@ -1407,7 +1582,7 @@ void IPCC_C1_RX_IRQHandler(void)
                             
                             ble_command->rlen = length;
 
-                            if (((void*)ble_event >= (void*)(&MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
+                            if (((void*)ble_event >= (void*)(&MB_Data.MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_Data.MB_BlePool[0] + sizeof(MB_Data.MB_BlePool))))
                             {
                                 MB_QueueInsert(&stm32wb_ipcc_device.mm_queue, &ble_event->node);
                             }
@@ -1424,7 +1599,7 @@ void IPCC_C1_RX_IRQHandler(void)
 
                         ble_command->next = NULL;
                         
-                        ble_command->status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
+                        ble_command->status = STM32WB_IPCC_BLE_COMMAND_STATUS_SUCCESS;
                             
                         if (ble_callback)
                         {
@@ -1458,14 +1633,15 @@ void IPCC_C1_RX_IRQHandler(void)
             }
         }
     }
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
     
     if (!(ipcc_c1mr & IPCC_C1MR_CH2OM) && (ipcc_c2toc1sr & IPCC_C2TOC1SR_CH2F))
     {
         /* SYS RX EVT */
 
-        while (!MB_QueueIsEmpty(&MB_SysEvtQueue))
+        while (!MB_QueueIsEmpty(&MB_Data.MB_SysEvtQueue))
         {
-            sys_event = (MB_SysEvent_t*)MB_QueueRemove(&MB_SysEvtQueue);
+            sys_event = (MB_SysEvent_t*)MB_QueueRemove(&MB_Data.MB_SysEvtQueue);
 
             data = &sys_event->data[0];
             
@@ -1479,12 +1655,12 @@ void IPCC_C1_RX_IRQHandler(void)
                     {
                         if (data[5] == 0x00)
                         {
-                            MB_SysState = STM32WB_IPCC_SYS_STATE_WIRELESS;
+                            MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_WIRELESS;
                         }
 
                         if (data[5] == 0x01)
                         {
-                            MB_SysState = STM32WB_IPCC_SYS_STATE_FUS;
+                            MB_Data.MB_SysState = STM32WB_IPCC_SYS_STATE_FUS;
                         }
 
                         stm32wb_ipcc_device.state = STM32WB_IPCC_STATE_READY;
@@ -1492,7 +1668,7 @@ void IPCC_C1_RX_IRQHandler(void)
                 }
             }
 
-            if (((void*)sys_event >= (void*)(&MB_BlePool[0])) && ((void*)sys_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
+            if (((void*)sys_event >= (void*)(&MB_Data.MB_BlePool[0])) && ((void*)sys_event < (void*)(&MB_Data.MB_BlePool[0] + sizeof(MB_Data.MB_BlePool))))
             {
                 MB_QueueInsert(&stm32wb_ipcc_device.mm_queue, &sys_event->node);
             }
@@ -1501,6 +1677,7 @@ void IPCC_C1_RX_IRQHandler(void)
         IPCC->C1SCR = IPCC_C1SCR_CH2C;
     }
 
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
     if (stm32wb_ipcc_device.ble_submit != STM32WB_IPCC_BLE_COMMAND_SENTINEL)
     {
         ble_command_submit = (stm32wb_ipcc_ble_command_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_ipcc_device.ble_submit, (uint32_t)STM32WB_IPCC_BLE_COMMAND_SENTINEL);
@@ -1574,14 +1751,14 @@ void IPCC_C1_RX_IRQHandler(void)
             }
 #endif /* (STM32WB_IPCC_TRACE_SUPPORTED == 1) */
             
-            MB_BleCmdBuffer.data[0] = HCI_COMMAND_DATA_PACKET;
-            MB_BleCmdBuffer.data[1] = (uint8_t)(ble_command->opcode >> 0);
-            MB_BleCmdBuffer.data[2] = (uint8_t)(ble_command->opcode >> 8);
-            MB_BleCmdBuffer.data[3] = (uint8_t)ble_command->clen;
+            MB_Data.MB_BleCmdBuffer.data[0] = HCI_COMMAND_DATA_PACKET;
+            MB_Data.MB_BleCmdBuffer.data[1] = (uint8_t)(ble_command->opcode >> 0);
+            MB_Data.MB_BleCmdBuffer.data[2] = (uint8_t)(ble_command->opcode >> 8);
+            MB_Data.MB_BleCmdBuffer.data[3] = (uint8_t)ble_command->clen;
             
             if (ble_command->clen)
             {
-                memcpy(&MB_BleCmdBuffer.data[4], ble_command->cparam, ble_command->clen);
+                memcpy(&MB_Data.MB_BleCmdBuffer.data[4], ble_command->cparam, ble_command->clen);
             }
             
             IPCC->C1SCR = IPCC_C1SCR_CH1S;
@@ -1596,18 +1773,19 @@ void IPCC_C1_RX_IRQHandler(void)
         {
             ble_event_next = (MB_BleEvent_t*)ble_event->node.next;
 
-            if (((void*)ble_event >= (void*)(&MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_BlePool[0] + sizeof(MB_BlePool))))
+            if (((void*)ble_event >= (void*)(&MB_Data.MB_BlePool[0])) && ((void*)ble_event < (void*)(&MB_Data.MB_BlePool[0] + sizeof(MB_Data.MB_BlePool))))
             {
                 MB_QueueInsert(&stm32wb_ipcc_device.mm_queue, &ble_event->node);
             }
         }
     }
+#endif /* (STM32WB_IPCC_BLE_SUPPORTED == 1) */
     
     if (!stm32wb_ipcc_device.mm_busy)
     {
         if (!MB_QueueIsEmpty(&stm32wb_ipcc_device.mm_queue))
         {
-            MB_QueueCopy(&MB_EvtFreeBufferQueue, &stm32wb_ipcc_device.mm_queue);
+            MB_QueueCopy(&MB_Data.MB_EvtFreeBufferQueue, &stm32wb_ipcc_device.mm_queue);
 
             stm32wb_ipcc_device.mm_busy = true;
             
@@ -1616,20 +1794,25 @@ void IPCC_C1_RX_IRQHandler(void)
             armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH4FM);
         }
     }
-    
+
     __DSB();
 }
 
-void IPCC_C1_TX_IRQHandler(void)
+static void stm32wb_ipcc_tx_interrupt(void)
 {
-    uint32_t ipcc_c1mr, ipcc_c1toc2sr, length;
-    stm32wb_ipcc_sys_command_t *sys_command, *sys_command_submit, *sys_command_next, *sys_command_head, *sys_command_tail;
+    uint32_t ipcc_c1mr, ipcc_c1toc2sr, status, length;
+    uint16_t opcode;
+    const uint8_t *data;
+    stm32wb_ipcc_sys_command_t *sys_command;
     stm32wb_ipcc_sys_command_callback_t sys_callback;
     void *sys_context;
-    volatile uint8_t *acl_status;
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+    stm32wb_ipcc_ble_acldata_t *acl_data;
     stm32wb_ipcc_ble_acldata_callback_t acl_callback;
     void *acl_context;
-    volatile uint8_t *MB_SysRspBuffer;
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
+#endif /*STM32WB_IPCC_BLE_SUPPORTED == 1 */
 
     ipcc_c1mr = IPCC->C1MR;
     ipcc_c1toc2sr = IPCC->C1TOC2SR;
@@ -1644,34 +1827,42 @@ void IPCC_C1_TX_IRQHandler(void)
 
         if (sys_command)
         {
-            MB_SysRspBuffer = (volatile uint8_t*)&MB_SysCmdBuffer;
-
-
             stm32wb_ipcc_device.sys_current = NULL;
-        
+
+            data = (const uint8_t*)&MB_Data.MB_SysCmdBuffer;
+
+            opcode = (data[4] << 0) | (data[5] << 8);
+
+            if (opcode == STM32WB_IPCC_SYS_OPCODE_FUS_GET_STATE)
+            {
+                status = STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS;
+            }
+            else
+            {
+                status = data[6] ? STM32WB_IPCC_SYS_COMMAND_STATUS_FAILURE : STM32WB_IPCC_SYS_COMMAND_STATUS_SUCCESS;
+            }
+            
             if (sys_command->rparam)
             {
-                length = MB_SysRspBuffer[2] - 3;
-
+                length = data[2] - 3;
+                
                 if (length > sys_command->rsize)
                 {
                     length = sys_command->rsize;
                 }
-
+                
                 if (length)
                 {
-                    memcpy(sys_command->rparam, (const void*)&MB_SysRspBuffer[6], length);
+                    memcpy(sys_command->rparam, (const void*)&data[6], length);
                 }
 
                 sys_command->rlen = length;
             }
-
+            
             sys_callback = sys_command->callback;
             sys_context = sys_command->context;
 
-            sys_command->next = NULL;
-
-            sys_command->status = MB_SysRspBuffer[5];
+            sys_command->status = status;
 
             if (sys_callback)
             {
@@ -1679,7 +1870,7 @@ void IPCC_C1_TX_IRQHandler(void)
             }
         }
     }
-    
+
     if (!(ipcc_c1mr & IPCC_C1MR_CH4FM) && !(ipcc_c1toc2sr & IPCC_C1TOC2SR_CH4F))
     {
         /* MM TX ACK */
@@ -1688,94 +1879,40 @@ void IPCC_C1_TX_IRQHandler(void)
 
         stm32wb_ipcc_device.mm_busy = false;
     }
-
+    
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
     if (!(ipcc_c1mr & IPCC_C1MR_CH6FM) && !(ipcc_c1toc2sr & IPCC_C1TOC2SR_CH6F))
     {
         /* ACL TX ACK */
 
         armv7m_atomic_or(&IPCC->C1MR, IPCC_C1MR_CH6FM);
 
-        acl_status = stm32wb_ipcc_device.acl_status;
-        acl_callback = stm32wb_ipcc_device.acl_callback;
-        acl_context = stm32wb_ipcc_device.acl_context;
+        acl_data = stm32wb_ipcc_device.acl_current;
+
+        if (acl_data)
+        {
+            stm32wb_ipcc_device.acl_current = NULL;
+            
+            acl_callback = acl_data->callback;
+            acl_context = acl_data->context;
         
-        stm32wb_ipcc_device.acl_busy = false;
+            acl_data->status = STM32WB_IPCC_BLE_ACLDATA_STATUS_SUCCESS;
 
-        if (acl_status)
-        {
-            *acl_status = STM32WB_IPCC_BLE_STATUS_SUCCESS;
-        }
-
-        if (acl_callback)
-        {
-            (*acl_callback)(acl_context);
+            if (acl_callback)
+            {
+                (*acl_callback)(acl_context);
+            }
         }
     }
-
-    if (stm32wb_ipcc_device.sys_submit != STM32WB_IPCC_SYS_COMMAND_SENTINEL)
-    {
-        sys_command_submit = (stm32wb_ipcc_sys_command_t*)armv7m_atomic_swap((volatile uint32_t*)&stm32wb_ipcc_device.sys_submit, (uint32_t)STM32WB_IPCC_SYS_COMMAND_SENTINEL);
-
-        for (sys_command_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL, sys_command_tail = sys_command_submit; sys_command_submit != STM32WB_IPCC_SYS_COMMAND_SENTINEL; sys_command_submit = sys_command_next)
-        {
-            sys_command_next = sys_command_submit->next;
-
-            sys_command_submit->next = sys_command_head;
-
-            sys_command_head = sys_command_submit;
-        }
-        
-        if (stm32wb_ipcc_device.sys_head == STM32WB_IPCC_SYS_COMMAND_SENTINEL)
-        {
-            stm32wb_ipcc_device.sys_head = sys_command_head;
-        }
-        else
-        {
-            stm32wb_ipcc_device.sys_tail->next = sys_command_head;
-        }
-        
-        stm32wb_ipcc_device.sys_tail = sys_command_tail;
-    }
-
-    if (!stm32wb_ipcc_device.sys_current)
-    {
-        sys_command = stm32wb_ipcc_device.sys_head;
-
-        if (sys_command != STM32WB_IPCC_SYS_COMMAND_SENTINEL)
-        {
-            if (sys_command == stm32wb_ipcc_device.sys_tail)
-            {
-                stm32wb_ipcc_device.sys_head = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
-                stm32wb_ipcc_device.sys_tail = STM32WB_IPCC_SYS_COMMAND_SENTINEL;
-            }
-            else
-            {
-                stm32wb_ipcc_device.sys_tail = sys_command->next;
-            }
-
-            stm32wb_ipcc_device.sys_current = sys_command;
-            
-            MB_SysCmdBuffer.data[0] = SYS_COMMAND_PACKET;
-            MB_SysCmdBuffer.data[1] = (sys_command->opcode >> 0);
-            MB_SysCmdBuffer.data[2] = (sys_command->opcode >> 8);
-            MB_SysCmdBuffer.data[3] = sys_command->clen;
-            
-            if (sys_command->clen)
-            {
-                memcpy(&MB_SysCmdBuffer.data[4], sys_command->cparam, sys_command->clen);
-            }
-            
-            IPCC->C1SCR = IPCC_C1SCR_CH2S;
-
-            armv7m_atomic_and(&IPCC->C1MR, ~IPCC_C1MR_CH2FM);
-        }
-    }
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
+#endif /* (STM32WB_IPCC_BLE_SUPPORTED == 1) */
     
     if (!stm32wb_ipcc_device.mm_busy)
     {
         if (!MB_QueueIsEmpty(&stm32wb_ipcc_device.mm_queue))
         {
-            MB_QueueCopy(&MB_EvtFreeBufferQueue, &stm32wb_ipcc_device.mm_queue);
+            MB_QueueCopy(&MB_Data.MB_EvtFreeBufferQueue, &stm32wb_ipcc_device.mm_queue);
 
             stm32wb_ipcc_device.mm_busy = true;
             
@@ -1787,3 +1924,16 @@ void IPCC_C1_TX_IRQHandler(void)
 
     __DSB();
 }
+
+void IPCC_C1_RX_IRQHandler(void)
+{
+    stm32wb_ipcc_rx_interrupt();
+}
+
+
+void IPCC_C1_TX_IRQHandler(void)
+{
+    stm32wb_ipcc_tx_interrupt();
+}
+
+#endif /* !defined(__STM32WB_BOOT_CODE__) */

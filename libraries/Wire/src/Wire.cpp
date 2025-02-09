@@ -106,7 +106,7 @@ void TwoWire::setClock(uint32_t clock) {
 }
 
 void TwoWire::beginTransmission(uint8_t address) {
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return;
     }
 
@@ -126,7 +126,7 @@ uint8_t TwoWire::endTransmission() {
 uint8_t TwoWire::endTransmission(bool stopBit) {
     stm32wb_i2c_transaction_t transaction;
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return 4;
     }
 
@@ -174,15 +174,11 @@ size_t TwoWire::requestFrom(uint8_t address, size_t size) {
 size_t TwoWire::requestFrom(uint8_t address, size_t size, bool stopBit) {
     stm32wb_i2c_transaction_t transaction;
     
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return 0;
     }
     
     if (size > WIRE_BUFFER_LENGTH) {
-        return 0;
-    }
-    
-    if (!k_task_is_in_progress()) {
         return 0;
     }
     
@@ -230,15 +226,11 @@ size_t TwoWire::requestFrom(uint8_t address, size_t size, uint32_t iaddress, uin
     uint32_t xf_count;
     uint8_t xf_data[3];
     
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return 0;
     }
     
     if (size > WIRE_BUFFER_LENGTH) {
-        return 0;
-    }
-    
-    if (!k_task_is_in_progress()) {
         return 0;
     }
     
@@ -390,7 +382,7 @@ uint8_t TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSiz
         return 1;
     }
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return 4;
     }
 
@@ -426,7 +418,7 @@ uint8_t TwoWire::transfer(uint8_t address, const uint8_t *txBuffer, size_t txSiz
 }
 
 void TwoWire::reset() {
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || (k_task_self() != __arduino_task)) {
         return;
     }
 

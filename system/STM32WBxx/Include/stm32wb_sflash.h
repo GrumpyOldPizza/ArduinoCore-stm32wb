@@ -41,6 +41,8 @@ extern "C" {
 #define STM32WB_SFLASH_STATUS_BUSY              255
 
 typedef struct _stm32wb_sflash_interface_t {
+    bool                    (*enable)(void);
+    bool                    (*disable)(void);
     bool                    (*acquire)(void);
     bool                    (*release)(void);
     bool                    (*busy)(void);

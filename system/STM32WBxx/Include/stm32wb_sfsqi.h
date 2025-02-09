@@ -36,21 +36,7 @@
 extern "C" {
 #endif
 
-typedef struct _stm32wb_sfsqi_pins_t {
-    uint16_t                    clk;
-    uint16_t                    cs;
-    uint16_t                    io0;
-    uint16_t                    io1;
-    uint16_t                    io2;
-    uint16_t                    io3;
-} stm32wb_sfsqi_pins_t;
-
-typedef struct _stm32wb_sfsqi_params_t {
-    uint8_t                     priority;
-    stm32wb_sfsqi_pins_t        pins;
-} stm32wb_sfsqi_params_t;
-
-extern bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params);
+extern bool stm32wb_sfsqi_initialize(void);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2017-2024 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -120,6 +120,7 @@ typedef struct _stm32wb_sfspi_device_t {
     stm32wb_spi_t                  *spi;
     volatile uint8_t               state;
     uint8_t                        busy;
+    volatile uint8_t               refcount;
     stm32wb_sfspi_pins_t           pins; 
     stm32wb_sflash_info_t          info;
     stm32wb_system_notify_t        notify;
@@ -302,9 +303,66 @@ static __attribute__((optimize("O3"),noinline)) void stm32wb_sfspi_address(uint3
     }
 }
 
+static __attribute__((noinline)) bool stm32wb_sfspi_enable(void)
+{
+    if (stm32wb_sfspi_device.refcount >= 1)
+    {
+        stm32wb_sfspi_device.refcount++;
+
+	return true;
+    }
+
+    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_NOT_READY)
+    {
+	return false;
+    }
+
+    stm32wb_sfspi_device.refcount = 1;
+    
+    if (stm32wb_system_info.options & STM32WB_SYSTEM_OPTION_SFLASH_BOOST)
+    {
+        stm32wb_system_boost_enable();
+    }
+
+    stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_READY;
+
+    return true;
+}
+
+static __attribute__((noinline)) bool stm32wb_sfspi_disable(void)
+{
+    if (stm32wb_sfspi_device.refcount > 1)
+    {
+        stm32wb_sfspi_device.refcount--;
+
+	return true;
+    }
+
+    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_READY)
+    {
+	return false;
+    }
+
+    if (stm32wb_sfspi_device.busy & (STM32WB_SFSPI_BUSY_ERASE | STM32WB_SFSPI_BUSY_PROGRAM | STM32WB_SFSPI_BUSY_SUSPENDED_ERASE | STM32WB_SFSPI_BUSY_SUSPENDED_PROGRAM)) 
+    {
+	return false;
+    }
+
+    stm32wb_sfspi_device.refcount = 0;
+    
+    if (stm32wb_system_info.options & STM32WB_SYSTEM_OPTION_SFLASH_BOOST)
+    {
+        stm32wb_system_boost_disable();
+    }
+    
+    stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_NOT_READY;
+    
+    return true;
+}
+
 static bool stm32wb_sfspi_acquire(void)
 {
-    if (stm32wb_sfspi_device.state < STM32WB_SFSPI_STATE_NOT_READY)
+    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_READY)
     {
 	return false;
     }
@@ -313,6 +371,8 @@ static bool stm32wb_sfspi_acquire(void)
     {
 	return false;
     }
+
+    stm32wb_gpio_pin_output(stm32wb_sfspi_device.pins.cs);
 
     if (stm32wb_sfspi_device.busy & STM32WB_SFSPI_BUSY_SLEEP)
     {
@@ -323,35 +383,29 @@ static bool stm32wb_sfspi_acquire(void)
 	stm32wb_sfspi_device.busy &= ~STM32WB_SFSPI_BUSY_SLEEP;
     }
     
-    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_NOT_READY)
-    {
-	stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_DATA;
-    }
+    stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_DATA;
 
     return true;
 }
 
 static bool stm32wb_sfspi_release(void)
 {
-    if (stm32wb_sfspi_device.state < STM32WB_SFSPI_STATE_NOT_READY)
+    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_DATA)
     {
 	return false;
     }
 
-    if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_NOT_READY)
-    {
-	stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_READY;
-    }
+    stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_READY;
 
     stm32wb_spi_release(stm32wb_sfspi_device.spi);
+
+    stm32wb_gpio_pin_analog(stm32wb_sfspi_device.pins.cs);
     
     return true;
 }
 
 static void stm32wb_sfspi_sleep(void)
 {
-    bool success;
-    
     if (stm32wb_sfspi_device.state != STM32WB_SFSPI_STATE_READY)
     {
 	return;
@@ -362,9 +416,9 @@ static void stm32wb_sfspi_sleep(void)
 	return;
     }
 
-    if (stm32wb_sfspi_device.info.mid == STM32WB_SFSPI_MID_SPANSION)
+    if ((stm32wb_sfspi_device.info.mid != STM32WB_SFSPI_MID_MACRONIX) && (stm32wb_sfspi_device.info.mid != STM32WB_SFSPI_MID_WINBOND))
     {
-	return;
+        return;
     }
 
     if (!stm32wb_sfspi_acquire())
@@ -372,18 +426,11 @@ static void stm32wb_sfspi_sleep(void)
 	return;
     }
 
-    success = true;
-    
-    if (stm32wb_sfspi_busy())
+    if (!stm32wb_sfspi_busy())
     {
-	success = false;
-    }
+        stm32wb_sfspi_command(STM32WB_SFSPI_INSN_DPD);
 
-    if (success)
-    {
-	stm32wb_sfspi_command(STM32WB_SFSPI_INSN_DPD);
-
-	stm32wb_sfspi_device.busy |= STM32WB_SFSPI_BUSY_SLEEP;
+        stm32wb_sfspi_device.busy |= STM32WB_SFSPI_BUSY_SLEEP;
     }
     
     stm32wb_sfspi_release();
@@ -654,6 +701,8 @@ static __attribute__((optimize("O3"),noinline)) bool stm32wb_sfspi_read(uint32_t
 }
 
 static const stm32wb_sflash_interface_t stm32wb_sfspi_interface = {
+    stm32wb_sfspi_enable,
+    stm32wb_sfspi_disable,
     stm32wb_sfspi_acquire,
     stm32wb_sfspi_release,
     stm32wb_sfspi_busy,
@@ -695,10 +744,9 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
 
     stm32wb_sfspi_device.clock = 8000000;
     
-    stm32wb_gpio_pin_configure(stm32wb_sfspi_device.pins.cs, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
-    stm32wb_gpio_pin_write(stm32wb_sfspi_device.pins.cs, 1);
+    stm32wb_gpio_pin_configure(stm32wb_sfspi_device.pins.cs, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_ODATA_1 | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
 
-    stm32wb_spi_enable(spi); // bump up refcount
+    stm32wb_sfspi_enable();
     
     stm32wb_sfspi_acquire();
     
@@ -767,7 +815,7 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
 
 	stm32wb_sfspi_device.clock = 32000000;
 
-	if (MID == STM32WB_SFSPI_MID_SPANSION)
+	if (stm32wb_sfspi_device.info.mid == STM32WB_SFSPI_MID_SPANSION)
 	{
 	    stm32wb_sfspi_device.insn_erase_suspend = STM32WB_SFSPI_INSN_ERSP;
 	    stm32wb_sfspi_device.insn_erase_resume = STM32WB_SFSPI_INSN_ERRS;
@@ -775,7 +823,7 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
 	    stm32wb_sfspi_device.insn_program_resume = STM32WB_SFSPI_INSN_PGRS;
 	}
 
-	if (MID == STM32WB_SFSPI_MID_MACRONIX)
+	if (stm32wb_sfspi_device.info.mid == STM32WB_SFSPI_MID_MACRONIX)
 	{
 	    stm32wb_sfspi_device.insn_erase_suspend = STM32WB_SFSPI_INSN_PERSUS;
 	    stm32wb_sfspi_device.insn_erase_resume = STM32WB_SFSPI_INSN_PERRSM;
@@ -783,7 +831,7 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
 	    stm32wb_sfspi_device.insn_program_resume = STM32WB_SFSPI_INSN_PERRSM;
 	}
 
-	if (MID == STM32WB_SFSPI_MID_WINBOND)
+	if (stm32wb_sfspi_device.info.mid == STM32WB_SFSPI_MID_WINBOND)
 	{
 	    stm32wb_sfspi_device.insn_erase_suspend = STM32WB_SFSPI_INSN_EPS;
 	    stm32wb_sfspi_device.insn_erase_resume = STM32WB_SFSPI_INSN_EPR;
@@ -799,10 +847,10 @@ bool stm32wb_sfspi_initialize(stm32wb_spi_t *spi, const stm32wb_sfspi_params_t *
 	}
 
 	stm32wb_sfspi_release();
-    
-	stm32wb_sfspi_device.state = STM32WB_SFSPI_STATE_READY;
 
-	stm32wb_system_register(&stm32wb_sfspi_device.notify, (stm32wb_system_callback_t)stm32wb_sfspi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_STOP_PREPARE);
+	stm32wb_sfspi_disable();
+    
+	stm32wb_system_notify(&stm32wb_sfspi_device.notify, (stm32wb_system_callback_t)stm32wb_sfspi_sleep, NULL, STM32WB_SYSTEM_EVENT_STOP_PREPARE);
 	
 	__stm32wb_sflash_initialize(&stm32wb_sfspi_interface, &stm32wb_sfspi_device.info);
     }

@@ -171,15 +171,20 @@
 
 #define STM32WB_SFSQI_BUSY_ERASE                 0x01
 #define STM32WB_SFSQI_BUSY_PROGRAM               0x02
-#define STM32WB_SFSQI_BUSY_SLEEP                 0x04
-#define STM32WB_SFSQI_BUSY_SUSPENDED_ERASE       0x08
-#define STM32WB_SFSQI_BUSY_SUSPENDED_PROGRAM     0x10
+#define STM32WB_SFSQI_BUSY_SUSPENDED_ERASE       0x04
+#define STM32WB_SFSQI_BUSY_SUSPENDED_PROGRAM     0x08
+#define STM32WB_SFSQI_BUSY_SLEEP                 0x10
+#define STM32WB_SFSQI_BUSY_RESET                 0x20
 
+#define STM32WB_SFSQI_DELAY_RESET                100
+#define STM32WB_SFSQI_DELAY_RDPD                 200
+#define STM32WB_SFSQI_DELAY_DISABLE              300
+#define STM32WB_SFSQI_DELAY_ENABLE               3000
 
 typedef struct _stm32wb_sfsqi_device_t {
     volatile uint8_t               state;
     uint8_t                        busy;
-    stm32wb_sfsqi_pins_t           pins;
+    volatile uint8_t               refcount;
     stm32wb_sflash_info_t          info;
     stm32wb_system_notify_t        notify;
     QUADSPI_TypeDef                *QSPI;
@@ -271,6 +276,14 @@ static inline void stm32wb_sfsqi_start(void)
     }
     
     stm32wb_system_periph_enable(STM32WB_SYSTEM_PERIPH_QSPI);
+
+    if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
+    {
+        // ### MISSING PULLUP WAR
+        {
+            stm32wb_gpio_pin_alternate(stm32wb_system_info.pins.sflash_cs);
+        }
+    }
     
     QSPI->DCR = QUADSPI_DCR_FSIZE | ((2 -1) << QUADSPI_DCR_CSHT_Pos);
     QSPI->ABR = 0x88;
@@ -284,6 +297,14 @@ static inline void stm32wb_sfsqi_stop(void)
     while (QSPI->SR & QUADSPI_SR_BUSY) { }
     
     QSPI->CR = 0;
+
+    if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
+    {
+        // ### MISSING PULLUP WAR
+        {
+            stm32wb_gpio_pin_output(stm32wb_system_info.pins.sflash_cs);
+        }
+    }
     
     stm32wb_system_periph_disable(STM32WB_SYSTEM_PERIPH_QSPI);
 
@@ -869,9 +890,96 @@ static __attribute__((optimize("O3"),noinline)) uint8_t stm32wb_sfsqi_write_enab
     return status;
 }
 
-static bool stm32wb_sfsqi_acquire(void)
+static __attribute__((noinline)) bool stm32wb_sfsqi_enable(void)
 {
-    if (stm32wb_sfsqi_device.state < STM32WB_SFSQI_STATE_NOT_READY)
+    if (stm32wb_sfsqi_device.refcount >= 1)
+    {
+        stm32wb_sfsqi_device.refcount++;
+
+	return true;
+    }
+
+    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_NOT_READY)
+    {
+	return false;
+    }
+
+    stm32wb_sfsqi_device.refcount = 1;
+    
+    if (stm32wb_system_info.options & STM32WB_SYSTEM_OPTION_SFLASH_BOOST)
+    {
+        stm32wb_system_boost_enable();
+    }
+
+    if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
+    {
+        // ### MISSING PULLUP WAR
+        {
+            stm32wb_gpio_pin_output(stm32wb_system_info.pins.sflash_cs);
+
+            armv7m_core_udelay(50);
+        }
+        
+        stm32wb_gpio_pin_output(stm32wb_system_info.pins.sflash_enable);
+
+        armv7m_core_udelay(STM32WB_SFSQI_DELAY_ENABLE);
+
+        stm32wb_sfsqi_device.busy |= STM32WB_SFSQI_BUSY_RESET;
+    }
+
+    stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_READY;
+
+    return true;
+}
+
+static __attribute__((noinline)) bool stm32wb_sfsqi_disable(void)
+{
+    if (stm32wb_sfsqi_device.refcount > 1)
+    {
+        stm32wb_sfsqi_device.refcount--;
+
+	return true;
+    }
+
+    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_READY)
+    {
+	return false;
+    }
+
+    if (stm32wb_sfsqi_device.busy & (STM32WB_SFSQI_BUSY_ERASE | STM32WB_SFSQI_BUSY_PROGRAM | STM32WB_SFSQI_BUSY_SUSPENDED_ERASE | STM32WB_SFSQI_BUSY_SUSPENDED_PROGRAM)) 
+    {
+	return false;
+    }
+
+    stm32wb_sfsqi_device.refcount = 0;
+
+    if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
+    {
+        stm32wb_gpio_pin_analog(stm32wb_system_info.pins.sflash_enable);
+
+        armv7m_core_udelay(STM32WB_SFSQI_DELAY_DISABLE);
+
+        // ### MISSING PULLUP WAR
+        {
+            stm32wb_gpio_pin_analog(stm32wb_system_info.pins.sflash_cs);
+        
+            armv7m_core_udelay(50);
+        }
+    }
+    
+    if (stm32wb_system_info.options & STM32WB_SYSTEM_OPTION_SFLASH_BOOST)
+    {
+        stm32wb_system_boost_disable();
+    }
+    
+    stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_NOT_READY;
+    
+    return true;
+}
+
+static __attribute__((noinline)) bool stm32wb_sfsqi_acquire(void)
+{
+    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_READY)
     {
 	return false;
     }
@@ -882,40 +990,49 @@ static bool stm32wb_sfsqi_acquire(void)
     {
 	stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_RDPD);
 	
-        armv7m_core_udelay(50);
+        armv7m_core_udelay(STM32WB_SFSQI_DELAY_RDPD);
 
-	stm32wb_sfsqi_device.busy &= ~STM32WB_SFSQI_BUSY_SLEEP;
+        stm32wb_sfsqi_device.busy &= ~STM32WB_SFSQI_BUSY_SLEEP;
+    }
+
+    if (stm32wb_sfsqi_device.busy & STM32WB_SFSQI_BUSY_RESET)
+    {
+	if (stm32wb_sfsqi_device.info.capacity > 0x01000000)
+	{
+	    if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_SPANSION)
+	    {
+		stm32wb_sfsqi_command_write_1(STM32WB_SFSQI_INSN_BRWR, STM32WB_SFSQI_BR_EXTADD);
+	    }
+	    else
+	    {
+		stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_EN4B);
+	    }
+	}
+
+        stm32wb_sfsqi_device.busy &= ~STM32WB_SFSQI_BUSY_RESET;
     }
     
-    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_NOT_READY)
-    {
-	stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_DATA;
-    }
+    stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_DATA;
 
     return true;
 }
 
-static bool stm32wb_sfsqi_release(void)
+static  __attribute__((noinline)) bool stm32wb_sfsqi_release(void)
 {
-    if (stm32wb_sfsqi_device.state < STM32WB_SFSQI_STATE_NOT_READY)
+    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_DATA)
     {
 	return false;
     }
+    
+    stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_READY;
 
     stm32wb_sfsqi_stop();
-    
-    if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_NOT_READY)
-    {
-	stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_READY;
-    }
     
     return true;
 }
 
 static void stm32wb_sfsqi_sleep(void)
 {
-    bool success;
-    
     if (stm32wb_sfsqi_device.state != STM32WB_SFSQI_STATE_READY)
     {
 	return;
@@ -926,9 +1043,9 @@ static void stm32wb_sfsqi_sleep(void)
 	return;
     }
 
-    if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_SPANSION)
+    if ((stm32wb_sfsqi_device.info.mid != STM32WB_SFSQI_MID_MACRONIX) && (stm32wb_sfsqi_device.info.mid != STM32WB_SFSQI_MID_WINBOND))
     {
-	return;
+        return;
     }
 
     if (!stm32wb_sfsqi_acquire())
@@ -936,18 +1053,11 @@ static void stm32wb_sfsqi_sleep(void)
 	return;
     }
 
-    success = true;
-    
-    if (stm32wb_sfsqi_busy())
+    if (!stm32wb_sfsqi_busy())
     {
-	success = false;
-    }
+        stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_DPD);
 
-    if (success)
-    {
-	stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_DPD);
-
-	stm32wb_sfsqi_device.busy |= STM32WB_SFSQI_BUSY_SLEEP;
+        stm32wb_sfsqi_device.busy |= STM32WB_SFSQI_BUSY_SLEEP;
     }
     
     stm32wb_sfsqi_release();
@@ -1018,7 +1128,7 @@ static __attribute__((optimize("O3"),noinline)) bool stm32wb_sfsqi_busy(void)
     {
 	return true;
     }
-
+    
     stm32wb_sfsqi_status(status);
 
     return false;
@@ -1203,6 +1313,8 @@ static bool stm32wb_sfsqi_read(uint32_t address, uint8_t *data, uint32_t count)
 }
 
 static const stm32wb_sflash_interface_t stm32wb_sfsqi_interface = {
+    stm32wb_sfsqi_enable,
+    stm32wb_sfsqi_disable,
     stm32wb_sfsqi_acquire,
     stm32wb_sfsqi_release,
     stm32wb_sfsqi_busy,
@@ -1213,7 +1325,7 @@ static const stm32wb_sflash_interface_t stm32wb_sfsqi_interface = {
     stm32wb_sfsqi_read,
 };
 
-bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
+bool stm32wb_sfsqi_initialize(void)
 {
     uint8_t MID, DID[2], status, status2, control, config1, config2;
     bool success, quad;
@@ -1224,37 +1336,48 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
     }
 
     stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_NOT_READY;
-    stm32wb_sfsqi_device.pins = params->pins;
 
     stm32wb_sfsqi_device.QSPI = QUADSPI;
 
     stm32wb_sfsqi_device.clock = 8000000;
     stm32wb_sfsqi_device.hclk = 0;
     stm32wb_sfsqi_device.sclk = 0;
-    
-    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.clk, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.cs, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io0, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io1, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
 
-    if ((stm32wb_sfsqi_device.pins.io2 != STM32WB_GPIO_PIN_NONE) && (stm32wb_sfsqi_device.pins.io3 != STM32WB_GPIO_PIN_NONE))
+    if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
     {
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io2, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io3, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
-
-	quad = true;
+        stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_cs, (STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_ODATA_1 | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+        
+        stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_enable, (STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_ODATA_1 | STM32WB_GPIO_OSPEED_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_INPUT));
     }
     else
     {
-	quad = false;
+        stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_cs,   (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_PULLUP | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
     }
+
+    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_clk,  (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_mosi, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_miso, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        
+    if ((stm32wb_system_info.pins.sflash_wp != STM32WB_GPIO_PIN_NONE) && (stm32wb_system_info.pins.sflash_hold != STM32WB_GPIO_PIN_NONE))
+    {
+        stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_wp,   (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_hold, (STM32WB_GPIO_PARK_HIZ | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_ALTERNATE));
+        
+        quad = true;
+    }
+    else
+    {
+        quad = false;
+    }
+    
+    stm32wb_sfsqi_enable();
 
     stm32wb_sfsqi_acquire();
 
     stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_RDPD);
     
-    armv7m_core_udelay(200);
-
+    armv7m_core_udelay(STM32WB_SFSQI_DELAY_RDPD);
+    
     stm32wb_sfsqi_device.info.mid = stm32wb_sfsqi_command_signature();
 
     success = false;
@@ -1290,7 +1413,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 		stm32wb_sfsqi_command(STM32WB_SFSQI_INSN_RST);
 	    }
 	    
-	    armv7m_core_udelay(100);
+	    armv7m_core_udelay(STM32WB_SFSQI_DELAY_RESET);
 	    
 	    do
 	    {
@@ -1320,7 +1443,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 	stm32wb_sfsqi_device.ccr_program = STM32WB_SFSQI_CCR_1_1_1_PAGE_PROGRAM;
 	stm32wb_sfsqi_device.ccr_read = STM32WB_SFSQI_CCR_1_1_1_FAST_READ;
 	
-	if (MID == STM32WB_SFSQI_MID_SPANSION)
+	if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_SPANSION)
 	{
 	    stm32wb_sfsqi_device.insn_erase_suspend = STM32WB_SFSQI_INSN_ERSP;
 	    stm32wb_sfsqi_device.insn_erase_resume = STM32WB_SFSQI_INSN_ERRS;
@@ -1353,7 +1476,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 	    }
 	}
 
-	if (MID == STM32WB_SFSQI_MID_MACRONIX)
+	if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_MACRONIX)
 	{
 	    stm32wb_sfsqi_device.insn_erase_suspend = STM32WB_SFSQI_INSN_PERSUS;
 	    stm32wb_sfsqi_device.insn_erase_resume = STM32WB_SFSQI_INSN_PERRSM;
@@ -1411,7 +1534,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 	    }
 	}
 
-	if (MID == STM32WB_SFSQI_MID_WINBOND)
+	if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_WINBOND)
 	{
 	    stm32wb_sfsqi_device.insn_erase_suspend = STM32WB_SFSQI_INSN_EPS;
 	    stm32wb_sfsqi_device.insn_erase_resume = STM32WB_SFSQI_INSN_EPR;
@@ -1440,7 +1563,7 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 
 	if (stm32wb_sfsqi_device.info.capacity > 0x01000000)
 	{
-	    if (MID == STM32WB_SFSQI_MID_SPANSION)
+	    if (stm32wb_sfsqi_device.info.mid == STM32WB_SFSQI_MID_SPANSION)
 	    {
 		stm32wb_sfsqi_command_write_1(STM32WB_SFSQI_INSN_BRWR, STM32WB_SFSQI_BR_EXTADD);
 	    }
@@ -1456,29 +1579,35 @@ bool stm32wb_sfsqi_initialize(const stm32wb_sfsqi_params_t *params)
 	
 	stm32wb_sfsqi_release();
 
-	stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_READY;
+	stm32wb_sfsqi_disable();
+
 	stm32wb_sfsqi_device.hclk = 0;
 	stm32wb_sfsqi_device.sclk = 0;
 
-	stm32wb_system_register(&stm32wb_sfsqi_device.notify, (stm32wb_system_callback_t)stm32wb_sfsqi_sleep, NULL, STM32WB_SYSTEM_NOTIFY_STOP_PREPARE);
+	stm32wb_system_notify(&stm32wb_sfsqi_device.notify, (stm32wb_system_callback_t)stm32wb_sfsqi_sleep, NULL, STM32WB_SYSTEM_EVENT_STOP_PREPARE);
 	
 	__stm32wb_sflash_initialize(&stm32wb_sfsqi_interface, &stm32wb_sfsqi_device.info);
     }
     else
     {
 	stm32wb_sfsqi_release();
-
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.clk, STM32WB_GPIO_MODE_ANALOG);
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.cs, STM32WB_GPIO_MODE_ANALOG);
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io0, STM32WB_GPIO_MODE_ANALOG);
-	stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io1, STM32WB_GPIO_MODE_ANALOG);
-	
-	if ((stm32wb_sfsqi_device.pins.io2 != STM32WB_GPIO_PIN_NONE) && (stm32wb_sfsqi_device.pins.io3 != STM32WB_GPIO_PIN_NONE))
+        
+	if (stm32wb_system_info.pins.sflash_enable != STM32WB_GPIO_PIN_NONE)
 	{
-	    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io2, STM32WB_GPIO_MODE_ANALOG);
-	    stm32wb_gpio_pin_configure(stm32wb_sfsqi_device.pins.io3, STM32WB_GPIO_MODE_ANALOG);
-	}
+	    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_enable, STM32WB_GPIO_MODE_ANALOG);
+        }
 
+	stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_cs,   STM32WB_GPIO_MODE_ANALOG);
+	stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_clk,  STM32WB_GPIO_MODE_ANALOG);
+	stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_mosi, STM32WB_GPIO_MODE_ANALOG);
+	stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_miso, STM32WB_GPIO_MODE_ANALOG);
+	
+	if ((stm32wb_system_info.pins.sflash_wp != STM32WB_GPIO_PIN_NONE) && (stm32wb_system_info.pins.sflash_hold != STM32WB_GPIO_PIN_NONE))
+	{
+	    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_wp,   STM32WB_GPIO_MODE_ANALOG);
+	    stm32wb_gpio_pin_configure(stm32wb_system_info.pins.sflash_hold, STM32WB_GPIO_MODE_ANALOG);
+	}
+        
 	stm32wb_sfsqi_device.state = STM32WB_SFSQI_STATE_NONE;
     }
     

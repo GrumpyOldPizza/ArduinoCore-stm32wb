@@ -133,9 +133,11 @@ int CDC::read(uint8_t *buffer, size_t size) {
 }
 
 void CDC::flush() {
-    if (k_task_is_in_progress()) {
+    if (!armv7m_core_is_in_interrupt()) {
         while (m_tx_busy) {
-            k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
+            if (k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER) != K_NO_ERROR) {
+                break;
+            }
         }
     }
 }
@@ -145,11 +147,10 @@ size_t CDC::write(const uint8_t data) {
 }
 
 size_t CDC::write(const uint8_t *buffer, size_t size) {
-    k_task_t *self = nullptr;
     uint32_t tx_read, tx_write, tx_write_next, tx_count, tx_size;
     uint8_t tx_lock;
     size_t count;
-    
+      
     if (!m_enabled) {
         return 0;
     }
@@ -160,10 +161,6 @@ size_t CDC::write(const uint8_t *buffer, size_t size) {
 
     count = 0;
 
-    if (k_task_is_in_progress()) {
-        self = k_task_self();
-    }
-    
     tx_lock = __armv7m_atomic_swapb(&m_tx_lock, 1);
     
     do {
@@ -182,7 +179,7 @@ size_t CDC::write(const uint8_t *buffer, size_t size) {
             }
 
             if (tx_size == 0) {
-                if (m_nonblocking || !self) {
+                if (m_nonblocking || armv7m_core_is_in_interrupt()) {
                     goto finish;
                 }
 
@@ -217,7 +214,9 @@ size_t CDC::write(const uint8_t *buffer, size_t size) {
                 }
 
                 if (m_tx_busy) {
-                    k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER);
+                    if (k_sem_acquire(&m_sem, K_TIMEOUT_FOREVER) != K_NO_ERROR) {
+                        goto finish;
+                    }
                 }
             }
         } while (tx_size == 0);

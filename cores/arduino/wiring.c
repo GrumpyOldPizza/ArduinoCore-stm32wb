@@ -64,15 +64,17 @@ extern void __libc_init_array(void);
 extern void cmsis_rv2(void);
 #endif
 
+k_task_t *__arduino_task;
+  
 void __runtime_start(void)
 {
-    stm32wb_system_initialize(0, __SYSTEM_CORE_CLOCK__, 0, 0, STM32WB_CONFIG_LSECLK, STM32WB_CONFIG_HSECLK, STM32WB_CONFIG_SYSOPT);
+    stm32wb_system_initialize(0, __SYSTEM_CORE_CLOCK__, 0, 0);
 
 #if defined(ARDUINO_RV2)
     cmsis_rv2();
 #endif
 
-    // k_system_initialize(&armv7m_rtt_hook_table);
+    //k_system_initialize(&armv7m_rtt_hook_table);
     k_system_initialize(NULL);
     
     __libc_init_array();

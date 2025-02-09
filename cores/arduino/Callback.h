@@ -32,7 +32,8 @@
 
 class Callback {
 public:
-    Callback() : m_callback(nullptr), m_context(nullptr) {  }
+  // Callback() : m_callback(nullptr), m_context(nullptr) {  }
+    Callback() = default;
     Callback(void (*function)(void)) : m_callback((void (*)(void*))function), m_context(nullptr) { }
     Callback(const Callback &other) : m_callback(other.m_callback), m_context(other.m_context) { }
 

@@ -1,0 +1,241 @@
+/*
+ * Copyright (c) 2023 Thomas Roell.  All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to
+ * deal with the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ *  1. Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimers.
+ *  2. Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimers in the
+ *     documentation and/or other materials provided with the distribution.
+ *  3. Neither the name of Thomas Roell, nor the names of its contributors
+ *     may be used to endorse or promote products derived from this Software
+ *     without specific prior written permission.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+ * CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * WITH THE SOFTWARE.
+ */
+
+#include "Arduino.h"
+#include "wiring_private.h"
+
+#define PWM_INSTANCE_TIM1      0
+#define PWM_INSTANCE_TIM2      1
+
+/*
+ * EXTI 0      PE0  D1
+ * EXTI 1      PA1  I2C_INT
+ * EXTI 2      PC2  A0
+ * EXTI 3      PH3  BUTTON          / PE3 G5
+ * EXTI 4      PB4  USART1_CTS      / PE4 G0
+ * EXTI 5
+ * EXTI 6
+ * EXTI 7
+ * EXTI 8      PD8  G3
+ * EXTI 9
+ * EXTI 10     PA10 USART1_RX
+ * EXTI 11     PC11 G1
+ * EXTI 12     PB14 D0
+ * EXTI 13     PC13 G2
+ * EXTI 14     PD14 PWM0
+ * EXTI 15     PD15 PWM1
+ */
+
+/*
+ * Pins descriptions
+ */
+extern const PinDescription g_APinDescription[PINS_COUNT] =
+{
+    // 0..9 - Digital pins (D0, D1, G0, G1, G2, G3, G4, G5, G6, G7)
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB12), STM32WB_GPIO_PIN_PB12,           (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOE, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PE0),  STM32WB_GPIO_PIN_PE0,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOE, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PE4),  STM32WB_GPIO_PIN_PE4,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC11), STM32WB_GPIO_PIN_PC11,           (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC13), STM32WB_GPIO_PIN_PC13,           (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOD, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PD8),  STM32WB_GPIO_PIN_PD8,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOE, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PE3),  STM32WB_GPIO_PIN_PE3,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA0),  STM32WB_GPIO_PIN_PA0,            (PIN_ATTR_TAMP | PIN_ATTR_WKUP1), PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_5    },
+    { GPIOH, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PH1),  STM32WB_GPIO_PIN_PH1,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOH, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PH0),  STM32WB_GPIO_PIN_PH0,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+
+    // 10..13 - SPI1 pins (SS, MOSI, MISO, SCK)
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA4),  STM32WB_GPIO_PIN_PA4,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_9    },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA7),  STM32WB_GPIO_PIN_PA7,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA6),  STM32WB_GPIO_PIN_PA6,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA5),  STM32WB_GPIO_PIN_PA5,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+
+    // 14..16 - I2C1 pins (SDA, SCL, INT)
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB7),  STM32WB_GPIO_PIN_PB7,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB6),  STM32WB_GPIO_PIN_PB6,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA1),  STM32WB_GPIO_PIN_PA1,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_6    },
+    
+    // 17..20 - USART1 pins (RX, TX, RTS, CTS)
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA10), STM32WB_GPIO_PIN_PA10,           (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA9),  STM32WB_GPIO_PIN_PA9,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB3),  STM32WB_GPIO_PIN_PB3,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB4),  STM32WB_GPIO_PIN_PB4,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+
+    // 21..24 - Analog pins (A0, A1, A2, A3)
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC2),  STM32WB_GPIO_PIN_PC2,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_3    },
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC3),  STM32WB_GPIO_PIN_PC3,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_4    },
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC0),  STM32WB_GPIO_PIN_PC0,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_1    },
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC1),  STM32WB_GPIO_PIN_PC1,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_2    },
+
+    // 25..26 - I2C3 pins (SDA, SCL)
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB14), STM32WB_GPIO_PIN_PB14,           0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB13), STM32WB_GPIO_PIN_PB13,           0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+
+    // 27..28 PWM pins (PWM0, PWM1)
+    { GPIOD, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PD14), STM32WB_GPIO_PIN_PD14_TIM1_CH1,  (PIN_ATTR_EXTI),                  PWM_INSTANCE_TIM1,  PWM_CHANNEL_1,    ADC_CHANNEL_NONE },
+    { GPIOD, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PD15), STM32WB_GPIO_PIN_PD15_TIM1_CH2,  (PIN_ATTR_EXTI),                  PWM_INSTANCE_TIM1,  PWM_CHANNEL_2,    ADC_CHANNEL_NONE },
+
+    // 29..33 AUDIO pins (MCLK, OUT, IN, LRCLK, BCLK)
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB8),  STM32WB_GPIO_PIN_PB8,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB15), STM32WB_GPIO_PIN_PB15,           0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB5),  STM32WB_GPIO_PIN_PB5,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOB, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PB9),  STM32WB_GPIO_PIN_PB9,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA8),  STM32WB_GPIO_PIN_PA8,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+
+    // 34..36 - BATT_VIN/LED/BUTTON
+    { GPIOC, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PC4),  STM32WB_GPIO_PIN_PC4,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_13   },
+    { GPIOA, STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PA2),  STM32WB_GPIO_PIN_PA2,            0,                                PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+    { NULL,  STM32WB_GPIO_PIN_MASK(STM32WB_GPIO_PIN_PH3),  STM32WB_GPIO_PIN_PH3,            (PIN_ATTR_EXTI),                  PWM_INSTANCE_NONE,  PWM_CHANNEL_NONE, ADC_CHANNEL_NONE },
+};
+
+extern const unsigned int g_PWMInstances[PWM_INSTANCE_COUNT] = {
+    STM32WB_TIM_INSTANCE_TIM1,
+    STM32WB_TIM_INSTANCE_TIM2,
+};
+
+static uint8_t stm32wb_usart1_rx_fifo[32];
+
+extern const stm32wb_uart_params_t g_Serial1Params = {
+    STM32WB_UART_INSTANCE_USART1,
+    STM32WB_UART_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA1_CH2_INDEX | STM32WB_DMA_CHANNEL_SELECT_USART1_RX),
+    (STM32WB_DMA_CHANNEL_DMA1_CH3_INDEX | STM32WB_DMA_CHANNEL_SELECT_USART1_TX),
+    &stm32wb_usart1_rx_fifo[0],
+    sizeof(stm32wb_usart1_rx_fifo),
+    {
+        STM32WB_GPIO_PIN_PA10_USART1_RX,
+        STM32WB_GPIO_PIN_PA9_USART1_TX,
+        STM32WB_GPIO_PIN_PB3_USART1_RTS_DE,
+        STM32WB_GPIO_PIN_PB4_USART1_CTS,
+        STM32WB_GPIO_PIN_NONE,
+    },
+};
+
+extern const stm32wb_uart_params_t g_Serial2Params = {
+    STM32WB_UART_INSTANCE_LPUART1,
+    STM32WB_UART_IRQ_PRIORITY,
+    STM32WB_DMA_CHANNEL_NONE,
+    STM32WB_DMA_CHANNEL_NONE,
+    NULL,
+    0,
+    {
+        STM32WB_GPIO_PIN_PC0_LPUART1_RX,
+        STM32WB_GPIO_PIN_PC1_LPUART1_TX,
+        STM32WB_GPIO_PIN_NONE,
+        STM32WB_GPIO_PIN_NONE,
+        STM32WB_GPIO_PIN_NONE,
+    },
+};
+
+extern const stm32wb_spi_params_t g_SPIParams = {
+    STM32WB_SPI_INSTANCE_SPI1,
+    STM32WB_SPI_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA2_CH3_INDEX | STM32WB_DMA_CHANNEL_SELECT_SPI1_RX),
+    (STM32WB_DMA_CHANNEL_DMA2_CH4_INDEX | STM32WB_DMA_CHANNEL_SELECT_SPI1_TX),
+    {
+        STM32WB_GPIO_PIN_PA7_SPI1_MOSI,
+        STM32WB_GPIO_PIN_PA6_SPI1_MISO,
+        STM32WB_GPIO_PIN_PA5_SPI1_SCK,
+    },
+};
+
+extern const stm32wb_i2c_params_t g_WireParams = {
+    STM32WB_I2C_INSTANCE_I2C1,
+    STM32WB_I2C_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA1_CH6_INDEX | STM32WB_DMA_CHANNEL_SELECT_I2C1_RX),
+    STM32WB_DMA_CHANNEL_NONE,
+    {
+        STM32WB_GPIO_PIN_PB6_I2C1_SCL,
+        STM32WB_GPIO_PIN_PB7_I2C1_SDA,
+    },
+};
+
+extern const stm32wb_i2c_params_t g_Wire1Params = {
+    STM32WB_I2C_INSTANCE_I2C3,
+    STM32WB_I2C_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA1_CH7_INDEX | STM32WB_DMA_CHANNEL_SELECT_I2C3_RX),
+    STM32WB_DMA_CHANNEL_NONE,
+    {
+        STM32WB_GPIO_PIN_PC0_I2C3_SCL,
+        STM32WB_GPIO_PIN_PC1_I2C3_SDA,
+    },
+};
+
+extern const stm32wb_sai_params_t g_I2SParams = {
+    STM32WB_SAI_INSTANCE_SAI1,
+    STM32WB_SAI_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA2_CH1_INDEX | STM32WB_DMA_CHANNEL_SELECT_SAI1_A),
+    (STM32WB_SAI_CONFIG_BLOCK_A),
+    {
+        STM32WB_GPIO_PIN_PA8_SAI1_SCK_A,
+        STM32WB_GPIO_PIN_PB5_SAI1_SD_B,
+        STM32WB_GPIO_PIN_PB9_SAI1_FS_A,
+        STM32WB_GPIO_PIN_PB8_SAI1_MCLK_A,
+    },
+};
+
+extern const stm32wb_sai_params_t g_PDMParams = {
+    STM32WB_SAI_INSTANCE_SAI1,
+    STM32WB_SAI_IRQ_PRIORITY,
+    (STM32WB_DMA_CHANNEL_DMA2_CH1_INDEX | STM32WB_DMA_CHANNEL_SELECT_SAI1_A),
+    (STM32WB_SAI_CONFIG_BLOCK_A | STM32WB_SAI_CONFIG_PDM_DI2),
+    {
+        STM32WB_GPIO_PIN_PA8_SAI1_PDM_CK2,
+        STM32WB_GPIO_PIN_PB9_SAI1_PDM_DI2,
+        STM32WB_GPIO_PIN_NONE,
+        STM32WB_GPIO_PIN_NONE,
+    },
+};
+
+extern const stm32wb_system_info_t stm32wb_system_info =
+{
+    .version           	= STM32WB_SYSTEM_VERSION,
+    .options            = (STM32WB_SYSTEM_OPTION_DFU_USB | STM32WB_SYSTEM_OPTION_SMPS_INDUCTOR_10uH | STM32WB_SYSTEM_OPTION_SMPS_CURRENT_220mA | STM32WB_SYSTEM_OPTION_LSE_MODE_2),
+    .hseclk             = 32000000,
+    .lseclk             = 32774,
+    .pins               = {
+        .status         = STM32WB_GPIO_PIN_NONE,
+        .boost          = STM32WB_GPIO_PIN_NONE,
+        .dfu            = STM32WB_GPIO_PIN_PH3,
+        .usb_vbus       = STM32WB_GPIO_PIN_PVM1,
+        .uart_rx        = STM32WB_GPIO_PIN_NONE,
+        .uart_tx        = STM32WB_GPIO_PIN_NONE,
+        .sflash_cs      = STM32WB_GPIO_PIN_PD3_QUADSPI_NCS,
+        .sflash_clk     = STM32WB_GPIO_PIN_PA3_QUADSPI_CLK,
+        .sflash_mosi    = STM32WB_GPIO_PIN_PD4_QUADSPI_IO0,
+        .sflash_miso    = STM32WB_GPIO_PIN_PD5_QUADSPI_IO1,
+        .sflash_wp      = STM32WB_GPIO_PIN_PD6_QUADSPI_IO2,
+        .sflash_hold    = STM32WB_GPIO_PIN_PD7_QUADSPI_IO3,
+        .sflash_enable  = STM32WB_GPIO_PIN_NONE
+    }
+};
+
+void initVariant()
+{
+    stm32wb_sfsqi_initialize();
+}
+

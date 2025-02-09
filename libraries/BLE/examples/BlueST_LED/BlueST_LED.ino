@@ -14,6 +14,7 @@ BLECharacteristic ledCharacteristic("20000000-0001-11e1-ac36-0002a5d5c51b", (BLE
 BLEService commandService("00000000-000F-11e1-9ab4-0002a5d5c51b");
 BLECharacteristic commandCharacteristic("00000002-000F-11e1-ac36-0002a5d5c51b", (BLE_PROPERTY_WRITE | BLE_PROPERTY_NOTIFY), 0, 20, true);
 
+BLEOta OTA;
 
 static const uint8_t manufacturer_data[6] = {
     0x01,
@@ -60,7 +61,9 @@ void setup() {
     
     while (!Serial) { }
 
-    BLE.begin();
+    OTA.begin();
+    
+    BLE.begin(247);
     BLE.setIncludeTxPowerLevel(true);
     BLE.setLocalName("STM32WB");
     BLE.setManufacturerData(manufacturer_data, sizeof(manufacturer_data));
@@ -72,6 +75,7 @@ void setup() {
     commandService.addCharacteristic(commandCharacteristic);
 
     BLE.addService(commandService);
+    BLE.addService(OTA);
 
     ledCharacteristic.onSubscribed(subscribedCallback);
     commandCharacteristic.onWritten(commandCallback);

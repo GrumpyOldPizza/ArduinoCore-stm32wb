@@ -58,6 +58,26 @@ extern "C" {
 #define STM32WB_ADC_CHANNEL_TSENSE                  17  /* TEMPERATURE SENSOR */
 #define STM32WB_ADC_CHANNEL_VBAT                    18  /* VBAT/3 */
 
+#define STM32WB_ADC_OPTION_WIDTH_SHIFT              0
+#define STM32WB_ADC_OPTION_WIDTH_MASK               0x00000007
+#define STM32WB_ADC_OPTION_WIDTH_12                 0x00000000
+#define STM32WB_ADC_OPTION_WIDTH_13                 0x00000001
+#define STM32WB_ADC_OPTION_WIDTH_14                 0x00000002
+#define STM32WB_ADC_OPTION_WIDTH_15                 0x00000003
+#define STM32WB_ADC_OPTION_WIDTH_16                 0x00000004
+#define STM32WB_ADC_OPTION_RATIO_SHIFT              3
+#define STM32WB_ADC_OPTION_RATIO_MASK               0x00000078
+#define STM32WB_ADC_OPTION_RATIO_1                  0x00000000
+#define STM32WB_ADC_OPTION_RATIO_2                  0x00000008
+#define STM32WB_ADC_OPTION_RATIO_4                  0x00000010
+#define STM32WB_ADC_OPTION_RATIO_8                  0x00000018
+#define STM32WB_ADC_OPTION_RATIO_16                 0x00000020
+#define STM32WB_ADC_OPTION_RATIO_32                 0x00000028
+#define STM32WB_ADC_OPTION_RATIO_64                 0x00000030
+#define STM32WB_ADC_OPTION_RATIO_128                0x00000038
+#define STM32WB_ADC_OPTION_RATIO_256                0x00000040
+#define STM32WB_ADC_OPTION_STOP                     0x80000000
+  
 #define STM32WB_ADC_VREFINT_CAL                     (*((const uint16_t*)0x1fff75aa))
 #define STM32WB_ADC_VREFINT_VREF                    (3.6)
 #define STM32WB_ADC_TSENSE_CAL1                     (*((const uint16_t*)0x1fff75a8))
@@ -66,13 +86,19 @@ extern "C" {
 #define STM32WB_ADC_TSENSE_CAL2_TEMP                (130.0)
 #define STM32WB_ADC_TSENSE_CAL_VREF                 (3.0)
   
-#define STM32WB_ADC_VREFINT_PERIOD                  4   /* uS */
-#define STM32WB_ADC_TSENSE_PERIOD                   5   /* uS */
-#define STM32WB_ADC_VBAT_PERIOD                     12  /* uS */
+#define STM32WB_ADC_VREFINT_PERIOD                  4000   /* nS */
+#define STM32WB_ADC_TSENSE_PERIOD                   5000   /* nS */
+#define STM32WB_ADC_VBAT_PERIOD                     12000  /* nS */
 
-extern bool stm32wb_adc_enable(void);
-extern bool stm32wb_adc_disable(void);
-extern uint32_t stm32wb_adc_read(unsigned int channel, unsigned int period);
+#define STM32WB_ADC_IRQ_PRIORITY                    ARMV7M_IRQ_PRIORITY_ADC
+  
+extern void __stm32wb_adc_initialize(void);
+
+extern bool stm32wb_adc_start(const uint8_t *channels, uint32_t count, uint32_t period, uint32_t option);
+extern bool stm32wb_adc_stop(void);
+extern bool stm32wb_adc_done(void);
+extern uint32_t stm32wb_adc_data(uint16_t *data, uint32_t count);
+extern uint32_t stm32wb_adc_convert(const uint8_t *channels, uint16_t *data, uint32_t count, uint32_t period, uint32_t option);
 
 #ifdef __cplusplus
 }

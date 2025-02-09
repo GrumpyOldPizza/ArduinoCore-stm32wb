@@ -33,10 +33,10 @@
 
 /*******************************************************************/
 
-#define STM32WB_EEPROM_MAGIC_1 0xaa55ee77
-#define STM32WB_EEPROM_MAGIC_2 0x77eeaa55
+#define STM32WB_EEPROM_MAGIC_1 0x55aa77ee
+#define STM32WB_EEPROM_MAGIC_2 0xee77aa55
 
-extern uint32_t __eeprom_start__, __eeprom_end__;
+extern uint32_t __eeprom_base__, __eeprom_limit__;
 
 #define STM32WB_EEPROM_STATE_NONE      0
 #define STM32WB_EEPROM_STATE_NOT_READY 1
@@ -99,9 +99,9 @@ bool __stm32wb_eeprom_reset(void)
         return false;
     }
 
-    stm32wb_eeprom_device.flash = (uint32_t)&__eeprom_start__;
+    stm32wb_eeprom_device.flash = (uint32_t)&__eeprom_base__;
     stm32wb_eeprom_device.sequence = 1;
-    stm32wb_eeprom_device.size = ((uint32_t)&__eeprom_end__ - (uint32_t)&__eeprom_start__) / 2;
+    stm32wb_eeprom_device.size = ((uint32_t)&__eeprom_limit__ - (uint32_t)&__eeprom_base__) / 2;
     stm32wb_eeprom_device.offset = 0;
     
     stm32wb_eeprom_device.request.control = STM32WB_FLASH_CONTROL_ERASE;
@@ -228,7 +228,7 @@ bool __stm32wb_eeprom_flush(bool erase)
     
     if (erase)
     {
-        if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start__)
+        if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_base__)
         {
             flash_s = (const uint32_t*)(stm32wb_eeprom_device.flash + stm32wb_eeprom_device.size);
         }
@@ -290,9 +290,9 @@ void __stm32wb_eeprom_initialize(void)
     stm32wb_eeprom_device.request.next = NULL;
     stm32wb_eeprom_device.request.status = STM32WB_FLASH_STATUS_SUCCESS;
     
-    size = ((uint32_t)&__eeprom_end__ - (uint32_t)&__eeprom_start__) / 2;
-    flash_1 = (const uint32_t*)((uint32_t)&__eeprom_start__);
-    flash_2 = (const uint32_t*)((uint32_t)&__eeprom_start__ + size);
+    size = ((uint32_t)&__eeprom_limit__ - (uint32_t)&__eeprom_base__) / 2;
+    flash_1 = (const uint32_t*)((uint32_t)&__eeprom_base__);
+    flash_2 = (const uint32_t*)((uint32_t)&__eeprom_base__ + size);
 
     sequence_1 = 0;
     sequence_2 = 0;
@@ -340,7 +340,7 @@ void __stm32wb_eeprom_initialize(void)
 	    stm32wb_eeprom_device.sequence = sequence_2;
 	}
 
-        if (!__stm32wb_eeprom_flush(stm32wb_system_reset_cause() != STM32WB_SYSTEM_RESET_STANDBY))
+        if (!__stm32wb_eeprom_flush(stm32wb_system_reset_cause() != STM32WB_SYSTEM_RESET_CAUSE_WAKEUP))
         {
             return;
 	}
@@ -530,7 +530,7 @@ static void stm32wb_eeprom_process(void)
 	    }
 	    else
 	    {
-		if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_start__)
+		if (stm32wb_eeprom_device.flash == (uint32_t)&__eeprom_base__)
 		{
 		    stm32wb_eeprom_device.flash += stm32wb_eeprom_device.size;
 		}

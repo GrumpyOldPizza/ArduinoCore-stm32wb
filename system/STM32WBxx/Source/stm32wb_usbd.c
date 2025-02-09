@@ -29,6 +29,7 @@
 #include "armv7m.h"
 #include "stm32wb_gpio.h"
 #include "stm32wb_exti.h"
+#include "stm32wb_flash.h"
 #include "stm32wb_lptim.h"
 #include "stm32wb_system.h"
 #include "stm32wb_usbd.h"
@@ -54,20 +55,26 @@ typedef struct _stm32wb_usbd_control_t {
     volatile uint8_t              state;
     volatile uint8_t              connect;
     volatile uint8_t              disconnect;
-    volatile uint8_t              vbus_status;
-    volatile uint8_t              self_powered;
     volatile uint8_t              suspended;
+#if !defined(__STM32WB_BOOT_CODE__)
+    volatile uint8_t              self_powered;
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
     volatile uint8_t              remote_wakeup;
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
+    volatile uint8_t              vbus_status;
     uint8_t                       pin_vbus;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     uint8_t                       if_count;
     uint32_t                      ep_mask;
     const stm32wb_usbd_device_t   *device;
+#if !defined(__STM32WB_BOOT_CODE__)
     const stm32wb_usbd_info_t     *info;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     volatile uint32_t             events;
+#if !defined(__STM32WB_BOOT_CODE__)
     stm32wb_usbd_event_callback_t evt_callback;
     void                          *evt_context;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     uint8_t                       ep0_setup[8];
     stm32wb_usbd_request_t        ep0_request;
     stm32wb_usbd_status_routine_t ep0_status_routine;    
@@ -78,7 +85,9 @@ typedef struct _stm32wb_usbd_control_t {
     uint16_t                      ep0_in_length;
     bool                          ep0_in_zlp;
     uint8_t                       ep0_state;
+#if !defined(__STM32WB_BOOT_CODE__)
     stm32wb_lptim_timeout_t       timeout;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 } stm32wb_usbd_control_t;
 
 static stm32wb_usbd_control_t stm32wb_usbd_control;
@@ -96,23 +105,40 @@ static void stm32wb_usbd_connect(void)
 
 static void stm32wb_usbd_disconnect(void)
 {
+#if !defined(__STM32WB_BOOT_CODE__)
     uint32_t index;
     const stm32wb_usbd_info_t *info;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
     if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_CONFIGURED)
     {
+#if !defined(__STM32WB_BOOT_CODE__)
         info = stm32wb_usbd_control.info;
         
         for (index = 0; index < info->class_count; index++)
         {
             (*info->class_table[index]->stop)(info->class_table[index]->context);
         }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+        stm32wb_boot_dfu_stop(NULL);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+    }
+
+    if (stm32wb_usbd_control.ep0_state != STM32WB_USBD_EP0_STATE_SETUP)
+    {
+        stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+        
+#if !defined(__STM32WB_BOOT_CODE__)
+        stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     }
     
     stm32wb_usbd_dcd_disconnect();
     
     stm32wb_usbd_control.state = STM32WB_USBD_STATE_ATTACHED;
 }
+
+#if !defined(__STM32WB_BOOT_CODE__)
 
 static void stm32wb_usbd_vbus_timeout(void)
 {
@@ -198,21 +224,35 @@ static void stm32wb_usbd_pvm1_changed(void)
     armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_USBD_PVM1);
 }
 
+#endif /* __STM32WB_BOOT_CODE__ */
+
 static int stm32wb_usbd_device(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
     const stm32wb_usbd_device_t *device = stm32wb_usbd_control.device;
+#if !defined(__STM32WB_BOOT_CODE__)
     const stm32wb_usbd_info_t *info = stm32wb_usbd_control.info;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
     *p_data_return = data;
     *p_length_return = 18;
     
     data[0]  = 18;                                   /* bLength */
     data[1]  = USB_DESCRIPTOR_TYPE_DEVICE;           /* bDescriptorType */ 
+#if !defined(__STM32WB_BOOT_CODE__)
     data[2]  = info->bos ? 0x10 : 0x00;              /* bcdUSB */
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    data[2]  = 0x10;                                 /* bcdUSB */
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     data[3]  = 0x02;
+#if !defined(__STM32WB_BOOT_CODE__)
     data[4]  = 0xef;                                 /* bDeviceClass */
     data[5]  = 0x02;                                 /* bDeviceSubClass */
     data[6]  = 0x01;                                 /* bDeviceProtocol */
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    data[4]  = 0x00;                                 /* bDeviceClass */
+    data[5]  = 0x00;                                 /* bDeviceSubClass */
+    data[6]  = 0x00;                                 /* bDeviceProtocol */
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     data[7]  = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE; /* bMaxPacketSize */
     data[8]  = device->vid & 255;                    /* idVendor */
     data[9]  = device->vid >> 8;
@@ -230,9 +270,10 @@ static int stm32wb_usbd_device(uint8_t *data, const uint8_t **p_data_return, uin
 
 static int stm32wb_usbd_configuration(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
-    const stm32wb_usbd_info_t *info;
     const uint8_t *configuration;
-    
+#if !defined(__STM32WB_BOOT_CODE__)
+    const stm32wb_usbd_info_t *info;
+   
     info = stm32wb_usbd_control.info;
     configuration = info->configuration;
 
@@ -240,6 +281,10 @@ static int stm32wb_usbd_configuration(uint8_t *data, const uint8_t **p_data_retu
     {
         return STM32WB_USBD_REQUEST_STATUS_FAILURE;
     }
+
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    configuration = stm32wb_boot_dfu_configuration;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
     *p_data_return = configuration;
     *p_length_return = (configuration[2] << 0) | (configuration[3] << 8);
@@ -249,8 +294,9 @@ static int stm32wb_usbd_configuration(uint8_t *data, const uint8_t **p_data_retu
 
 static int stm32wb_usbd_bos(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
-    const stm32wb_usbd_info_t *info;
     const uint8_t *bos;
+#if !defined(__STM32WB_BOOT_CODE__)
+    const stm32wb_usbd_info_t *info;
     
     info = stm32wb_usbd_control.info;
     bos = info->bos;
@@ -259,6 +305,10 @@ static int stm32wb_usbd_bos(uint8_t *data, const uint8_t **p_data_return, uint16
     {
         return STM32WB_USBD_REQUEST_STATUS_FAILURE;
     }
+
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    bos = stm32wb_boot_dfu_bos;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
     *p_data_return = bos;
     *p_length_return = (bos[2] << 0) | (bos[3] << 8);
@@ -268,8 +318,9 @@ static int stm32wb_usbd_bos(uint8_t *data, const uint8_t **p_data_return, uint16
 
 static int stm32wb_usbd_msos20(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
-    const stm32wb_usbd_info_t *info;
     const uint8_t *msos20;
+#if !defined(__STM32WB_BOOT_CODE__)
+    const stm32wb_usbd_info_t *info;
     
     info = stm32wb_usbd_control.info;
     msos20 = info->msos20;
@@ -278,6 +329,10 @@ static int stm32wb_usbd_msos20(uint8_t *data, const uint8_t **p_data_return, uin
     {
         return STM32WB_USBD_REQUEST_STATUS_FAILURE;
     }
+
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    msos20 = stm32wb_boot_dfu_msos20;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
     *p_data_return = msos20;
     *p_length_return = (msos20[8] << 0) | (msos20[9] << 8);
@@ -294,8 +349,8 @@ static int stm32wb_usbd_string(uint8_t *data, const uint8_t **p_data_return, uin
     {
         return STM32WB_USBD_REQUEST_STATUS_FAILURE;
     }
-    
-    count = strlen(string);
+
+    for (count = 0; string[count]; count++) { }
 
     if (count > ((STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE / 2) -1))
     {
@@ -323,50 +378,44 @@ static int stm32wb_usbd_string(uint8_t *data, const uint8_t **p_data_return, uin
 
 static int stm32wb_usbd_language(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
-    static const uint8_t language[4] = {
-        4,
-        USB_DESCRIPTOR_TYPE_STRING,
-        (uint8_t)((1033) & 255),
-        (uint8_t)((1033) >> 8)
-    };
+    *p_data_return = data;
+    *p_length_return = 4;
 
-    *p_data_return = (uint8_t*)&language[0];
-    *p_length_return = language[0];
+    data[0] = 4;
+    data[1] = USB_DESCRIPTOR_TYPE_STRING;
+    data[2] = (uint8_t)((1033) & 255);
+    data[3] = (uint8_t)((1033) >> 8);
     
     return STM32WB_USBD_REQUEST_STATUS_SUCCESS;
 }
 
 static int stm32wb_usbd_serial(uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return)
 {
-    uint64_t serial;
-    uint32_t serial_l, serial_h, length;
-    int shift;
-
-    static const uint8_t hex2ascii[16] = "0123456789ABCDEF";
+    uint32_t uid[3];
+    uint32_t index, shift, length;
+    uint8_t n;
     
-    serial = stm32wb_system_serial();
+    uid[0] = *((const uint32_t*)(UID_BASE + 0x00));
+    uid[1] = *((const uint32_t*)(UID_BASE + 0x04));
+    uid[2] = *((const uint32_t*)(UID_BASE + 0x08));
 
-    serial_l = (uint32_t)(serial >> 0);
-    serial_h = (uint32_t)(serial >> 32);
-
-    length = (2 + (12 * 2));
+    length = (2 + (24 * 2));
 
     *p_data_return = data;
     *p_length_return = length;
     
-    *data++ = 26;
+    *data++ = length;
     *data++ = USB_DESCRIPTOR_TYPE_STRING;
 
-    for (shift = (16-4); shift >= 0; shift -= 4)
+    for (index = 0; index < 3; index++)
     {
-        *data++ = hex2ascii[(serial_h >> shift) & 15];
-        *data++ = 0;
-    }
-
-    for (shift = (32-4); shift >= 0; shift -= 4)
-    {
-        *data++ = hex2ascii[(serial_l >> shift) & 15];
-        *data++ = 0;
+        for (shift = 0; shift < 32; shift += 4)
+        {
+            n = (uid[2-index] >> ((32-4)-shift)) & 15;
+            
+            *data++ = ((n < 10) ? ('0' + n) : (('A' - 10) + n));
+            *data++ = 0;
+        }
     }
     
     return STM32WB_USBD_REQUEST_STATUS_SUCCESS;
@@ -379,16 +428,21 @@ static void stm32wb_usbd_set_address()
 
 static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t *data, const uint8_t **p_data_return, uint16_t *p_length_return, stm32wb_usbd_status_routine_t *p_status_routine_return)
 {
-    uint32_t index, interface, if_base, ep_addr, ep_mask, type;
+    uint32_t index, interface, type;
     int state, status;
+#if !defined(__STM32WB_BOOT_CODE__)
+    uint32_t if_base, ep_addr, ep_mask;
     const stm32wb_usbd_info_t *info;
 
     info = stm32wb_usbd_control.info;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
     state = (stm32wb_usbd_control.state < STM32WB_USBD_STATE_ATTACHED) ? USB_STATE_NONE : (stm32wb_usbd_control.state - (STM32WB_USBD_STATE_ATTACHED - USB_STATE_ATTACHED));
     status = STM32WB_USBD_REQUEST_STATUS_UNHANDLED;
     
     switch (request->bmRequestType & USB_REQ_RECIPIENT_MASK) {
     case USB_REQ_RECIPIENT_DEVICE:
+#if !defined(__STM32WB_BOOT_CODE__)
         for (index = 0; index < info->class_count; index++)
         {
             status = (*info->class_table[index]->request)(info->class_table[index]->context, state, request, data, p_data_return, p_length_return, p_status_routine_return);
@@ -400,6 +454,7 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
         }
 
         if (status == STM32WB_USBD_REQUEST_STATUS_UNHANDLED)
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         {
             switch (request->bmRequestType & USB_REQ_TYPE_MASK) {
             case USB_REQ_TYPE_STANDARD: {
@@ -410,11 +465,15 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
                         *p_data_return = data;
                         *p_length_return = 2;
                         
+#if !defined(__STM32WB_BOOT_CODE__)
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
                         data[0] = (stm32wb_usbd_control.remote_wakeup ? 0x02 : 0x00) | (stm32wb_usbd_control.self_powered ? 0x01 : 0x00);
 #else /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
                         data[0] = (stm32wb_usbd_control.self_powered ? 0x01 : 0x00);
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+                        data[0] = 0x00;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
                         data[1] = 0x00;
                         
                         status = STM32WB_USBD_REQUEST_STATUS_SUCCESS;
@@ -502,10 +561,17 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
                         }
 
                         default: {
+#if !defined(__STM32WB_BOOT_CODE__)
                             if ((index - USB_STRING_INDEX_CUSTOM) < info->string_count)
                             {
                                 status = stm32wb_usbd_string(data, p_data_return, p_length_return, info->string_table[index - USB_STRING_INDEX_CUSTOM]);
                             }
+#else  /* !defined(__STM32WB_BOOT_CODE__) */
+                            if ((index - USB_STRING_INDEX_CUSTOM) < STM32WB_BOOT_DFU_STRING_COUNT)
+                            {
+                                status = stm32wb_usbd_string(data, p_data_return, p_length_return, stm32wb_boot_dfu_strings[index - USB_STRING_INDEX_CUSTOM]);
+                            }
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
                             break;
                         }
                         }
@@ -547,10 +613,14 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
                         {
                             if (state == USB_STATE_CONFIGURED)
                             {
+#if !defined(__STM32WB_BOOT_CODE__)
                                 for (index = 0; index < info->class_count; index++)
                                 {
                                     (*info->class_table[index]->stop)(info->class_table[index]->context);
                                 }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+                                stm32wb_boot_dfu_stop(NULL);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
                             }
                                 
                             stm32wb_usbd_control.state = STM32WB_USBD_STATE_ADDRESSED;
@@ -559,10 +629,14 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
                         {
                             if (state == USB_STATE_ADDRESSED)
                             {
+#if !defined(__STM32WB_BOOT_CODE__)
                                 for (index = 0; index < info->class_count; index++)
                                 {
                                     (*info->class_table[index]->start)(info->class_table[index]->context);
                                 }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+                                stm32wb_boot_dfu_start(NULL);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
                             }
                             
                             stm32wb_usbd_control.state = STM32WB_USBD_STATE_CONFIGURED;
@@ -611,6 +685,7 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
 
         if (interface < stm32wb_usbd_control.if_count)
         {
+#if !defined(__STM32WB_BOOT_CODE__)
             for (index = 0, if_base = 0; index < info->class_count; index++)
             {
                 if ((if_base <= interface) && ((if_base + info->class_table[index]->if_count) > interface))
@@ -622,6 +697,9 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
 
                 if_base += info->class_table[index]->if_count;
             }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+            status = stm32wb_boot_dfu_request(NULL, state, request, data, p_data_return, p_length_return, p_status_routine_return);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
                 
             if (status == STM32WB_USBD_REQUEST_STATUS_UNHANDLED)
             {
@@ -686,6 +764,7 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
         break;
 
     case USB_REQ_RECIPIENT_ENDPOINT:
+#if !defined(__STM32WB_BOOT_CODE__)
         ep_addr = request->wIndex & 0x8f;
         ep_mask = STM32WB_USBD_EP_MASK(ep_addr);
 
@@ -760,6 +839,7 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
                 }
             }
         }
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         break;
 
     default:
@@ -771,29 +851,47 @@ static bool stm32wb_usbd_request(const stm32wb_usbd_request_t *request, uint8_t 
 
 static void stm32wb_usbd_event_callback(void *context, uint32_t events)
 {
-    uint32_t count, index;
+    uint32_t count;
+#if !defined(__STM32WB_BOOT_CODE__)
+    uint32_t index;
     const stm32wb_usbd_info_t *info;
     
     info = stm32wb_usbd_control.info;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
     if (events & STM32WB_USBD_DCD_EVENT_RESET)
     {
         if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_CONFIGURED)
         {
+#if !defined(__STM32WB_BOOT_CODE__)
             for (index = 0; index < info->class_count; index++)
             {
                 (*info->class_table[index]->stop)(info->class_table[index]->context);
             }
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+            stm32wb_boot_dfu_stop(NULL);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         }
 
         stm32wb_usbd_dcd_reset();
 
+#if !defined(__STM32WB_BOOT_CODE__)
         if (stm32wb_usbd_control.state == STM32WB_USBD_STATE_POWERED)
         {
             if (stm32wb_usbd_control.evt_callback)
             {
                 (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_CONNECT);
             }
+        }
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+        if (stm32wb_usbd_control.ep0_state != STM32WB_USBD_EP0_STATE_SETUP)
+        {
+            stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+            stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         }
         
         stm32wb_usbd_control.state = STM32WB_USBD_STATE_DEFAULT;
@@ -802,7 +900,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
         stm32wb_usbd_control.remote_wakeup = false;
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
-
+        
         events &= ~(STM32WB_USBD_DCD_EVENT_EP0_SETUP | STM32WB_USBD_DCD_EVENT_EP0_DATA_IN |  STM32WB_USBD_DCD_EVENT_EP0_DATA_OUT);
     }
     
@@ -810,6 +908,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
     {
         stm32wb_usbd_control.suspended = true;
       
+#if !defined(__STM32WB_BOOT_CODE__)
         for (index = 0; index < info->class_count; index++)
         {
             (*info->class_table[index]->suspend)(info->class_table[index]->context);
@@ -819,6 +918,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
         {
             (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_SUSPEND);
         }
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
         events &= ~(STM32WB_USBD_DCD_EVENT_EP0_SETUP | STM32WB_USBD_DCD_EVENT_EP0_DATA_IN |  STM32WB_USBD_DCD_EVENT_EP0_DATA_OUT);
     }
@@ -829,6 +929,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
         {
             stm32wb_usbd_control.suspended = false;
         
+#if !defined(__STM32WB_BOOT_CODE__)
             for (index = 0; index < info->class_count; index++)
             {
                 (*info->class_table[index]->resume)(info->class_table[index]->context);
@@ -838,46 +939,7 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
             {
                 (*stm32wb_usbd_control.evt_callback)(stm32wb_usbd_control.evt_context, STM32WB_USBD_EVENT_RESUME);
             }
-        }
-    }
-
-    if (events & STM32WB_USBD_DCD_EVENT_EP0_SETUP)
-    {
-        __armv7m_atomic_load_2_restart((volatile uint32_t*)&stm32wb_usbd_control.ep0_setup, &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[0]), &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[1]));
-
-        stm32wb_usbd_control.ep0_status_routine = NULL;
-        stm32wb_usbd_control.ep0_out_data = stm32wb_usbd_control.info->ep0_data;
-        stm32wb_usbd_control.ep0_out_size = stm32wb_usbd_control.info->ep0_size;
-        stm32wb_usbd_control.ep0_out_count = 0;
-        stm32wb_usbd_control.ep0_in_data = NULL;
-        stm32wb_usbd_control.ep0_in_length = 0;
-        stm32wb_usbd_control.ep0_in_zlp = false;
-        
-        if ((stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST) || (stm32wb_usbd_control.ep0_request.wLength == 0))
-        {
-            stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
-        }
-        else
-        {
-            if (stm32wb_usbd_control.ep0_request.wLength <= stm32wb_usbd_control.ep0_out_size)
-            {
-                count = stm32wb_usbd_control.ep0_request.wLength;
-                
-                if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
-                {
-                    count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
-                }
-                
-                stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
-                
-                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_OUT;
-            }
-            else
-            {
-                stm32wb_usbd_dcd_ep0_stall();
-                
-                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
-            }
+#endif            
         }
     }
     
@@ -891,6 +953,10 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
             }
 
             stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+            stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         }
         
         if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_IN)
@@ -935,6 +1001,10 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
             }
 
             stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+            stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         }
 
         if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_DATA_OUT)
@@ -966,6 +1036,66 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
                 stm32wb_usbd_dcd_ep0_stall();
 
                 stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+                stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+            }
+        }
+    }
+
+    if (events & STM32WB_USBD_DCD_EVENT_EP0_SETUP)
+    {
+        if (stm32wb_usbd_control.ep0_state == STM32WB_USBD_EP0_STATE_SETUP)
+        {
+#if !defined(__STM32WB_BOOT_CODE__)
+            stm32wb_flash_suspend();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+        }
+
+        __armv7m_atomic_load_2_restart((volatile uint32_t*)&stm32wb_usbd_control.ep0_setup, &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[0]), &(((uint32_t*)&stm32wb_usbd_control.ep0_request)[1]));
+
+        stm32wb_usbd_control.ep0_status_routine = NULL;
+#if !defined(__STM32WB_BOOT_CODE__)
+        stm32wb_usbd_control.ep0_out_data = stm32wb_usbd_control.info->ep0_data;
+        stm32wb_usbd_control.ep0_out_size = stm32wb_usbd_control.info->ep0_size;
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+        stm32wb_usbd_control.ep0_out_data = stm32wb_boot_dfu_ep0_data;
+        stm32wb_usbd_control.ep0_out_size = sizeof(stm32wb_boot_dfu_ep0_data);
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+        stm32wb_usbd_control.ep0_out_count = 0;
+        stm32wb_usbd_control.ep0_in_data = NULL;
+        stm32wb_usbd_control.ep0_in_length = 0;
+        stm32wb_usbd_control.ep0_in_zlp = false;
+        
+        if ((stm32wb_usbd_control.ep0_request.bmRequestType & USB_REQ_DIRECTION_DEVICE_TO_HOST) || (stm32wb_usbd_control.ep0_request.wLength == 0))
+        {
+            stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_REQUEST;
+        }
+        else
+        {
+            if (stm32wb_usbd_control.ep0_request.wLength <= stm32wb_usbd_control.ep0_out_size)
+            {
+                count = stm32wb_usbd_control.ep0_request.wLength;
+                
+                if (count > STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE)
+                {
+                    count = STM32WB_USBD_DCD_EP0_MAX_PACKET_SIZE;
+                }
+                
+                stm32wb_usbd_dcd_ep0_receive(&stm32wb_usbd_control.ep0_out_data[stm32wb_usbd_control.ep0_out_count], count);
+                
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_DATA_OUT;
+            }
+            else
+            {
+                stm32wb_usbd_dcd_ep0_stall();
+                
+                stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+                stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
             }
         }
     }
@@ -1029,13 +1159,19 @@ static void stm32wb_usbd_event_callback(void *context, uint32_t events)
             stm32wb_usbd_dcd_ep0_stall();
             
             stm32wb_usbd_control.ep0_state = STM32WB_USBD_EP0_STATE_SETUP;
+
+#if !defined(__STM32WB_BOOT_CODE__)
+            stm32wb_flash_resume();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
         }
     }
 }
 
-bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_usbd_info_t *info, const stm32wb_usbd_params_t *params)
+bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_usbd_info_t *info)
 {
+#if !defined(__STM32WB_BOOT_CODE__)
     uint32_t index, if_base;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     
     if (stm32wb_usbd_control.state != STM32WB_USBD_STATE_NONE)
     {
@@ -1043,14 +1179,17 @@ bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_u
     }
 
     stm32wb_usbd_control.device = device;
+#if !defined(__STM32WB_BOOT_CODE__)
     stm32wb_usbd_control.info = info;
-    stm32wb_usbd_control.pin_vbus = params->pin_vbus;
+    stm32wb_usbd_control.pin_vbus = stm32wb_system_info.pins.usb_vbus;
     stm32wb_usbd_control.timeout = STM32WB_LPTIM_TIMEOUT_INIT();
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
     stm32wb_usbd_control.state = STM32WB_USBD_STATE_INIT;
 
     stm32wb_usbd_dcd_configure();
     
+#if !defined(__STM32WB_BOOT_CODE__)
     for (index = 0, if_base = 0; index < info->class_count; index++)
     {
         (*info->class_table[index]->configure)(info->class_table[index]->context, if_base);
@@ -1061,11 +1200,28 @@ bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_u
     }
 
     stm32wb_usbd_control.if_count = if_base;
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+    stm32wb_boot_dfu_configure(NULL, 0);
+        
+    stm32wb_usbd_control.if_count = 1;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
     return true;
 }
 
-static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context)
+#if !defined(__STM32WB_BOOT_CODE__)
+
+static bool __svc_stm32wb_usbd_notify(stm32wb_usbd_event_callback_t callback, void *context)
+{
+    stm32wb_usbd_control.evt_callback = callback;
+    stm32wb_usbd_control.evt_context = context;
+
+    return true;
+}
+
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+static bool __svc_stm32wb_usbd_enable(void)
 {
     if (stm32wb_usbd_control.state != STM32WB_USBD_STATE_INIT)
     {
@@ -1076,11 +1232,9 @@ static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, vo
     stm32wb_usbd_control.connect = false;
     stm32wb_usbd_control.disconnect = true;
 
-    stm32wb_usbd_control.evt_callback = callback;
-    stm32wb_usbd_control.evt_context = context;
-
     stm32wb_usbd_control.state = STM32WB_USBD_STATE_READY;
     
+#if !defined(__STM32WB_BOOT_CODE__)
     if (stm32wb_usbd_control.pin_vbus != STM32WB_GPIO_PIN_NONE)
     {
         if (stm32wb_usbd_control.pin_vbus == STM32WB_GPIO_PIN_PVM1)
@@ -1103,10 +1257,13 @@ static bool __svc_stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, vo
         }
     }
     else
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
     {
         stm32wb_usbd_dcd_enable(&stm32wb_usbd_control.ep0_setup[0], stm32wb_usbd_event_callback, NULL);
 
         stm32wb_usbd_control.state = STM32WB_USBD_STATE_ATTACHED;
+
+        stm32wb_usbd_connect();
     }
     
     return true;
@@ -1164,6 +1321,8 @@ static bool __svc_stm32wb_usbd_stop(void)
     return true;
 }
 
+#if !defined(__STM32WB_BOOT_CODE__)
+
 static bool __svc_stm32wb_usbd_wakeup(void)
 {
 #if (STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1)
@@ -1184,16 +1343,37 @@ static bool __svc_stm32wb_usbd_wakeup(void)
 #endif /* STM32WB_USBD_DCD_REMOTE_WAKEUP_SUPPORTED == 1 */
 }
 
-bool stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context)
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+#if !defined(__STM32WB_BOOT_CODE__)
+
+bool stm32wb_usbd_notify(stm32wb_usbd_event_callback_t callback, void *context)
 {
     if (armv7m_core_is_in_thread())
     {
-        return armv7m_svcall_2((uint32_t)&__svc_stm32wb_usbd_enable, (uint32_t)callback, (uint32_t)context);
+        return armv7m_svcall_2((uint32_t)&__svc_stm32wb_usbd_notify, (uint32_t)callback, (uint32_t)context);
     }
 
     if (armv7m_core_is_in_svcall_or_pendsv())
     {
-        return __svc_stm32wb_usbd_enable(callback, context);
+        return __svc_stm32wb_usbd_notify(callback, context);
+    }
+
+    return false;
+}
+
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
+bool stm32wb_usbd_enable(void)
+{
+    if (armv7m_core_is_in_thread())
+    {
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_usbd_enable);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_usbd_enable();
     }
 
     return false;
@@ -1244,6 +1424,8 @@ bool stm32wb_usbd_stop(void)
     return false;
 }
 
+#if !defined(__STM32WB_BOOT_CODE__)
+
 bool stm32wb_usbd_wakeup(void)
 {
     if (armv7m_core_is_in_thread())
@@ -1267,6 +1449,8 @@ void stm32wb_usbd_self_powered(bool onoff)
     }
 }
 
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
+
 uint32_t stm32wb_usbd_state(void)
 {
     return (stm32wb_usbd_control.state < STM32WB_USBD_STATE_ATTACHED) ? USB_STATE_NONE : (stm32wb_usbd_control.state - (STM32WB_USBD_STATE_ATTACHED - USB_STATE_ATTACHED));
@@ -1277,7 +1461,11 @@ bool stm32wb_usbd_is_suspended(void)
     return stm32wb_usbd_control.suspended;
 }
 
+#if !defined(__STM32WB_BOOT_CODE__)
+
 void USBD_PVM1_SWIHandler(void)
 {
     stm32wb_usbd_vbus_changed();
 }
+
+#endif /* !defined(__STM32WB_BOOT_CODE__) */

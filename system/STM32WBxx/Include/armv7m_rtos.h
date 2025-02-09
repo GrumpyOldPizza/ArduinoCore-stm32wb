@@ -97,11 +97,14 @@ typedef struct _armv7m_context_fpu_t {
   
 #endif /* __FPU_PRESENT == 1 */
 
-typedef struct _k_task_t  k_task_t;
-typedef struct _k_sem_t   k_sem_t;
-typedef struct _k_mutex_t k_mutex_t;
-typedef struct _k_work_t  k_work_t;
-typedef struct _k_alarm_t k_alarm_t;
+typedef struct _k_task_t    k_task_t;
+typedef struct _k_mutex_t   k_mutex_t;
+typedef struct _k_wait_t    k_wait_t;
+typedef struct _k_notify_t  k_notify_t;
+typedef struct _k_sem_t     k_sem_t;
+typedef struct _k_queue_t   k_queue_t;
+typedef struct _k_work_t    k_work_t;
+typedef struct _k_alarm_t   k_alarm_t;
   
 typedef void (*k_task_routine_t)(void *context);
 
@@ -114,11 +117,12 @@ struct _k_task_t {
     volatile uint32_t            events;
   
     const char                   *name;
-    k_task_t                     *link;
+    k_task_t                     *list;
 
-    uint32_t                     exc_return;
+    uint8_t                      rfu[2];
+    uint8_t                      control;
+    uint8_t                      exc_return;
     void                         *stack_top;
-    void                         *stack_end;
     void                         *stack_base;
     void                         *stack_limit;
 
@@ -143,34 +147,56 @@ struct _k_task_t {
 	    uint32_t                     *p_events_return;
 	}                            event;
 	struct {
+	    k_mutex_t                    *mutex;
+	}                            mutex;
+	struct {
 	    k_sem_t                      *sem;
 	}                            sem;
 	struct {
-	    k_mutex_t                    *mutex;
-	}                            mutex;
+	    k_queue_t                    *queue;
+	    void                         *p_data_return;
+	}                            queue;
     }                            wait;
 };
   
-struct _k_sem_t {
-    volatile uint16_t            count;
-    uint16_t                     limit;
-    struct {
-	k_task_t                     *head;
-	k_task_t                     *tail;
-	k_task_t * volatile          release;
-    }                            waiting;
-};
-
 struct _k_mutex_t {
+    k_task_t                     *waiting;
     k_mutex_t                    *next;
     k_mutex_t                    *previous;
     uint8_t                      priority;
     uint8_t                      options;
     uint16_t                     level;
     k_task_t                     *owner;
-    k_task_t                     *waiting;
 };
 
+struct _k_wait_t {
+    k_task_t                     *head;
+    k_task_t                     *tail;
+    k_task_t * volatile          release;
+};
+
+struct _k_notify_t {
+    k_task_t * volatile          task;
+    uint32_t                     events;
+};
+
+struct _k_sem_t {
+    k_wait_t                     waiting;
+    k_notify_t                   notify;
+    volatile uint16_t            count;
+    uint16_t                     limit;
+};
+
+struct _k_queue_t {
+    k_wait_t                     waiting;
+    k_notify_t                   notify;
+    volatile uint16_t            count;
+    uint16_t                     size;
+    void                         *base;
+    uint32_t                     limit;
+    volatile uint32_t            head;
+    volatile uint32_t            tail;
+};
 
 typedef void (*k_work_routine_t)(void *context);
   
@@ -206,23 +232,20 @@ struct _k_alarm_t {
 #define K_ERR_TASK_NOT_JOINABLE      10
 #define K_ERR_TASK_ALREADY_SUSPENDED 11
 #define K_ERR_TASK_NOT_SUSPENDED     12
-#define K_ERR_SEM_OVERFLOW           13
-#define K_ERR_NOT_OWNER_OF_MUTEX     14
+#define K_ERR_NOT_OWNER_OF_MUTEX     13
+#define K_ERR_MUTEX_OWNER_DESTROYED  14
 #define K_ERR_MUTEX_ALREADY_LOCKED   15
 #define K_ERR_MUTEX_NOT_LOCKED       16
 #define K_ERR_MUTEX_OVERFLOW         17
-#define K_ERR_WORK_ALREADY_SUBMITTED 18
-#define K_ERR_ALARM_NOT_ACTIVE       19
+#define K_ERR_SEM_OVERFLOW           18
+#define K_ERR_QUEUE_OVERFLOW         19
+#define K_ERR_WORK_ALREADY_SUBMITTED 20
+#define K_ERR_ALARM_NOT_ACTIVE       21
 
 #define K_STATE_INACTIVE             0
 #define K_STATE_READY                1
 #define K_STATE_RUNNING              2
 #define K_STATE_LOCKED               3
-
-#define K_POLICY_CURRENT             0
-#define K_POLICY_RUN                 1
-#define K_POLICY_SLEEP               2
-#define K_POLICY_STOP                3
   
 #define K_PRIORITY_CURRENT           0
 #define K_PRIORITY_MAX               1
@@ -243,10 +266,12 @@ struct _k_alarm_t {
 #define K_STATE_UNKNOWN              6
 
 #define K_WAIT_NONE                  0
-#define K_WAIT_JOIN                  1
-#define K_WAIT_EVENT                 2
-#define K_WAIT_SEM                   3
-#define K_WAIT_MUTEX                 4
+#define K_WAIT_DELAY                 1
+#define K_WAIT_JOIN                  2
+#define K_WAIT_EVENT                 3
+#define K_WAIT_SEM                   4
+#define K_WAIT_MUTEX                 5
+#define K_WAIT_QUEUE                 6
   
 #define K_EVENT_ANY                  0x00000000
 #define K_EVENT_ALL                  0x00000001
@@ -258,7 +283,8 @@ struct _k_alarm_t {
 #define K_MUTEX_RECURSIVE            0x00000001
 #define K_MUTEX_PRIORITY_INHERIT     0x00000002
 #define K_MUTEX_PRIORITY_PROTECT     0x00000004
-  
+#define K_MUTEX_ROBUST               0x00000008
+
 typedef struct _k_task_info_t {
     const char                  *name;
     uint8_t                     priority;
@@ -270,8 +296,6 @@ typedef struct _k_task_info_t {
   
 typedef void (*k_task_create_hook_t)(k_task_t *task, const char *name, uint32_t priority, void *stack_base, uint32_t stack_size);
 typedef void (*k_task_destroy_hook_t)(k_task_t *task);
-typedef void (*k_task_exit_hook_t)(void);
-typedef void (*k_task_terminate_hook_t)(k_task_t *task);
 typedef void (*k_task_block_hook_t)(k_task_t *task, uint32_t cause);
 typedef void (*k_task_ready_hook_t)(k_task_t *task);
 typedef void (*k_task_run_hook_t)(k_task_t *task);
@@ -279,13 +303,18 @@ typedef void (*k_task_run_hook_t)(k_task_t *task);
 typedef struct _k_hook_table_t {
     k_task_create_hook_t    task_create;
     k_task_destroy_hook_t   task_destroy;
-    k_task_exit_hook_t      task_exit;
-    k_task_terminate_hook_t task_terminate;
     k_task_block_hook_t     task_block;
     k_task_ready_hook_t     task_ready;
     k_task_run_hook_t       task_run;
 } k_hook_table_t;
 
+typedef struct _k_system_info_t {
+    uint32_t                system_state;
+    k_task_t                *task_self;
+} k_system_info_t;
+
+extern k_system_info_t __k_system_info;
+    
 extern void * k_heap_allocate(uint32_t size);
   
 extern uint64_t k_system_clock(void);
@@ -295,7 +324,8 @@ extern int k_system_start(k_task_routine_t routine, void *context);
 extern bool k_system_lock(void);
 extern void k_system_unlock(void);
 extern bool k_system_is_locked(void);
-extern int k_system_set_policy(uint32_t policy, uint32_t *p_policy_return);
+
+#define K_TASK_SELF()  (__k_system_info.task_self)
   
 extern int k_task_create(k_task_t *task, const char *name, k_task_routine_t routine, void *context, uint32_t priority, void *stack_base, uint32_t stack_size, uint32_t options);
 extern void k_task_exit(void);
@@ -304,11 +334,9 @@ extern int k_task_detach(k_task_t *task);
 extern int k_task_join(k_task_t *task);
 extern bool k_task_is_joinable(k_task_t *task);
 extern k_task_t * k_task_self(void);
-extern k_task_t * k_task_default(void);
-extern bool k_task_is_in_progress(void);
 extern int k_task_enumerate(uint32_t *p_count_return, k_task_t **p_task_return, uint32_t count);
 extern int k_task_info(k_task_t *task, k_task_info_t *p_task_info_return);
-extern int k_task_stack(k_task_t *task, uint32_t *p_stack_base_return, uint32_t *p_stack_size_return, uint32_t *p_stack_space_return);
+extern int k_task_stack(k_task_t *task, uint32_t *p_stack_size_return, uint32_t *p_stack_space_return);
 extern int k_task_unblock(k_task_t *task);
 extern int k_task_suspend(k_task_t *task);
 extern int k_task_resume(k_task_t *task);
@@ -322,68 +350,90 @@ extern int k_task_yield(void);
 extern int k_event_send(k_task_t *task, uint32_t events);
 extern int k_event_receive(uint32_t events, uint32_t mode, uint32_t timeout, uint32_t *p_events_return);
 
-#define K_SEM_INIT(_count, _limit)              \
-(k_sem_t)                                       \
-{                                               \
-    .count = (uint16_t)(_count),                \
-    .limit = (uint16_t)(_limit),                \
-    .waiting = { NULL, NULL, NULL }             \
+
+#define K_MUTEX_INIT(_priority, _options)              \
+(k_mutex_t)                                            \
+{                                                      \
+    .waiting = NULL,                                   \
+    .next = NULL,                                      \
+    .previous = NULL,                                  \
+    .priority = (uint8_t)(_priority),                  \
+    .options = (uint8_t)(_options),                    \
+    .level = 0,                                        \
+    .owner = NULL                                      \
+}
+
+#define K_MUTEX_OWNER(_mutex)                          \
+  ((_mutex)->owner)
+  
+extern int k_mutex_init(k_mutex_t *mutex, uint32_t priority, uint32_t options);
+extern int k_mutex_set_priority(k_mutex_t *mutex, uint32_t priority, uint32_t *p_priority_return);
+extern int k_mutex_consistent(k_mutex_t *mutex);
+extern int k_mutex_lock(k_mutex_t *mutex, uint32_t timeout);
+extern int k_mutex_unlock(k_mutex_t *mutex);
+extern k_task_t * k_mutex_owner(k_mutex_t *mutex);
+
+
+#define K_SEM_INIT(_count, _limit)                     \
+(k_sem_t)                                              \
+{                                                      \
+    .waiting = { NULL, NULL, NULL },                   \
+    .notify = { NULL, 0 },                             \
+    .count = (uint16_t)(_count),                       \
+    .limit = (uint16_t)(_limit),                       \
 }
 
 extern int k_sem_init(k_sem_t *sem, uint32_t count, uint32_t limit);
-extern int k_sem_deinit(k_sem_t *sem);
+extern int k_sem_notify(k_sem_t *sem, uint32_t events);
 extern int k_sem_acquire(k_sem_t *sem, uint32_t timeout);
 extern int k_sem_release(k_sem_t *sem);
 extern uint32_t k_sem_count(k_sem_t *sem);
 
-#define K_MUTEX_INIT(_priority, _options)       \
-(k_mutex_t)                                     \
-{                                               \
-    .next = NULL,                               \
-    .previous = NULL,                           \
-    .priority = (uint8_t)(_priority),           \
-    .options = (uint8_t)(_options),             \
-    .level = 0,                                 \
-    .owner = NULL,                              \
-    .waiting = NULL                             \
+
+#define K_QUEUE_INIT(_base, _count, _size)             \
+(k_queue_t)                                            \
+{                                                      \
+    .waiting = { NULL, NULL, NULL },                   \
+    .notify = { NULL, 0 },                             \
+    .count = 0,                                        \
+    .size = (uint32_t)(_size),                         \
+    .base  = (void*)(_base),                           \
+    .limit = ((uint32_t)(_count) * (uint32_t)(_size)), \
+    .head = 0,                                         \
+    .tail = 0                                          \
 }
+  
+extern int k_queue_init(k_queue_t *queue, void *base, uint32_t count, uint32_t size);
+extern int k_queue_notify(k_queue_t *queue, uint32_t events);
+extern int k_queue_send(k_queue_t *queue, const void *data);
+extern int k_queue_urgent(k_queue_t *queue, const void *data);
+extern int k_queue_receive(k_queue_t *queue, void *p_data_return, uint32_t timeout);
+extern int k_queue_flush(k_queue_t *queue, uint32_t *p_count_return);
 
-extern int k_mutex_init(k_mutex_t *mutex, uint32_t priority, uint32_t options);
-extern int k_mutex_deinit(k_mutex_t *mutex);
-extern int k_mutex_set_priority(k_mutex_t *mutex, uint32_t priority, uint32_t *p_priority_return);
-extern int k_mutex_lock(k_mutex_t *mutex, uint32_t timeout);
-extern int k_mutex_unlock(k_mutex_t *mutex);
-extern uint32_t k_mutex_level(k_mutex_t *mutex);
-extern k_task_t * k_mutex_owner(k_mutex_t *mutex);
-
-#define K_WORK_INIT(_routine,_context)          \
-(k_work_t)                                      \
-{                                               \
-    .next = NULL,                               \
-    .routine = (k_work_routine_t)(_routine),    \
-    .context = (void*)(_context)                \
+#define K_WORK_INIT(_routine,_context)                 \
+(k_work_t)                                             \
+{                                                      \
+    .next = NULL,                                      \
+    .routine = (k_work_routine_t)(_routine),           \
+    .context = (void*)(_context)                       \
 }
 
 extern int k_work_init(k_work_t *work, k_work_routine_t routine, void *context);
-extern int k_work_deinit(k_work_t *work);
 extern int k_work_submit(k_work_t *work);
-extern k_work_t * k_work_self(void);
-extern bool k_work_is_in_progress(void);
 
-#define K_ALARM_INIT(_routine,_context)         \
-(k_alarm_t)                                     \
-{                                               \
-    .work = K_WORK_INIT(_routine, _context),    \
-    .next = NULL,                               \
-    .previous = NULL,                           \
-    .modify = NULL,                             \
-    .clock_l = 0,                               \
-    .clock_h = 0,                               \
-    .period = 0                                 \
+#define K_ALARM_INIT(_routine,_context)                \
+(k_alarm_t)                                            \
+{                                                      \
+    .work = K_WORK_INIT(_routine, _context),           \
+    .next = NULL,                                      \
+    .previous = NULL,                                  \
+    .modify = NULL,                                    \
+    .clock_l = 0,                                      \
+    .clock_h = 0,                                      \
+    .period = 0                                        \
 }
   
 extern int k_alarm_init(k_alarm_t *alarm, k_alarm_routine_t routine, void *context);
-extern int k_alarm_deinit(k_alarm_t *alarm);
 extern int k_alarm_absolute(k_alarm_t *alarm, uint64_t clock, uint32_t period);
 extern int k_alarm_relative(k_alarm_t *alarm, uint32_t delay, uint32_t period);
 extern int k_alarm_cancel(k_alarm_t *alarm);

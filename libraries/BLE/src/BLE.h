@@ -32,6 +32,8 @@
 #include <Arduino.h>
 #include <type_traits>
 
+#include "stm32wb_fwu.h"
+
 enum BLEOption : uint32_t {
     BLE_OPTION_RANDOM_STATIC_ADDRESS                         = 0x00000001,
     BLE_OPTION_PRIVACY                                       = 0x00000002,
@@ -167,6 +169,16 @@ enum BLEStatus : uint8_t {
     BLE_STATUS_BUSY                                          = 255
 };
   
+enum BLEPayload : uint8_t {
+    BLE_PAYLOAD_PRBS9            = 0,
+    BLE_PAYLOAD_PATTERN_11110000 = 1,
+    BLE_PAYLOAD_PATTERN_10101010 = 2,
+    BLE_PAYLOAD_PRBS15           = 3,
+    BLE_PAYLOAD_PATTERN_11111111 = 4,
+    BLE_PAYLOAD_PATTERN_00000000 = 5,
+    BLE_PAYLOAD_PATTERN_00001111 = 6,
+    BLE_PAYLOAD_PATTERN_01010101 = 7,
+};
 
 class BLEDescriptor {
 public:
@@ -331,6 +343,11 @@ public:
     bool addCharacteristic(BLECharacteristic &characteristic);
     bool removeCharacteristic(BLECharacteristic &characteristic);
 
+    void onConnect(void(*callback)(void));
+    void onConnect(Callback callback);
+    void onDisconnect(void(*callback)(void));
+    void onDisconnect(Callback callback);
+  
 protected:
     BLEService(class BLEServiceInstance *instance);
     class BLEServiceInstance *instance();
@@ -440,6 +457,12 @@ public:
     static void onConnect(Callback callback);
     static void onDisconnect(void(*callback)(void));
     static void onDisconnect(Callback callback);
+
+    // HCI: Test Mode
+    static bool testTransmit(int channel, int length, BLEPayload payload, BLEPhy phy = BLE_PHY_1M);
+    static bool testReceive(int channel, BLEPhy phy = BLE_PHY_1M, int modulation = 0);
+    static uint32_t testStop();
+    static bool testing();
 };
 
 extern BLEClass BLE;
@@ -504,6 +527,89 @@ private:
     void transmit();
     void receive();
     void connect();
+};
+
+#define BLE_OTA_QUEUE_SIZE       4096
+
+enum BLEOtaOption : uint32_t {
+    BLE_OTA_OPTION_TRIAL                                     = 0x00000001,
+    BLE_OTA_OPTION_CANDIDATE                                 = 0x00000002,
+    BLE_OTA_OPTION_WIRELESS                                  = 0x00000004,
+};
+
+enum BLEOtaState : uint8_t {
+    BLE_OTA_STATE_READY                                      = 0x00,
+    BLE_OTA_STATE_BUSY                                       = 0x01,
+    BLE_OTA_STATE_FAILED                                     = 0x02,
+    BLE_OTA_STATE_TRIAL                                      = 0x03,
+    BLE_OTA_STATE_UPDATED                                    = 0x05,
+};
+
+class BLEOta : public BLEService {
+public:
+    BLEOta();
+    BLEOta(const BLEOta&) = delete;
+    BLEOta& operator=(const BLEOta&) = delete;
+
+    bool begin(uint32_t options = 0);
+
+    uint32_t state();
+
+    void accept();
+    void reject();
+    void allow();
+    void deny();
+    void confirm();
+    void cancel();
+
+    void onStart(void(*callback)(void));
+    void onStart(Callback callback);
+    void onFinish(void(*callback)(void));
+    void onFinish(Callback callback);
+    
+    
+private:
+    uint8_t                     m_busy;
+    uint8_t                     m_state;
+    uint8_t                     m_status;
+    uint8_t                     m_protocol;
+    uint8_t                     m_component;
+    volatile uint8_t            m_deny;
+    uint8_t                     m_options;
+    volatile uint8_t            m_sequence;
+
+    uint16_t                    m_head;
+    uint16_t                    m_tail;
+    uint32_t                    m_offset;
+    uint32_t                    m_size;
+    uint8_t                     m_data[BLE_OTA_QUEUE_SIZE];
+
+    k_work_t                    m_work;
+    stm32wb_fwu_request_t       m_request;
+
+    BLECharacteristic           m_command_characteristic;
+    BLECharacteristic           m_event_characteristic;
+    BLECharacteristic           m_data_characteristic;
+
+    Callback                    m_start_callback;
+    Callback                    m_finish_callback;
+    
+    static void                 acceptCallback(class BLEOta *self);
+    static void                 rejectCallback(class BLEOta *self);
+    static void                 beginCallback(class BLEOta *self);
+    static void                 startCallback(class BLEOta *self);
+    static void                 writeCallback(class BLEOta *self);
+    static void                 finishCallback(class BLEOta *self);
+    static void                 confirmCallback(class BLEOta *self);
+    static void                 rebootCallback();
+    static void                 cancelCallback(class BLEOta *self);
+    static void                 processCallback(class BLEOta *self);
+
+    void                        connectCallback();
+    void                        disconnectCallback();
+    void                        commandCallback();
+    void                        dataCallback();
+    void                        countCallback();
 };
 
 #endif // BLE_H

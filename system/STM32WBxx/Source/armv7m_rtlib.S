@@ -34,7 +34,7 @@
 	.global	memmove
 	.global	memset
 	.global	memzero
-
+        
 	.global	__aeabi_memcpy
 	.global	__aeabi_memcpy4
 	.global	__aeabi_memcpy8
@@ -495,4 +495,4 @@ __aeabi_memset:
 	mov	r2, r3
 	b	memset
 	.size	__aeabi_memset,.-__aeabi_memset
-	
+        

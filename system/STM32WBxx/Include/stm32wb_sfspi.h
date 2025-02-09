@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2021 Thomas Roell.  All rights reserved.
+ * Copyright (c) 2014-2024 Thomas Roell.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -38,8 +38,8 @@
  extern "C" {
 #endif
 
- typedef struct _stm32wb_sfspi_pins_t {
-    uint16_t                    cs;
+typedef struct _stm32wb_sfspi_pins_t {
+    uint8_t                     cs;
 } stm32wb_sfspi_pins_t;
 
 typedef struct _stm32wb_sfspi_params_t {

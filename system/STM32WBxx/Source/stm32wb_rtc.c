@@ -32,11 +32,14 @@
 #include "stm32wb_gpio.h"
 #include "stm32wb_exti.h"
 #include "stm32wb_system.h"
+#include "stm32wb_otp.h"
+#include "stm32wb_adc.h"
 
 /*******************************************************************************************************************/
 
 typedef void (*stm32wb_rtc_sync_routine_t)(void);
 typedef void (*stm32wb_rtc_alarm_routine_t)(void);
+typedef void (*stm32wb_rtc_wakeup_routine_t)(void);
 
 typedef struct _stm32wb_rtc_device_t {
     uint64_t                               clock_offset;
@@ -48,12 +51,20 @@ typedef struct _stm32wb_rtc_device_t {
     volatile stm32wb_rtc_event_callback_t  event_callback;
     void * volatile                        event_context;
     volatile uint32_t                      events;
+    uint32_t                               calib_clock;
+    int16_t                                calib_temp;
+    uint16_t                               calib_tsense;
+    int16_t                                comp_temp_lo;
+    int16_t                                comp_temp_hi;
+    int16_t                                comp_coeff_lo;
+    int16_t                                comp_coeff_hi;
     volatile uint8_t                       alarm_busy;
     uint64_t                               alarm_clock;
     stm32wb_rtc_alarm_t                    *alarm_queue;
     stm32wb_rtc_alarm_t * volatile         alarm_modify;
     volatile stm32wb_rtc_sync_routine_t    sync_routine;
     volatile stm32wb_rtc_alarm_routine_t   alarm_routine;
+    volatile stm32wb_rtc_wakeup_routine_t  wakeup_routine;
 } stm32wb_rtc_device_t;
 
 #define STM32WB_RTC_ALARM_SENTINEL ((stm32wb_rtc_alarm_t*)0x00000001)
@@ -67,7 +78,7 @@ typedef struct _stm32wb_rtc_info_t {
     uint8_t                                leap_seconds;
 } stm32wb_rtc_info_t;
 
-extern const stm32wb_rtc_info_t __stm32wb_rtc_info__;
+extern const stm32wb_rtc_info_t __rtc_info__;
 
 static void stm32wb_rtc_sync_routine();
 static void stm32wb_rtc_alarm_routine();
@@ -128,16 +139,18 @@ static const uint8_t stm32wb_rtc_days_in_month[4][16] = {
 
 void __stm32wb_rtc_initialize(void)
 {
-    uint32_t lseclk, hseclk;
+  uint32_t lseclk, hseclk, clock, coeff;
     int32_t calibration;
     stm32wb_rtc_capture_t capture;
+    stm32wb_otp_lse_calibration_t lse_calibration;
+    stm32wb_otp_lse_compensation_t lse_compensation;
+    
+    lseclk = stm32wb_system_lseclk();
+    hseclk = stm32wb_system_hseclk();
     
     if (!(RCC->BDCR & RCC_BDCR_RTCEN))
     {
         /* Use LSE/LSI as source for RTC */
-
-        lseclk = stm32wb_system_lseclk();
-        hseclk = stm32wb_system_hseclk();
         
 	RCC->BDCR = (RCC->BDCR & ~RCC_BDCR_RTCSEL) | ((lseclk ? RCC_BDCR_RTCSEL_0 : RCC_BDCR_RTCSEL_1) | RCC_BDCR_RTCEN);
 
@@ -160,34 +173,10 @@ void __stm32wb_rtc_initialize(void)
 
 	RTC->BKP16R = (STM32WB_RTC_BKP16R_NOT_DATA_MASK & ~(STM32WB_RTC_BKP16R_REVISION_CURRENT << STM32WB_RTC_BKP16R_NOT_DATA_SHIFT)) | STM32WB_RTC_BKP16R_REVISION_CURRENT;
 	RTC->BKP17R = hseclk ? STM32WB_RTC_BKP17R_HSECLK : 0;
-	RTC->BKP18R = __stm32wb_rtc_info__.epoch ? (__stm32wb_rtc_info__.epoch - 315964800 + (__stm32wb_rtc_info__.leap_seconds - STM32WB_RTC_BKP19R_LEAP_SECONDS_BIAS)) : 0;
-	RTC->BKP19R = (((__stm32wb_rtc_info__.zone << STM32WB_RTC_BKP19R_ZONE_SHIFT) & STM32WB_RTC_BKP19R_ZONE_MASK) |
-                       ((__stm32wb_rtc_info__.dst << STM32WB_RTC_BKP19R_DST_SHIFT) & STM32WB_RTC_BKP19R_DST_MASK) |
-                       ((__stm32wb_rtc_info__.leap_seconds << STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT) & STM32WB_RTC_BKP19R_LEAP_SECONDS_MASK));
-
-        if (lseclk)
-        {
-            calibration = 32 * (lseclk - 32768);
-
-            if (calibration >= 0)
-            {
-                if (calibration > 511)
-                {
-                    calibration = 511;
-                }
-
-                RTC->CALR = ((uint32_t)(calibration) << RTC_CALR_CALM_Pos);
-            }
-            else
-            {
-                if (calibration < -512)
-                {
-                    calibration = -512;
-                }
-                
-                RTC->CALR = RTC_CALR_CALP | ((uint32_t)(512 + calibration) << RTC_CALR_CALM_Pos);
-            }
-        }
+	RTC->BKP18R = __rtc_info__.epoch ? (__rtc_info__.epoch - 315964800 + (__rtc_info__.leap_seconds - STM32WB_RTC_BKP19R_LEAP_SECONDS_BIAS)) : 0;
+	RTC->BKP19R = (((__rtc_info__.zone << STM32WB_RTC_BKP19R_ZONE_SHIFT) & STM32WB_RTC_BKP19R_ZONE_MASK) |
+                       ((__rtc_info__.dst << STM32WB_RTC_BKP19R_DST_SHIFT) & STM32WB_RTC_BKP19R_DST_MASK) |
+                       ((__rtc_info__.leap_seconds << STM32WB_RTC_BKP19R_LEAP_SECONDS_SHIFT) & STM32WB_RTC_BKP19R_LEAP_SECONDS_MASK));
     }
     else
     {
@@ -228,6 +217,64 @@ void __stm32wb_rtc_initialize(void)
     stm32wb_rtc_device.alarm_clock = 0;
     stm32wb_rtc_device.alarm_queue = NULL;
     stm32wb_rtc_device.alarm_modify = STM32WB_RTC_ALARM_SENTINEL;
+
+    if (stm32wb_otp_read(STM32WB_OTP_ID_LSE_CALIBRATION, (uint8_t*)&lse_calibration, sizeof(lse_calibration), NULL))
+    {
+        stm32wb_rtc_device.calib_clock = (lse_calibration.clock[0] << 0) | (lse_calibration.clock[1] << 8) | (lse_calibration.clock[2] << 16);
+        stm32wb_rtc_device.calib_temp = lse_calibration.temp;
+        stm32wb_rtc_device.calib_tsense = lse_calibration.tsense;
+    }
+    else
+    {
+        stm32wb_rtc_device.calib_clock = lseclk * 256; // 256 scale
+        stm32wb_rtc_device.calib_temp = 2500;          // 1e2 scale
+        stm32wb_rtc_device.calib_tsense = ((((2500 - (int32_t)(STM32WB_ADC_TSENSE_CAL1_TEMP * 100)) * (STM32WB_ADC_TSENSE_CAL2 - STM32WB_ADC_TSENSE_CAL1)) /
+                                            (int32_t)(STM32WB_ADC_TSENSE_CAL2_TEMP * 100 - STM32WB_ADC_TSENSE_CAL1_TEMP * 100))
+                                           + STM32WB_ADC_TSENSE_CAL1);
+    }
+    
+    if (stm32wb_otp_read(STM32WB_OTP_ID_LSE_COMPENSATION, (uint8_t*)&lse_compensation, sizeof(lse_compensation), NULL))
+    {
+        coeff = (lse_compensation.coeff[0] << 0) | (lse_compensation.coeff[1] << 8) | (lse_compensation.coeff[2] << 16);
+
+        stm32wb_rtc_device.comp_temp_lo  = lse_compensation.temp_lo;
+        stm32wb_rtc_device.comp_temp_hi  = lse_compensation.temp_hi;
+        stm32wb_rtc_device.comp_coeff_lo = (int32_t)(coeff << (32 - 12)) >> (32 - 12);
+        stm32wb_rtc_device.comp_coeff_hi = (int32_t)(coeff << (32 - 24)) >> (32 - 12);
+    }
+    else
+    {
+        stm32wb_rtc_device.comp_temp_lo  = 2000;       // 1e2 scale
+        stm32wb_rtc_device.comp_temp_hi  = 3000;       // 1e2 scale
+        stm32wb_rtc_device.comp_coeff_lo = -300;       // 1e10 scale
+        stm32wb_rtc_device.comp_coeff_hi = -300;       // 1e10 scale
+    }
+
+    clock = stm32wb_rtc_device.calib_clock / 8;
+    
+    if (clock)
+    {
+        calibration = clock - (32768 * 32);
+        
+        if (calibration >= 0)
+        {
+            if (calibration > 511)
+            {
+                calibration = 511;
+            }
+            
+            RTC->CALR = ((uint32_t)(calibration) << RTC_CALR_CALM_Pos);
+        }
+        else
+        {
+            if (calibration < -512)
+            {
+                calibration = -512;
+            }
+            
+            RTC->CALR = RTC_CALR_CALP | ((uint32_t)(512 + calibration) << RTC_CALR_CALM_Pos);
+        }
+    }
     
     EXTI->RTSR1 |= (EXTI_RTSR1_RT17 | EXTI_RTSR1_RT18 | EXTI_RTSR1_RT19);
     EXTI->IMR1 |= (EXTI_IMR1_IM17 | EXTI_IMR1_IM18 | EXTI_IMR1_IM19);
@@ -507,46 +554,250 @@ void stm32wb_rtc_notify(stm32wb_rtc_event_callback_t callback, void *context)
     stm32wb_rtc_device.event_callback = callback;
 }
 
-int32_t stm32wb_rtc_get_calibration(void)
+static void __attribute__((noinline)) stm32wb_rtc_sync_calibration(void)
 {
-    if (RTC->CALR & RTC_CALR_CALP)
+    uint8_t vrefint_channel, tsense_channel;
+    uint16_t vrefint_data, tsense_data;
+    uint32_t clock;
+    int32_t calibration, vref, tsense, temp;
+
+    vrefint_channel = STM32WB_ADC_CHANNEL_VREFINT;
+    
+    stm32wb_adc_convert(&vrefint_channel, &vrefint_data, 1, STM32WB_ADC_VREFINT_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12));
+
+    tsense_channel = STM32WB_ADC_CHANNEL_TSENSE;
+    
+    stm32wb_adc_convert(&tsense_channel, &tsense_data, 1, STM32WB_ADC_TSENSE_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12 | STM32WB_ADC_OPTION_STOP));
+
+    /* Use a 4096 scale factor for the VREF coefficients (which are floats). This allows the maximum
+     * precision for a 12 bit ADC value.
+     */
+    vref = ((int32_t)(STM32WB_ADC_VREFINT_VREF * 4096) * STM32WB_ADC_VREFINT_CAL) / (int32_t)vrefint_data;
+        
+    tsense = (int32_t)(tsense_data * vref) / (int32_t)(STM32WB_ADC_TSENSE_CAL_VREF * 4096);
+
+    temp = ((((int32_t)(STM32WB_ADC_TSENSE_CAL2_TEMP * 100 - STM32WB_ADC_TSENSE_CAL1_TEMP * 100) * (tsense - stm32wb_rtc_device.calib_tsense))
+              / (STM32WB_ADC_TSENSE_CAL2 - STM32WB_ADC_TSENSE_CAL1))
+            + stm32wb_rtc_device.calib_temp);
+
+    clock = stm32wb_rtc_device.calib_clock / 8;
+
+    /*  Use full 64 bit signed arithmatic below. clock is 20 bits, coeff is 11, and the temp delta squared is 30, so 61 bits in total.
+     */
+    if (temp < stm32wb_rtc_device.comp_temp_lo)
     {
-        return 512 - ((int32_t)((RTC->CALR & RTC_CALR_CALM_Msk) >> RTC_CALR_CALM_Pos));
+        clock += (((int64_t)clock * (int64_t)((stm32wb_rtc_device.comp_coeff_lo * (temp - stm32wb_rtc_device.comp_temp_lo) * (temp - stm32wb_rtc_device.comp_temp_lo)))) / (int64_t)(1e10 * 1e2 * 1e2));
     }
-    else
+
+    if (temp > stm32wb_rtc_device.comp_temp_hi)
     {
-        return - ((int32_t)((RTC->CALR & RTC_CALR_CALM_Msk) >> RTC_CALR_CALM_Pos));
+        clock += (((int64_t)clock * (int64_t)((stm32wb_rtc_device.comp_coeff_hi * (temp - stm32wb_rtc_device.comp_temp_hi) * (temp - stm32wb_rtc_device.comp_temp_hi)))) / (int64_t)(1e10 * 1e2 * 1e2));
+    }
+
+    if (clock)
+    {
+        calibration = clock - (32768 * 32);
+        
+        if (calibration >= 0)
+        {
+            if (calibration > 511)
+            {
+                calibration = 511;
+            }
+            
+            RTC->CALR = ((uint32_t)(calibration) << RTC_CALR_CALM_Pos);
+        }
+        else
+        {
+            if (calibration < -512)
+            {
+                calibration = -512;
+            }
+            
+            RTC->CALR = RTC_CALR_CALP | ((uint32_t)(512 + calibration) << RTC_CALR_CALM_Pos);
+        }
+
+        while (RTC->ISR & RTC_ISR_RECALPF)
+        {
+            __NOP();
+            __NOP();
+            __NOP();
+            __NOP();
+        }
     }
 }
 
-void stm32wb_rtc_set_calibration(int32_t calibration)
-{
-    if (calibration > 0)
-    {
-        if (calibration > 512)
-        {
-            calibration = 512;
-        }
+typedef struct _stm32wb_rtc_set_calibration_params_t {
+    uint32_t clock;
+    int16_t  temp;
+    uint16_t tsense;
+} stm32wb_rtc_set_calibration_params_t;
 
-        RTC->CALR = RTC_CALR_CALP | ((uint32_t)(512 - calibration) << RTC_CALR_CALM_Pos);
+static bool __attribute__((noinline)) __svc_stm32wb_rtc_set_calibration(const stm32wb_rtc_set_calibration_params_t *params)
+{
+    stm32wb_rtc_device.calib_clock = params->clock;
+    stm32wb_rtc_device.calib_temp = params->temp;
+    stm32wb_rtc_device.calib_tsense = params->tsense;
+
+    stm32wb_rtc_sync_calibration();
+
+    return true;
+}
+
+typedef struct _stm32wb_rtc_set_compensation_params_t {
+    int16_t temp_lo;
+    int16_t temp_hi;
+    int16_t coeff_lo;
+    int16_t coeff_hi;
+} stm32wb_rtc_set_compensation_params_t;
+
+static bool __attribute__((noinline)) __svc_stm32wb_rtc_set_compensation(const stm32wb_rtc_set_compensation_params_t *params)
+{
+    stm32wb_rtc_device.comp_temp_lo = params->temp_lo;
+    stm32wb_rtc_device.comp_temp_hi = params->temp_hi;
+    stm32wb_rtc_device.comp_coeff_lo = params->coeff_lo;
+    stm32wb_rtc_device.comp_coeff_hi = params->coeff_hi;
+
+    stm32wb_rtc_sync_calibration();
+
+    return true;
+}
+
+static bool __attribute__((noinline)) __svc_stm32wb_rtc_start_compensation(uint32_t seconds)
+{
+    if ((seconds == 0) || (seconds >= 2 * 65536))
+    {
+        return false;
+    }
+
+    stm32wb_rtc_device.wakeup_routine = stm32wb_rtc_sync_calibration;
+    
+    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_WUTIE | RTC_CR_WUTE | RTC_CR_WUCKSEL));
+
+    RTC->ISR = ~(RTC_ISR_WUTF | RTC_ISR_INIT);
+
+    EXTI->PR1 = EXTI_PR1_PIF19;
+
+    while (!(RTC->ISR & RTC_ISR_WUTWF))
+    {
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+    }
+
+    if (seconds > 65536)
+    {
+        RTC->WUTR = seconds -65536 -1;
+
+        armv7m_atomic_or(&RTC->CR, (RTC_CR_WUTIE | RTC_CR_WUTE | RTC_CR_WUCKSEL_2 | RTC_CR_WUCKSEL_1));
     }
     else
     {
-        if (calibration < -511)
-        {
-            calibration = -511;
-        }
-
-        RTC->CALR = ((uint32_t)(-calibration) << RTC_CALR_CALM_Pos);
+        RTC->WUTR = seconds -1;
+    
+        armv7m_atomic_or(&RTC->CR, (RTC_CR_WUTIE | RTC_CR_WUTE | RTC_CR_WUCKSEL_2));
     }
 
-    while (RTC->ISR & RTC_ISR_RECALPF)
+    stm32wb_rtc_sync_calibration();
+    
+    return true;
+}
+
+static bool __attribute__((noinline)) __svc_stm32wb_rtc_stop_compensation(void)
+{
+    armv7m_atomic_and(&RTC->CR, ~(RTC_CR_WUTIE | RTC_CR_WUTE | RTC_CR_WUCKSEL));
+
+    RTC->ISR = ~(RTC_ISR_WUTF | RTC_ISR_INIT);
+
+    EXTI->PR1 = EXTI_PR1_PIF19;
+
+    stm32wb_rtc_device.wakeup_routine = NULL;
+    
+    return true;
+}
+
+bool stm32wb_rtc_set_calibration(uint32_t clock, int32_t temp, int32_t tsense)
+{
+    stm32wb_rtc_set_calibration_params_t params;
+
+    params.clock = clock;
+    params.temp = temp;
+
+    if (tsense < 0)
     {
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
+        params.tsense = ((((temp - (int32_t)(STM32WB_ADC_TSENSE_CAL1_TEMP * 100)) * (STM32WB_ADC_TSENSE_CAL2 - STM32WB_ADC_TSENSE_CAL1)) /
+                          (int32_t)(STM32WB_ADC_TSENSE_CAL2_TEMP * 100 - STM32WB_ADC_TSENSE_CAL1_TEMP * 100))
+                         + STM32WB_ADC_TSENSE_CAL1);
     }
+    else
+    {
+        params.tsense = tsense;
+    }
+    
+    if (armv7m_core_is_in_thread())
+    {
+      return armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_set_calibration, (uint32_t)&params);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_rtc_set_calibration(&params);
+    }
+
+    return false;
+}
+
+bool stm32wb_rtc_set_compensation(int32_t temp_lo, int32_t temp_hi, int32_t coeff_lo, int32_t coeff_hi)
+{
+    stm32wb_rtc_set_compensation_params_t params;
+
+    params.temp_lo = temp_lo;
+    params.temp_hi = temp_hi;
+    params.coeff_lo = coeff_lo;
+    params.coeff_hi = coeff_hi;
+    
+    if (armv7m_core_is_in_thread())
+    {
+        return armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_set_compensation, (uint32_t)&params);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_rtc_set_compensation(&params);
+    }
+
+    return false;
+}
+
+bool stm32wb_rtc_start_compensation(uint32_t seconds)
+{
+    if (armv7m_core_is_in_thread())
+    {
+      return armv7m_svcall_1((uint32_t)&__svc_stm32wb_rtc_start_compensation, (uint32_t)seconds);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_rtc_start_compensation(seconds);
+    }
+
+    return false;
+}
+
+bool stm32wb_rtc_stop_compensation(uint32_t seconds)
+{
+    if (armv7m_core_is_in_thread())
+    {
+        return armv7m_svcall_0((uint32_t)&__svc_stm32wb_rtc_stop_compensation);
+    }
+
+    if (armv7m_core_is_in_svcall_or_pendsv())
+    {
+        return __svc_stm32wb_rtc_stop_compensation();
+    }
+
+    return false;
 }
 
 void __attribute__((optimize("O3"))) stm32wb_rtc_clock_capture(stm32wb_rtc_capture_t *p_capture)
@@ -1246,6 +1497,24 @@ void RTC_Alarm_IRQHandler(void)
     __DSB();
 }
 
+void RTC_WKUP_IRQHandler(void)
+{
+    do
+    {
+        EXTI->PR1 = EXTI_PR1_PIF19;
+        
+        if (RTC->ISR & RTC_ISR_WUTF)
+        {
+            armv7m_pendsv_raise(ARMV7M_PENDSV_SWI_RTC_WAKEUP);
+        }
+
+        RTC->ISR = ~(RTC_ISR_WUTF | RTC_ISR_INIT);
+    }
+    while (RTC->ISR & RTC_ISR_WUTF);
+    
+    __DSB();
+}
+
 void TAMP_STAMP_LSECSS_IRQHandler(void)
 {
     do
@@ -1295,6 +1564,18 @@ void RTC_ALARM_SWIHandler(void)
     stm32wb_rtc_alarm_routine_t routine;
 
     routine = stm32wb_rtc_device.alarm_routine;
+    
+    if (routine)
+    {
+        (*routine)();
+    }
+}
+
+void RTC_WAKEUP_SWIHandler(void)
+{
+    stm32wb_rtc_wakeup_routine_t routine;
+
+    routine = stm32wb_rtc_device.wakeup_routine;
     
     if (routine)
     {

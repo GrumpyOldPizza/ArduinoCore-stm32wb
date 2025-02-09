@@ -166,41 +166,38 @@ __attribute__((optimize("O3"))) void stm32wb_gpio_pin_configure(uint32_t pin, ui
     if (((mode & STM32WB_GPIO_MODE_MASK) >> STM32WB_GPIO_MODE_SHIFT) == STM32WB_GPIO_MODE_ANALOG)
     {
 	armv7m_atomic_modify(&GPIO->MODER, mask_2, ((STM32WB_GPIO_MODE_ANALOG >> STM32WB_GPIO_MODE_SHIFT) << index_2));
-	
+    }
+
+    /* Set AFRL/AFRH */
+    armv7m_atomic_modify(&GPIO->AFR[index >> 3], (0x0000000f << ((index & 7) << 2)), (afsel << ((index & 7) << 2)));
+    
+    /* Set OPSPEEDR */
+    armv7m_atomic_modify(&GPIO->OSPEEDR, mask_2, (((mode & STM32WB_GPIO_OSPEED_MASK) >> STM32WB_GPIO_OSPEED_SHIFT) << index_2));
+    
+    /* Set OPTYPER */
+    armv7m_atomic_modify(&GPIO->OTYPER, mask, (((mode & STM32WB_GPIO_OTYPE_MASK) >> STM32WB_GPIO_OTYPE_SHIFT) << index));
+
+    if (mode & STM32WB_GPIO_ODATA_0)
+    {
+        GPIO->BRR = mask;
+    }
+    
+    if (mode & STM32WB_GPIO_ODATA_1)
+    {
+        GPIO->BSRR = mask;
+    }
+    
+    /* Set MODE */
+    armv7m_atomic_modify(&GPIO->MODER, mask_2, (((mode & STM32WB_GPIO_MODE_MASK) >> STM32WB_GPIO_MODE_SHIFT) << index_2));
+    
+    /* Set PUPD */
+    armv7m_atomic_modify(&GPIO->PUPDR, mask_2, (((mode & STM32WB_GPIO_PUPD_MASK) >> STM32WB_GPIO_PUPD_SHIFT) << index_2));
+
+    /* If the mode is ANALOG, try to disabe the whole GPIO port */
+    if (((mode & STM32WB_GPIO_MODE_MASK) >> STM32WB_GPIO_MODE_SHIFT) == STM32WB_GPIO_MODE_ANALOG)
+    {
         armv7m_atomic_and(&stm32wb_gpio_device.enables[port], ~mask);
         armv7m_atomic_andz(&RCC->AHB2ENR, ~(RCC_AHB2ENR_GPIOAEN << group), &stm32wb_gpio_device.enables[port]);
-    }
-    else
-    {
-        /* Set AFRL/AFRH */
-        armv7m_atomic_modify(&GPIO->AFR[index >> 3], (0x0000000f << ((index & 7) << 2)), (afsel << ((index & 7) << 2)));
-        
-        /* Set OPSPEEDR */
-        armv7m_atomic_modify(&GPIO->OSPEEDR, mask_2, (((mode & STM32WB_GPIO_OSPEED_MASK) >> STM32WB_GPIO_OSPEED_SHIFT) << index_2));
-        
-        /* Set OPTYPER */
-        armv7m_atomic_modify(&GPIO->OTYPER, mask, (((mode & STM32WB_GPIO_OTYPE_MASK) >> STM32WB_GPIO_OTYPE_SHIFT) << index));
-        
-        /* If the mode is OUTPUT, or OUTPUT OPENDRAIN with a ODR of 0. then first switch MODER and then PUPDR
-         * to avoid spurious edges. N.b. ALTERNATE is assumed to be INPUT before the peripheral drives it.
-         */ 
-        if (((mode & STM32WB_GPIO_MODE_MASK) == STM32WB_GPIO_MODE_OUTPUT) &&
-            (((mode & STM32WB_GPIO_OTYPE_MASK) != STM32WB_GPIO_OTYPE_OPENDRAIN) || !(GPIO->ODR & mask)))
-        {
-            /* Set MODE */
-            armv7m_atomic_modify(&GPIO->MODER, mask_2, (((mode & STM32WB_GPIO_MODE_MASK) >> STM32WB_GPIO_MODE_SHIFT) << index_2));
-            
-            /* Set PUPD */
-            armv7m_atomic_modify(&GPIO->PUPDR, mask_2, (((mode & STM32WB_GPIO_PUPD_MASK) >> STM32WB_GPIO_PUPD_SHIFT) << index_2));
-        }
-        else
-        {
-            /* Set PUPD */
-            armv7m_atomic_modify(&GPIO->PUPDR, mask_2, (((mode & STM32WB_GPIO_PUPD_MASK) >> STM32WB_GPIO_PUPD_SHIFT) << index_2));
-            
-            /* Set MODE */
-            armv7m_atomic_modify(&GPIO->MODER, mask_2, (((mode & STM32WB_GPIO_MODE_MASK) >> STM32WB_GPIO_MODE_SHIFT) << index_2));
-        }
     }
 
     if ((mode & STM32WB_GPIO_PARK_MASK) == STM32WB_GPIO_PARK_NONE)

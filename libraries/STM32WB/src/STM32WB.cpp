@@ -30,11 +30,34 @@
 #include "STM32WB.h"
 #include "wiring_private.h"
 
-uint64_t STM32WBClass::getSerial()
-{
-    return stm32wb_system_serial();
-}
+typedef struct _stm32wb_callbacks_t {
+    stm32wb_system_notify_t notify;
+    Callback                standby_callback;  
+    Callback                shutdown_callback;  
+    Callback                reset_callback;  
+} stm32wb_callbacks_t;
 
+static bool __stm32wb_boost_enable = false;
+
+static stm32wb_callbacks_t stm32wb_callbacks;
+
+static void stm32wb_notify_callback(void *context, uint32_t event)
+{
+    stm32wb_callbacks_t *callbacks = (stm32wb_callbacks_t*)context;
+
+    if (event & STM32WB_SYSTEM_EVENT_STANDBY) {
+        callbacks->standby_callback();
+    }
+
+    if (event & STM32WB_SYSTEM_EVENT_SHUTDOWN) {
+        callbacks->shutdown_callback();
+    }
+
+    if (event & STM32WB_SYSTEM_EVENT_RESET) {
+        callbacks->reset_callback();
+    }
+}
+  
 void STM32WBClass::getUID(uint32_t uid[3])
 {
     stm32wb_system_uid(uid);
@@ -43,16 +66,19 @@ void STM32WBClass::getUID(uint32_t uid[3])
 float STM32WBClass::readBattery()
 {
 #if defined(STM32WB_CONFIG_VBAT_SENSE_CHANNEL)
-    int32_t vrefint_data, vbat_data;
-    float vdda, battery;
+    uint8_t vrefint_channel, vbat_channel;
+    uint16_t vrefint_data, vbat_data;
+    float vref, battery;
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt()) {
         return 0;
     }
 
-    vrefint_data = __analogReadChannel(STM32WB_ADC_CHANNEL_VREFINT, STM32WB_ADC_VREFINT_PERIOD);
+    vrefint_channel = STM32WB_ADC_CHANNEL_VREFINT;
 
-    vdda = (STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / vrefint_data;
+    stm32wb_adc_convert(&vrefint_channel, &vrefint_data, 1, STM32WB_ADC_VREFINT_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12));
+    
+    vref = (float)(STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / (float)vrefint_data;
     
 #if defined(STM32WB_CONFIG_PIN_VBAT_SWITCH)
 #if defined(STM32WB_CONFIG_PIN_BUTTON) && (STM32WB_CONFIG_PIN_BUTTON == STM32WB_CONFIG_PIN_VBAT_SWITCH)
@@ -68,9 +94,11 @@ float STM32WBClass::readBattery()
     armv7m_core_udelay(STM32WB_CONFIG_VBAT_SENSE_DELAY);
 #endif /* defined(STM32WB_CONFIG_VBAT_SENSE_DELAY) */
 
-    vbat_data = __analogReadChannel(STM32WB_CONFIG_VBAT_SENSE_CHANNEL, STM32WB_CONFIG_VBAT_SENSE_PERIOD);
+    vbat_channel = STM32WB_CONFIG_VBAT_SENSE_CHANNEL;
+    
+    stm32wb_adc_convert(&vbat_channel, &vbat_data, 1, STM32WB_CONFIG_VBAT_SENSE_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12 | STM32WB_ADC_OPTION_STOP));
 
-    battery = (vdda * (STM32WB_CONFIG_VBAT_SENSE_SCALE / 4095.0)) * (float)vbat_data;
+    battery = ((vref * STM32WB_CONFIG_VBAT_SENSE_SCALE) * (float)vbat_data) / 4095.0;
 
 #if defined(STM32WB_CONFIG_PIN_VBAT_SWITCH)
 #if defined(STM32WB_CONFIG_PIN_BUTTON) && (STM32WB_CONFIG_PIN_BUTTON == STM32WB_CONFIG_PIN_VBAT_SWITCH)
@@ -99,41 +127,50 @@ float STM32WBClass::readBattery()
 
 float STM32WBClass::readTemperature()
 {
-    int32_t vrefint_data, tsense_data;
-    float vdda, temperature;
+    uint8_t vrefint_channel, tsense_channel;
+    uint16_t vrefint_data, tsense_data;
+    float vref, tsense, temperature;
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt()) {
         return 0;
     }
+
+    vrefint_channel = STM32WB_ADC_CHANNEL_VREFINT;
     
-    vrefint_data = __analogReadChannel(STM32WB_ADC_CHANNEL_VREFINT, STM32WB_ADC_VREFINT_PERIOD);
-    tsense_data = __analogReadChannel(STM32WB_ADC_CHANNEL_TSENSE, STM32WB_ADC_TSENSE_PERIOD);
+    stm32wb_adc_convert(&vrefint_channel, &vrefint_data, 1, STM32WB_ADC_VREFINT_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12));
 
-    vdda = (STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / vrefint_data;
+    tsense_channel = STM32WB_ADC_CHANNEL_TSENSE;
+    
+    stm32wb_adc_convert(&tsense_channel, &tsense_data, 1, STM32WB_ADC_TSENSE_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12 | STM32WB_ADC_OPTION_STOP));
 
-    tsense_data = tsense_data * (vdda / STM32WB_ADC_TSENSE_CAL_VREF);
+    vref = (float)(STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / (float)vrefint_data;
+
+    tsense = (vref * (float)tsense_data) / (float)STM32WB_ADC_TSENSE_CAL_VREF;
   
     temperature = ((((STM32WB_ADC_TSENSE_CAL2_TEMP - STM32WB_ADC_TSENSE_CAL1_TEMP) /(float)(STM32WB_ADC_TSENSE_CAL2 - STM32WB_ADC_TSENSE_CAL1))
-                    * (float)(tsense_data - STM32WB_ADC_TSENSE_CAL1))
+                    * (tsense - STM32WB_ADC_TSENSE_CAL1))
                    + STM32WB_ADC_TSENSE_CAL1_TEMP);
 
     return temperature;
 }
 
-float STM32WBClass::readVDDA()
+float STM32WBClass::readVREF()
 {
-    int32_t vrefint_data;
-    float vdda;
+    uint8_t vrefint_channel;
+    uint16_t vrefint_data;
+    float vref;
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt()) {
         return 0;
     }
 
-    vrefint_data = __analogReadChannel(STM32WB_ADC_CHANNEL_VREFINT, STM32WB_ADC_VREFINT_PERIOD);
+    vrefint_channel = STM32WB_ADC_CHANNEL_VREFINT;
+    
+    stm32wb_adc_convert(&vrefint_channel, &vrefint_data, 1, STM32WB_ADC_VREFINT_PERIOD, (STM32WB_ADC_OPTION_RATIO_1 | STM32WB_ADC_OPTION_WIDTH_12 | STM32WB_ADC_OPTION_STOP));
 
-    vdda = (STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / vrefint_data;
+    vref = (float)(STM32WB_ADC_VREFINT_VREF * STM32WB_ADC_VREFINT_CAL) / (float)vrefint_data;
 
-    return vdda;
+    return vref;
 }
 
 uint32_t STM32WBClass::resetCause()
@@ -146,6 +183,27 @@ uint32_t STM32WBClass::wakeupReason()
     return stm32wb_system_wakeup_reason();
 }
 
+uint32_t STM32WBClass::faultReason(const armv7m_fault_info_t * &info)
+{
+    info = &armv7m_fault_info;
+
+    return stm32wb_system_reset_reason();
+}
+
+uint32_t STM32WBClass::assertReason(const char * &assertion, const char * &file, uint32_t &line)
+{
+    assertion = armv7m_assert_info.assertion;
+    file = armv7m_assert_info.file;
+    line = armv7m_assert_info.line;
+  
+    return stm32wb_system_reset_reason();
+}
+
+uint32_t STM32WBClass::panicReason()
+{
+    return stm32wb_system_reset_reason();
+}
+
 bool STM32WBClass::setClocks(uint32_t hclk)
 {
     return stm32wb_system_sysclk_configure(0, hclk, 0, 0);
@@ -154,6 +212,28 @@ bool STM32WBClass::setClocks(uint32_t hclk)
 bool STM32WBClass::setClocks(uint32_t sysclk, uint32_t hclk, uint32_t pclk1, uint32_t pclk2)
 {
     return stm32wb_system_sysclk_configure(sysclk, hclk, pclk1, pclk2);
+}
+
+bool STM32WBClass::boostEnable()
+{
+    if (__stm32wb_boost_enable || stm32wb_system_boost_enable()) {
+        __stm32wb_boost_enable = true;
+
+        return true;
+    }
+    
+    return false;
+}
+
+bool STM32WBClass::boostDisable()
+{
+    if (!__stm32wb_boost_enable || stm32wb_system_boost_disable()) {
+        __stm32wb_boost_enable = false;
+
+        return true;
+    }
+
+    return false;
 }
 
 void STM32WBClass::getClocks(uint32_t &sysclk, uint32_t &hclk, uint32_t &pclk1, uint32_t &pclk2)
@@ -166,7 +246,7 @@ void STM32WBClass::getClocks(uint32_t &sysclk, uint32_t &hclk, uint32_t &pclk1, 
 
 void STM32WBClass::wakeup()
 {
-    k_event_send(k_task_default(), WIRING_EVENT_WAKEUP);
+    k_event_send(__arduino_task, WIRING_EVENT_WAKEUP);
 }
 
 bool STM32WBClass::sleep()
@@ -187,21 +267,21 @@ bool STM32WBClass::sleep(uint32_t policy, uint32_t timeout)
         return false;
     }
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || k_system_is_locked()) {
         return false;
     }
     
-    if (k_task_self() != k_task_default()) {
+    if (k_task_self() != __arduino_task) {
         return false;
     }
 
     mask = 0;
     
-    k_system_set_policy(policy, &policy);
+    policy = stm32wb_system_policy(policy);
 
     k_event_receive(WIRING_EVENT_WAKEUP, (K_EVENT_ANY | K_EVENT_CLEAR), timeout, &mask);
     
-    k_system_set_policy(policy, NULL);
+    stm32wb_system_policy(policy);
     
     return !!mask;
 }
@@ -226,19 +306,19 @@ bool STM32WBClass::delay(uint32_t policy, uint32_t delay)
         return false;
     }
 
-    if (!k_task_is_in_progress()) {
+    if (armv7m_core_is_in_interrupt() || k_system_is_locked()) {
         return false;
     }
 
-    if (k_task_self() != k_task_default()) {
+    if (k_task_self() != __arduino_task) {
         return false;
     }
 
-    k_system_set_policy(policy, &policy);
+    policy = stm32wb_system_policy(policy);
 
     k_task_delay(delay);
     
-    k_system_set_policy(policy, NULL);
+    stm32wb_system_policy(policy);
     
     return true;
 }
@@ -283,7 +363,6 @@ void STM32WBClass::standby(uint32_t pin, uint32_t mode, uint32_t timeout)
 
 void STM32WBClass::shutdown()
 {
-    
     stm32wb_system_shutdown(0);
 }
 
@@ -318,6 +397,57 @@ void STM32WBClass::reset()
 void STM32WBClass::dfu()
 {
     stm32wb_system_dfu();
+}
+
+void STM32WBClass::onStandby(void(*callback)(void))
+{
+    onStandby(Callback(callback));
+}
+
+void STM32WBClass::onStandby(Callback callback)
+{
+    stm32wb_callbacks.standby_callback = callback;
+
+    if (!stm32wb_callbacks.notify.callback)
+    {
+        stm32wb_system_notify(&stm32wb_callbacks.notify, stm32wb_notify_callback, (void*)&stm32wb_callbacks, STM32WB_SYSTEM_EVENT_STANDBY);
+    }
+
+    armv7m_atomic_or((volatile uint32_t*)&stm32wb_callbacks.notify.mask, STM32WB_SYSTEM_EVENT_STANDBY);
+}
+
+void STM32WBClass::onShutdown(void(*callback)(void))
+{
+    onShutdown(Callback(callback));
+}
+
+void STM32WBClass::onShutdown(Callback callback)
+{
+    stm32wb_callbacks.shutdown_callback = callback;
+
+    if (!stm32wb_callbacks.notify.callback)
+    {
+        stm32wb_system_notify(&stm32wb_callbacks.notify, stm32wb_notify_callback, (void*)&stm32wb_callbacks, STM32WB_SYSTEM_EVENT_SHUTDOWN);
+    }
+
+    armv7m_atomic_or((volatile uint32_t*)&stm32wb_callbacks.notify.mask, STM32WB_SYSTEM_EVENT_SHUTDOWN);
+}
+
+void STM32WBClass::onReset(void(*callback)(void))
+{
+    onReset(Callback(callback));
+}
+
+void STM32WBClass::onReset(Callback callback)
+{
+    stm32wb_callbacks.reset_callback = callback;
+
+    if (!stm32wb_callbacks.notify.callback)
+    {
+        stm32wb_system_notify(&stm32wb_callbacks.notify, stm32wb_notify_callback, (void*)&stm32wb_callbacks, STM32WB_SYSTEM_EVENT_RESET);
+    }
+
+    armv7m_atomic_or((volatile uint32_t*)&stm32wb_callbacks.notify.mask, STM32WB_SYSTEM_EVENT_RESET);
 }
 
 void STM32WBClass::swdEnable()

@@ -48,24 +48,26 @@ void __stm32wb_sflash_initialize(const stm32wb_sflash_interface_t *interface, co
 
     stm32wb_sflash_device.size = info->capacity;
 
+    (*interface->enable)();
     (*interface->acquire)();
     
     for (address = info->capacity - info->block_size; address >= info->capacity - 4 * info->block_size; address -= info->block_size)
     {
-	(*interface->read)(address + DOSFS_SFLASH_INFO_HEAD_OFFSET, (uint8_t*)&info_head[0], DOSFS_SFLASH_INFO_HEAD_SIZE);
-	(*interface->read)(address + DOSFS_SFLASH_INFO_TAIL_OFFSET, (uint8_t*)&info_tail[0], DOSFS_SFLASH_INFO_TAIL_SIZE);
-	
-	if ((info_head[DOSFS_SFLASH_INFO_HEAD_MAGIC] == DOSFS_SFLASH_MAGIC_HEAD) &&
-	    ((info_head[DOSFS_SFLASH_INFO_HEAD_DATA_START] + info_head[DOSFS_SFLASH_INFO_HEAD_DATA_SIZE]) == info->capacity) &&
-	    (info_tail[DOSFS_SFLASH_INFO_TAIL_MAGIC] == DOSFS_SFLASH_MAGIC_TAIL))
-	{
-	    stm32wb_sflash_device.size = info_head[DOSFS_SFLASH_INFO_HEAD_DATA_START];
-	    
-	    break;
-	}
+        (*interface->read)(address + DOSFS_SFLASH_INFO_HEAD_OFFSET, (uint8_t*)&info_head[0], DOSFS_SFLASH_INFO_HEAD_SIZE);
+        (*interface->read)(address + DOSFS_SFLASH_INFO_TAIL_OFFSET, (uint8_t*)&info_tail[0], DOSFS_SFLASH_INFO_TAIL_SIZE);
+        
+        if ((info_head[DOSFS_SFLASH_INFO_HEAD_MAGIC] == DOSFS_SFLASH_MAGIC_HEAD) &&
+            ((info_head[DOSFS_SFLASH_INFO_HEAD_DATA_START] + info_head[DOSFS_SFLASH_INFO_HEAD_DATA_SIZE]) == info->capacity) &&
+            (info_tail[DOSFS_SFLASH_INFO_TAIL_MAGIC] == DOSFS_SFLASH_MAGIC_TAIL))
+        {
+            stm32wb_sflash_device.size = info_head[DOSFS_SFLASH_INFO_HEAD_DATA_START];
+            
+            break;
+        }
     }
-	
+    
     (*interface->release)();
+    (*interface->disable)();
 }
 
 bool stm32wb_sflash_query(const stm32wb_sflash_interface_t **p_interface_return, const stm32wb_sflash_info_t **p_info_return, uint32_t *p_size_return)
@@ -110,6 +112,7 @@ bool stm32wb_sflash_resize(uint32_t size)
 	interface = stm32wb_sflash_device.interface;
 	info = stm32wb_sflash_device.info;
 	
+        (*interface->enable)();
 	(*interface->acquire)();
 
 	for (address = stm32wb_sflash_device.size; address < size; address += info->block_size)
@@ -120,6 +123,7 @@ bool stm32wb_sflash_resize(uint32_t size)
 	}
 
 	(*interface->release)();
+        (*interface->disable)();
     }
 
     stm32wb_sflash_device.size = size;

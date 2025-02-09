@@ -55,13 +55,15 @@
 
 #define __SECTION_CCTEXT  __attribute__((section(".cctext."  __XSTRING(__COUNTER__))))
 
+#define __SECTION_FATAL   __attribute__((section(".fatal."   __XSTRING(__COUNTER__))))
 #define __SECTION_DATA    __attribute__((section(".data."    __XSTRING(__COUNTER__))))
 #define __SECTION_BSS     __attribute__((section(".bss."     __XSTRING(__COUNTER__))))
 #define __SECTION_NOINIT  __attribute__((section(".noinit."  __XSTRING(__COUNTER__))))
-#define __SECTION_DMA     __attribute__((section(".dma."     __XSTRING(__COUNTER__))))
 
+#if 0
 #define __SECTION_DATA2   __attribute__((section(".data2."   __XSTRING(__COUNTER__))))
 #define __SECTION_BSS2    __attribute__((section(".bss2."    __XSTRING(__COUNTER__))))
 #define __SECTION_NOINIT2 __attribute__((section(".noinit2." __XSTRING(__COUNTER__))))
+#endif
 
 #endif /* _ARMV7M_H */

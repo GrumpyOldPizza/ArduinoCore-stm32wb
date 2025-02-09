@@ -59,29 +59,51 @@
 
 MEMORY
 {
-   FLASH  (rx)  : ORIGIN = 0x08000000, LENGTH = 0x000c0000 /* 768k (BLE starts @ 0x000cb000)  */
-   EEPROM (r)   : ORIGIN = 0x080c0000, LENGTH = 0x00008000 /* 32k  (BLE starts @ 0x000cb000)  */
-   CCRAM  (rx)  : ORIGIN = 0x10008000, LENGTH = 0x00001000 /* 4k                              */
-   SRAM1  (rw)  : ORIGIN = 0x20000000, LENGTH = 0x00030000 /* 192k                            */
-   IPCC   (rw)  : ORIGIN = 0x20030000, LENGTH = 0x00001000 /* 4k                              */
-   SRAM2  (rw)  : ORIGIN = 0x20031000, LENGTH = 0x00001800 /* 6k                              */
-   RTT    (rw)  : ORIGIN = 0x20039000, LENGTH = 0x00002800 /* 10k                             */
+   BOOT        (rx)  : ORIGIN = 0x08000000, LENGTH = 0x00004000 /* FLASH   16k                          */
+   APPLICATION (rx)  : ORIGIN = 0x08004000, LENGTH = 0x00060000 /* FLASH   384k                         */
+   FWU         (rx)  : ORIGIN = 0x08064000, LENGTH = 0x00062000 /* FLASH   392k                         */
+   EEPROM      (r)   : ORIGIN = 0x080c6000, LENGTH = 0x00008000 /* FLASH   32k                          */
+   WIRELESS          : ORIGIN = 0x080ce000, LENGTH = 0x00032000 /* FLASH   200k (Wireless/SafeBoot/FUS) */
+   CCRAM       (rx)  : ORIGIN = 0x10008000, LENGTH = 0x00001000 /* SRAM2b  4k                           */
+   SRAM        (rw)  : ORIGIN = 0x20000000, LENGTH = 0x00030000 /* SRAM1   192k                         */
+   IPCC        (rw)  : ORIGIN = 0x20030000, LENGTH = 0x00001000 /* SRAM2a  4k                           */
+   BBRAM       (rw)  : ORIGIN = 0x20031000, LENGTH = 0x00001800 /* SRAM2a  6k                           */
+   RTT         (rw)  : ORIGIN = 0x20039000, LENGTH = 0x00002800 /* SRAM2b  10k                          */
 }
 
-GROUP(libgcc.a libc.a libm.a libnosys.a)
+GROUP(libgcc.a libc.a libm.a)
 
 ENTRY(Reset_Handler)
 
+PHDRS
+{
+    boot        PT_LOAD  FLAGS(5);
+    text        PT_LOAD  FLAGS(5);
+    rodata      PT_LOAD  FLAGS(4);
+    stack       PT_NULL  FLAGS(6);
+    data        PT_LOAD  FLAGS(6);
+    bss         PT_NULL  FLAGS(6);
+    noinit      PT_NULL  FLAGS(6);
+    cctext      PT_LOAD  FLAGS(5);
+    ipcc        PT_NULL  FLAGS(6);
+    bbram       PT_NULL  FLAGS(6);
+    rtt         PT_NULL  FLAGS(6);
+    info        PT_LOAD  FLAGS(4);
+}
+
 SECTIONS
 {
+   .boot :
+   {
+       KEEP(*:boot_stm32wb55xx.o(.boot))
+   } > BOOT :boot
+
    .text :
    {
+     __application_start__ = .;
      __Vectors = .;
-       KEEP(*(.vectors))
-
-       . = ORIGIN(FLASH) + 0x140;
-     __tag_ota_start__ = .;
-       LONG (__tag_ota_end__)
+       KEEP(*(.isr_vectors))
+       . = 0x140;
        
        *(.text .text.* .gnu.linkonce.t.*)
 
@@ -102,7 +124,7 @@ SECTIONS
        *(SORT(.dtors.*))
        *(.dtors)
        . = ALIGN(8);
-   } > FLASH
+   } > APPLICATION :text
 
    __etext = . ;
 
@@ -131,14 +153,50 @@ SECTIONS
        KEEP(*(SORT(.fini_array.*)))
        KEEP(*(.fini_array))
        PROVIDE_HIDDEN (__fini_array_end = .);
-       . = ALIGN(8);
-   } > FLASH
+       . = ALIGN(4);
 
-   .fatal_info (NOLOAD) :
-   {
-       KEEP(*(.fatal_info))
+     __system_info__ = .;
+       KEEP(*(.info.system))
+
+     __rtc_info__ = .;
+       LONG  (DEFINED(__RTC_EPOCH__) ? __RTC_EPOCH__ : 0)
+       SHORT (((DEFINED(__RTC_ZONE__) ? __RTC_ZONE__ : 0) + 43200) / 900)
+       BYTE  ((DEFINED(__RTC_DST__) ? __RTC_DST__ : 0) / 3600)
+       BYTE  ((DEFINED(__RTC_LEAP_SECONDS__) ? __RTC_LEAP_SECONDS__ : 18) + 128)
+
+    __copy_table_start__ = .;
+       LONG (LOADADDR(.data))
+       LONG (__data_start__)
+       LONG (__data_end__ - __data_start__)
+     __copy_table_end__ = .;
+
+    __zero_table_start__ = .;
+       LONG (__bss_start__)
+       LONG (__bss_end__ - __bss_start__)
+     __zero_table_end__ = .;
        . = ALIGN(8);
-   } > SRAM1
+   } > APPLICATION :rodata
+
+   .ARM.extab :
+   {
+       *(.ARM.extab* .gnu.linkonce.armextab.*)
+       . = ALIGN(8);
+   } > APPLICATION :rodata
+
+   .ARM.exidx :
+   {
+       PROVIDE_HIDDEN(__exidx_start = .);
+       *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+       PROVIDE_HIDDEN(__exidx_end = .);
+       . = ALIGN(8);
+   } > APPLICATION :rodata
+
+   .stack (NOLOAD) :
+   {
+       KEEP(*(.isr_stack))
+       . = ALIGN(32);
+     __StackTop = .;
+   } > SRAM :stack
 
    .data :
    {
@@ -147,7 +205,8 @@ SECTIONS
        *(.data .data.* .gnu.linkonce.d.*)
        . = ALIGN(8);
      __data_end__ = .;
-   } > SRAM1 AT >FLASH
+       . = ALIGN(8);
+   } > SRAM AT >APPLICATION :data
 
    .bss (NOLOAD) :
    {
@@ -156,19 +215,13 @@ SECTIONS
        *(COMMON)
        . = ALIGN(8);
      __bss_end__ = .;
-   } > SRAM1
+   } > SRAM :bss
 
    .noinit (NOLOAD) :
    {
        *(.noinit .noinit.*)
        . = ALIGN(8);
-   } > SRAM1
-
-   .dma (NOLOAD) :
-   {
-       *(.dma .dma.*)
-       . = ALIGN(8);
-   } > SRAM1
+   } > SRAM :noinit
 
    __end__ = .;
    PROVIDE(end = .);
@@ -179,7 +232,7 @@ SECTIONS
        *(.heap .heap.*)
        . = ALIGN(32);
      __HeapLimit = .;
-   } > SRAM1
+   } > SRAM
 
    /* Set stack top to end of RAM, and stack limit move down by
     * size of stack_dummy section */
@@ -187,62 +240,27 @@ SECTIONS
    {
        *(.stack .stack.*)
        . = ALIGN(32);
-   } > SRAM1
+   } > SRAM
 
-   __StackTop = ORIGIN(SRAM1) + LENGTH(SRAM1);
+   __StackBase = ORIGIN(SRAM) + LENGTH(SRAM);
    __StackLimit = __StackTop - SIZEOF(.stack_dummy);
    PROVIDE(__HeapLimit = __StackLimit);
-   PROVIDE(__stack = __StackTop);
 
    .ipcc (NOLOAD) :
    {
      __ipcc_start__ = .;
-       KEEP(*(.ipcc.ref_table))
-       KEEP(*(.ipcc.sys_state))
-       KEEP(*(.ipcc.info_table))
-       KEEP(*(.ipcc.ble_table))
-       KEEP(*(.ipcc.sys_table))
-       KEEP(*(.ipcc.mm_table))
-       *(.ipcc .ipcc.*)
+       KEEP(*(.ipcc .ipcc.*))
        . = ALIGN(8);
      __ipcc_end__ = .;
-   } >IPCC
+   } >IPCC :ipcc
 
-   .rtt_control (NOLOAD) :
+   .bbram (NOLOAD) :
    {
-       KEEP(*(.rtt_control))
-   } > SRAM2
-
-   .data2 :
-   {
-     __data2_start__ = .;
-       *(.data2 .data2.*)
+     __bbram_start__ = .;
+       *(.bbram .bbram.*)
        . = ALIGN(8);
-     __data2_end__ = .;
-   } > SRAM2 AT >FLASH
-
-   __data2_flash__ = LOADADDR(.data2);
-
-   .bss2 (NOLOAD) :
-   {
-     __bss2_start__ = .;
-       *(.bss2 .bss2.*)
-       . = ALIGN(8);
-     __bss2_end__ = .;
-   } > SRAM2
-
-   .noinit2 (NOLOAD) :
-   {
-       *(.noinit2 .noinit2.*)
-       . = ALIGN(8);
-   } > SRAM2
-
-   .ccvectors (NOLOAD) :
-   {
-     __ccvectors_start__ = .;
-       . = ORIGIN(CCRAM) + 0x140;
-     __ccvectors_end__ = .;
-   } >CCRAM AT >FLASH
+     __bbram_end__ = .;
+   } > BBRAM :bbram
 
    .cctext :
    {
@@ -250,103 +268,48 @@ SECTIONS
        *(.cctext .cctext.*)
        . = ALIGN(8);
      __cctext_end__ = .;
-   } >CCRAM AT >FLASH
+   } >CCRAM AT >APPLICATION :cctext
 
    __cctext_flash__ = LOADADDR(.cctext);
 
-   .rtt_data (NOLOAD) :
+   .rtt (NOLOAD) :
    {
+       KEEP(*(.rtt_control))
        KEEP(*(.rtt_data .rtt_data.*))
-       . = ALIGN(8);
-   } > RTT
-
-   .ARM.extab :
+   } > RTT :rtt
+   
+   .info : ALIGN(16)
    {
-       *(.ARM.extab* .gnu.linkonce.armextab.*)
-       . = ALIGN(8);
-   } > FLASH
-
-   .ARM.exidx :
-   {
-       PROVIDE_HIDDEN(__exidx_start = .);
-       *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-       PROVIDE_HIDDEN(__exidx_end = .);
-       . = ALIGN(8);
-   } > FLASH
-
-   .info :
-   {
-     __stm32wb_rtc_info__ = .;
-       LONG  (DEFINED(__RTC_EPOCH__) ? __RTC_EPOCH__ : 0)
-       SHORT (((DEFINED(__RTC_ZONE__) ? __RTC_ZONE__ : 0) + 43200) / 900)
-       BYTE  ((DEFINED(__RTC_DST__) ? __RTC_DST__ : 0) / 3600)
-       BYTE  ((DEFINED(__RTC_LEAP_SECONDS__) ? __RTC_LEAP_SECONDS__ : 18) + 128)
-       
-     __copy_table_start__ = .;
-       LONG (LOADADDR(.data))
-       LONG (__data_start__)
-       LONG (__data_end__ - __data_start__)
-     __copy_table_end__ = .;
-     
-     __zero_table_start__ = .;
-       LONG (__bss_start__)
-       LONG (__bss_end__ - __bss_start__)
-     __zero_table_end__ = .;
-     
-       . = ALIGN(8);
-       LONG (0x00000000)
-     __tag_ota_end__ = .;
-       LONG (0x94448A29)
-   } > FLASH
+     __application_info__ = .;
+     stm32wb_application_info = .;
+       KEEP(*(.info.uuid))          /* UUID      */
+       . = 16;                      /* VERSION   */
+       KEEP(*(.info.version))
+       . = 20;                      /* SEQUENCE  */
+       KEEP(*(.info.sequence))
+       . = 24;                      /* EPOCH     */
+       . = 28;                      /* CRC32     */
+       . = 32;                      /* SIGNATURE */
+       . = 96 - 4;
+       LONG(0)
+     __application_end__ = .;
+   } > APPLICATION :info
 
    __FlashBase = ALIGN(LOADADDR(.info) + SIZEOF(.info), 4096);
-   __FlashLimit = ORIGIN(FLASH) + LENGTH(FLASH);
+   __FlashLimit = ORIGIN(APPLICATION) + LENGTH(APPLICATION);
 
-   __eeprom_start__ = ORIGIN(EEPROM);
-   __eeprom_end__ = ORIGIN(EEPROM) + LENGTH(EEPROM);
+   __ccram_base__ = ORIGIN(CCRAM);
+   __ccram_limit__ = ORIGIN(CCRAM) + LENGTH(CCRAM);
 
-   __ccram_start__ = ORIGIN(CCRAM);
-   __ccram_end__ = ORIGIN(CCRAM) + LENGTH(CCRAM);
+   __application_base__ = ORIGIN(APPLICATION);
+   __application_limit__ = ORIGIN(APPLICATION) + LENGTH(APPLICATION);
 
-   /* Stabs debugging sections.  */
-   .stab          0 : { *(.stab) }
-   .stabstr       0 : { *(.stabstr) }
-   .stab.excl     0 : { *(.stab.excl) }
-   .stab.exclstr  0 : { *(.stab.exclstr) }
-   .stab.index    0 : { *(.stab.index) }
-   .stab.indexstr 0 : { *(.stab.indexstr) }
-   .comment       0 : { *(.comment) }
-   /* DWARF debug sections.
-      Symbols in the DWARF debugging sections are relative to the beginning
-      of the section so we begin them at 0.  */
-   /* DWARF 1 */
-   .debug          0 : { *(.debug) }
-   .line           0 : { *(.line) }
-   /* GNU DWARF 1 extensions */
-   .debug_srcinfo  0 : { *(.debug_srcinfo) }
-   .debug_sfnames  0 : { *(.debug_sfnames) }
-   /* DWARF 1.1 and DWARF 2 */
-   .debug_aranges  0 : { *(.debug_aranges) }
-   .debug_pubnames 0 : { *(.debug_pubnames) }
-   /* DWARF 2 */
-   .debug_info     0 : { *(.debug_info .gnu.linkonce.wi.*) }
-   .debug_abbrev   0 : { *(.debug_abbrev) }
-   .debug_line     0 : { *(.debug_line) }
-   .debug_frame    0 : { *(.debug_frame) }
-   .debug_str      0 : { *(.debug_str) }
-   .debug_loc      0 : { *(.debug_loc) }
-   .debug_macinfo  0 : { *(.debug_macinfo) }
-   /* SGI/MIPS DWARF 2 extensions */
-   .debug_weaknames 0 : { *(.debug_weaknames) }
-   .debug_funcnames 0 : { *(.debug_funcnames) }
-   .debug_typenames 0 : { *(.debug_typenames) }
-   .debug_varnames  0 : { *(.debug_varnames) }
-   /* DWARF 3 */
-   .debug_pubtypes 0 : { *(.debug_pubtypes) }
-   .debug_ranges   0 : { *(.debug_ranges) }
-   /* DWARF Extension.  */
-   .debug_macro    0 : { *(.debug_macro) }
-   .ARM.attributes 0 : { KEEP (*(.ARM.attributes)) KEEP (*(.gnu.attributes)) }
-   .note.gnu.arm.ident 0 : { KEEP (*(.note.gnu.arm.ident)) }
-   /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
+   __fwu_base__ = ORIGIN(FWU);
+   __fwu_limit__ = ORIGIN(FWU) + LENGTH(FWU) - 4096;
+   __fwu_status__ = ORIGIN(FWU) + LENGTH(FWU);
+
+   __eeprom_base__ = ORIGIN(EEPROM);
+   __eeprom_limit__ = ORIGIN(EEPROM) + LENGTH(EEPROM);
+
+   __wireless_base__ = ORIGIN(WIRELESS);
 }

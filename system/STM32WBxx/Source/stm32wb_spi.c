@@ -45,8 +45,8 @@ typedef struct _stm32wb_spi_device_t {
 
 static stm32wb_spi_device_t stm32wb_spi_device;
 
-static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_rx_none;
-static __attribute__((section(".dma"))) uint16_t stm32wb_spi_dma_tx_default;
+static __attribute__((section(".noinit"))) uint16_t stm32wb_spi_dma_rx_none;
+static __attribute__((section(".noinit"))) uint16_t stm32wb_spi_dma_tx_default;
 
 #define SPI_CR1_BR_DIV2   (0)
 #define SPI_CR1_BR_DIV4   (SPI_CR1_BR_0)
@@ -149,7 +149,7 @@ static SPI_TypeDef * const stm32wb_i2c_xlate_SPI[STM32WB_SPI_INSTANCE_COUNT] = {
     SPI2,
 };
 
-static void stm32wb_spi_notify_callback(void *context, uint32_t notify)
+static void stm32wb_spi_notify_callback(void *context, uint32_t event)
 {
     if (stm32wb_spi_device.instances[STM32WB_SPI_INSTANCE_SPI1])
     {
@@ -215,7 +215,7 @@ bool stm32wb_spi_create(stm32wb_spi_t *spi, const stm32wb_spi_params_t *params)
 
     if (!stm32wb_spi_device.notify.callback)
     {
-        stm32wb_system_register(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_NOTIFY_CLOCKS_EPILOGUE));
+        stm32wb_system_notify(&stm32wb_spi_device.notify, stm32wb_spi_notify_callback, NULL, (STM32WB_SYSTEM_EVENT_CLOCKS_EPILOGUE));
     }
     
     return true;

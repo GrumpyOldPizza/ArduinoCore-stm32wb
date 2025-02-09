@@ -398,9 +398,11 @@ bool DOSFSFileSystem::hardformat(size_t size) {
     return (f_hardformat(size) == F_NO_ERROR);
 }
 
+#if 0
 bool DOSFSFileSystem::reclaim(size_t size) {
     return (f_reclaim(size) == F_NO_ERROR);
 }
+#endif
 
 DOSFSFileSystem::operator bool() {
     return (f_checkvolume() == F_NO_ERROR);

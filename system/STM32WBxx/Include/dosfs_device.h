@@ -53,14 +53,14 @@ typedef struct _dosfs_device_t dosfs_device_t;
 #define DOSFS_DEVICE_CACHE_SIZE 1024
    
 typedef struct _dosfs_device_interface_t {
-    int                     (*release)(void *context);
-    int                     (*info)(void *context, uint8_t *p_type, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial);
+    int                     (*start)(void *context, uint8_t *p_type, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial);
+    int                     (*stop)(void *context, bool eject);
     int                     (*format)(void *context, uint32_t size);
     int                     (*erase)(void *context, uint32_t address, uint32_t length);
     int                     (*discard)(void *context, uint32_t address, uint32_t length);
-    int                     (*read)(void *context, uint32_t address, uint8_t *data, uint32_t length, uint32_t total, uint32_t *p_fault_return);
-    int                     (*write)(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return);
-    int                     (*sync)(void *context, uint32_t *p_fault_return);
+    int                     (*read)(void *context, uint32_t address, uint8_t *data, uint32_t length);
+    int                     (*write)(void *context, uint32_t address, const uint8_t *data, uint32_t length, bool sync);
+    int                     (*sync)(void *context);
 } dosfs_device_interface_t;
 
 #define DOSFS_DEVICE_LOCK_INIT               0x00000001 /* device lock during init */
@@ -68,9 +68,7 @@ typedef struct _dosfs_device_interface_t {
 #define DOSFS_DEVICE_LOCK_VOLUME             0x00000004 /* DOSFS file system lock */
 #define DOSFS_DEVICE_LOCK_SCSI               0x00000008 /* USB/MSC SCSI opereration */
 #define DOSFS_DEVICE_LOCK_MEDIUM             0x00000010 /* USB/MSC ALLOW_PREVENT_MEDIUM_REMOVAL lock */
-#define DOSFS_DEVICE_LOCK_EJECTED            0x00000020 /* USB/MSC ejected (refuse to remount */
-#define DOSFS_DEVICE_LOCK_ACCESSED           0x40000000 /* USB/MSC accessed device */
-#define DOSFS_DEVICE_LOCK_MODIFIED           0x80000000 /* DOSFS modified device */
+
 
 struct _dosfs_device_t {
     volatile uint32_t              lock;

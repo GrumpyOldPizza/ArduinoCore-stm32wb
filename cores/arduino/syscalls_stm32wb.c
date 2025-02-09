@@ -148,15 +148,3 @@ void _exit(int status)
     while (1) { };
 }
 
-static k_mutex_t __malloc_mutex = K_MUTEX_INIT(K_PRIORITY_MIN, K_MUTEX_PRIORITY_INHERIT | K_MUTEX_RECURSIVE);
-
-void __malloc_lock(struct _reent *ptr __attribute__((unused)))
-{
-    k_mutex_lock(&__malloc_mutex, K_TIMEOUT_FOREVER);
-}
-
-void __malloc_unlock(struct _reent *ptr __attribute__((unused)))
-{
-    k_mutex_unlock(&__malloc_mutex);
-}
-

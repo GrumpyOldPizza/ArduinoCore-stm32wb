@@ -29,18 +29,19 @@ extern "C" {
  */
 typedef enum _eAnalogReference
 {
-  AR_DEFAULT,
+  AR_INTERNAL_2V0 = 0,
+  AR_INTERNAL_2V5 = 1,
+  AR_EXTERNAL     = 2,
+  AR_DEFAULT      = AR_EXTERNAL
 } eAnalogReference ;
 
 
-/*
- * \brief Configures the reference voltage used for analog input (i.e. the value used as the top of the input range).
- * This function is kept only for compatibility with existing AVR based API.
- *
- * \param ulMmode Should be set to AR_DEFAULT.
- */
-extern void analogReference( eAnalogReference ulMode ) ;
-
+extern void analogReference(eAnalogReference reference);
+extern void analogReadPeriod(float period);
+extern void analogReadSamples(int samples);
+extern void analogReadResolution(int resolution);
+extern uint32_t analogRead(uint32_t pin);
+  
 /*
  * \brief Writes an analog value (PWM wave) to a pin.
  *
@@ -49,31 +50,7 @@ extern void analogReference( eAnalogReference ulMode ) ;
  */
 extern void analogWrite( uint32_t ulPin, uint32_t ulValue ) ;
 
-/*
- * \brief Reads the value from the specified analog pin.
- *
- * \param ulPin
- *
- * \return Read value from selected pin, if no error.
- */
-extern uint32_t analogRead( uint32_t ulPin ) ;
-
-
-/*
- * \brief Set the resolution of analogRead return values. Default is 10 bits (range from 1 to 12).
- *
- * \param res
- */
-extern void analogReadResolution(int resolution);
-
-/*
- * \brief Set the sampling period of analogRead in microseconds. Default is 2 microsceonds (range from 0 to 50).
- *
- * \param res
- */
-extern void analogReadPeriod(int period);
-
-/*
+/*  
  * \brief Set the resolution of analogWrite parameters. Default is 8 bits (range from 1 to 12).
  *
  * \param res
@@ -89,4 +66,11 @@ extern void analogWriteFrequency( unsigned long frequency );
   
 #ifdef __cplusplus
 }
+#endif
+
+#ifdef __cplusplus
+
+extern uint32_t analogRead(uint32_t pin, bool stop);
+extern bool analogRead(const uint8_t pins[], uint16_t data[], uint32_t count, bool stop = true);
+
 #endif

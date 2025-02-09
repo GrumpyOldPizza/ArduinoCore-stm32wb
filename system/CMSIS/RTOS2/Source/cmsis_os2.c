@@ -30,18 +30,20 @@
 #include "../../CMSIS/RTOS2/Include/cmsis_os2.h"
 
 #include <malloc.h>
+#include <alloca.h>
 
 extern void __malloc_lock(struct _reent *);
 extern void __malloc_unlock(struct _reent *);
 
-#define OS_VERSION_API       20010003         // API version (2.1.3)
-#define OS_VERSION_KERNEL    10000000         // Kernel version (1.0.0)
-#define OS_KERNEL_NAME       "Orchid V1.0.0"  // Kernel identification string
+#define OS_VERSION_API         20010003         // API version (2.1.3)
+#define OS_VERSION_KERNEL      10000000         // Kernel version (1.0.0)
+#define OS_KERNEL_NAME         "Orchid V1.0.0"  // Kernel identification string
 
-#define OS_THREAD_MAGIC      0xff544844
-#define OS_TIMER_MAGIC       0xff544d52
-#define OS_MUTEX_MAGIC       0xff4e5458
-#define OS_SEMAPHORE_MAGIC   0xff53454d
+#define OS_THREAD_MAGIC        0xff544844
+#define OS_TIMER_MAGIC         0xff544d52
+#define OS_MUTEX_MAGIC         0xff4e5458
+#define OS_SEMAPHORE_MAGIC     0xff53454d
+#define OS_MESSAGE_QUEUE_MAGIC 0xff4d5347
 
 typedef struct _osThread_t {
     uint32_t                      magic;
@@ -75,6 +77,14 @@ typedef struct _osSemaphore_t {
     void                          *cb_mem;
 } osSemaphore_t;
 
+typedef struct _osMessageQueue_t {
+    uint32_t                      magic;
+    const char                    *name;
+    k_queue_t                     queue;
+    void                          *cb_mem;
+    void                          *mq_mem;
+} osMessageQueue_t;
+
 static const osThreadAttr_t osThreadAttrDefault =
 {
     .name = NULL,
@@ -100,7 +110,7 @@ static const osMutexAttr_t osMutexAttrDefault =
 {
     .name = NULL,
     .attr_bits = 0,
-    .cb_mem = 0,
+    .cb_mem = NULL,
     .cb_size = 0
 };
 
@@ -108,8 +118,18 @@ static const osSemaphoreAttr_t osSemaphoreAttrDefault =
 {
     .name = NULL,
     .attr_bits = 0,
-    .cb_mem = 0,
+    .cb_mem = NULL,
     .cb_size = 0
+};
+
+static const osMessageQueueAttr_t osMessageQueueAttrDefault =
+{
+    .name = NULL,
+    .attr_bits = 0,
+    .cb_mem = NULL,
+    .cb_size = 0,
+    .mq_mem = NULL,
+    .mq_size = 0
 };
 
 static osKernelState_t osXlateKernelState[] =
@@ -135,11 +155,13 @@ static osStatus_t osXlateKernelStatus[] =
     osErrorResource,  // K_ERR_TASK_NOT_JOINABLE
     osErrorResource,  // K_ERR_TASK_ALREADY_SUSPENDED
     osErrorResource,  // K_ERR_TASK_NOT_SUSPENDED
-    osErrorResource,  // K_ERR_SEM_OVERFLOW
     osErrorResource,  // K_ERR_NOT_OWNER_OF_MUTEX
+    osErrorResource,  // K_ERR_MUTEX_OWNER_DESTROYED
     osErrorResource,  // K_ERR_MUTEX_ALREADY_LOCKED
     osErrorResource,  // K_ERR_MUTEX_NOT_LOCKED
     osErrorResource,  // K_ERR_MUTEX_OVERFLOW
+    osErrorResource,  // K_ERR_SEM_OVERFLOW
+    osErrorResource,  // K_ERR_QUEUE_OVERFLOW
     osErrorResource,  // K_ERR_WORK_ALREADY_SUBMITTED
     osErrorResource,  // K_ERR_ALARM_NOT_ACTIVE
 };
@@ -159,11 +181,13 @@ static uint32_t osXlateKernelFlags[] =
     osFlagsErrorResource,  // K_ERR_TASK_NOT_JOINABLE
     osFlagsErrorResource,  // K_ERR_TASK_ALREADY_SUSPENDED
     osFlagsErrorResource,  // K_ERR_TASK_NOT_SUSPENDED
-    osFlagsErrorResource,  // K_ERR_SEM_OVERFLOW
     osFlagsErrorResource,  // K_ERR_NOT_OWNER_OF_MUTEX
+    osFlagsErrorResource,  // K_ERR_MUTEX_OWNER_DESTROYED
     osFlagsErrorResource,  // K_ERR_MUTEX_ALREADY_LOCKED
     osFlagsErrorResource,  // K_ERR_MUTEX_NOT_LOCKED
     osFlagsErrorResource,  // K_ERR_MUTEX_OVERFLOW
+    osFlagsErrorResource,  // K_ERR_SEM_OVERFLOW
+    osFlagsErrorResource,  // K_ERR_QUEUE_OVERFLOW
     osFlagsErrorResource,  // K_ERR_WORK_ALREADY_SUBMITTED
     osFlagsErrorResource,  // K_ERR_ALARM_NOT_ACTIVE
 };
@@ -217,7 +241,7 @@ osStatus_t osKernelInitialize(void)
 {
     int status;
 
-    // status = k_system_initialize(&armv7m_rtt_hook_table);
+    //status = k_system_initialize(&armv7m_rtt_hook_table);
     status = k_system_initialize(NULL);
 
     return osXlateKernelStatus[status];
@@ -240,11 +264,6 @@ int32_t osKernelLock(void)
         return osErrorISR;
     }
 
-    if (!k_task_is_in_progress())
-    {
-        return osError;
-    }
-    
     return k_system_lock();
 }
 
@@ -255,11 +274,6 @@ int32_t osKernelUnlock(void)
     if (armv7m_core_is_in_interrupt())
     {
         return osErrorISR;
-    }
-
-    if (!k_task_is_in_progress())
-    {
-        return osError;
     }
 
     lock = k_system_is_locked();
@@ -274,11 +288,6 @@ int32_t osKernelRestoreLock(int32_t lock)
     if (armv7m_core_is_in_interrupt())
     {
         return osErrorISR;
-    }
-
-    if (!k_task_is_in_progress())
-    {
-        return osError;
     }
 
     if (lock)
@@ -313,7 +322,7 @@ uint32_t osKernelGetSysTimerFreq(void)
     return SystemCoreClock;
 }
 
-static void __attribute__((noreturn)) osThreadRoutine(osThread_t *thread)
+static void osThreadRoutine(osThread_t *thread)
 {
     (thread->func)(thread->argument);
 
@@ -544,7 +553,7 @@ uint32_t osThreadGetStackSize(osThreadId_t thread_id)
         return 0;
     }
 
-    if (k_task_stack(&thread->task, NULL, &stack_size, NULL) != K_NO_ERROR)
+    if (k_task_stack(&thread->task, &stack_size, NULL) != K_NO_ERROR)
     {
         return 0;
     }
@@ -562,7 +571,7 @@ uint32_t osThreadGetStackSpace(osThreadId_t thread_id)
         return 0;
     }
 
-    if (k_task_stack(&thread->task, NULL, NULL, &stack_space) != K_NO_ERROR)
+    if (k_task_stack(&thread->task, NULL, &stack_space) != K_NO_ERROR)
     {
         return 0;
     }
@@ -702,7 +711,7 @@ __NO_RETURN void osThreadExit(void)
     osThread_t *thread;
     k_task_t *task;
 
-    if (k_task_is_in_progress())
+    if (!armv7m_core_is_in_interrupt())
     {
         task = k_task_self();
 
@@ -723,44 +732,7 @@ __NO_RETURN void osThreadExit(void)
     {
     }
 }
- 
-osStatus_t osThreadTerminate(osThreadId_t thread_id)
-{
-    osThread_t *thread = (osThread_t*)thread_id;
-    int status;
-    
-    if (!thread || (thread->magic != OS_THREAD_MAGIC))
-    {
-        return osErrorParameter;
-    }
 
-    if (k_task_is_in_progress() && (&thread->task == k_task_self()))
-    {
-        if (!k_task_is_joinable(&thread->task))
-        {
-            osThreadDelete(thread, true);
-        }
-
-        k_task_exit();
-
-        while (1)
-        {
-        }
-    }
-    
-    status = k_task_terminate(&thread->task);
-
-    if (status == K_NO_ERROR)
-    {
-        if (!k_task_is_joinable(&thread->task))
-        {
-            osThreadDelete(thread, false);
-        }
-    }
-    
-    return osXlateKernelStatus[status];
-}
- 
 uint32_t osThreadGetCount(void)
 {
     uint32_t count;
@@ -787,12 +759,53 @@ uint32_t osThreadEnumerate(osThreadId_t *thread_array, uint32_t array_items)
         if (((osThread_t*)(((uint32_t)thread_array[i]) - offsetof(osThread_t, task)))->magic == OS_THREAD_MAGIC)
         {
             thread_array[count++] = (osThread_t*)(((uint32_t)thread_array[i]) - offsetof(osThread_t, task));
+
+            if (count == array_items)
+            {
+                break;
+            }
         }
     }
     
     return count;
 }
 
+osStatus_t osThreadTerminate(osThreadId_t thread_id)
+{
+    osThread_t *thread = (osThread_t*)thread_id;
+    int status;
+    
+    if (!thread || (thread->magic != OS_THREAD_MAGIC))
+    {
+        return osErrorParameter;
+    }
+
+    if (!armv7m_core_is_in_interrupt() && (&thread->task == k_task_self()))
+    {
+        if (!k_task_is_joinable(&thread->task))
+        {
+            osThreadDelete(thread, true);
+        }
+
+        k_task_exit();
+
+        while (1)
+        {
+        }
+    }
+    
+    status = k_task_terminate(&thread->task);
+
+    if (status == K_NO_ERROR)
+    {
+        if (!k_task_is_joinable(&thread->task))
+        {
+            osThreadDelete(thread, false);
+        }
+    }
+    
+    return osXlateKernelStatus[status];
+}
 
 uint32_t osThreadFlagsSet(osThreadId_t thread_id, uint32_t flags)
 {
@@ -1058,14 +1071,22 @@ uint32_t osTimerIsRunning(osTimerId_t timer_id)
 osStatus_t osTimerDelete(osTimerId_t timer_id)
 {
     osTimer_t *timer = (osTimer_t*)timer_id;
-    int status;
+    int status = K_NO_ERROR;
+
+    if (armv7m_core_is_in_interrupt())
+    {
+        return osErrorISR;
+    }
 
     if (!timer || (timer->magic != OS_TIMER_MAGIC))
     {
         return osErrorParameter;
     }
 
-    status = k_alarm_deinit(&timer->alarm);
+    if (k_alarm_is_active(&timer->alarm))
+    {
+        status = k_alarm_cancel(&timer->alarm);
+    }
 
     if (status == K_NO_ERROR)
     {
@@ -1202,7 +1223,7 @@ osThreadId_t osMutexGetOwner(osMutexId_t mutex_id)
         return NULL;
     }
 
-    task = k_mutex_owner(&mutex->mutex);
+    task = mutex->mutex.owner;
 
     if (task && (((osThread_t*)(((uint32_t)task) - offsetof(osThread_t, task)))->magic == OS_THREAD_MAGIC))
     {
@@ -1217,26 +1238,30 @@ osThreadId_t osMutexGetOwner(osMutexId_t mutex_id)
 osStatus_t osMutexDelete(osMutexId_t mutex_id)
 {
     osMutex_t *mutex = (osMutex_t*)mutex_id;
-    int status;
+
+    if (armv7m_core_is_in_interrupt())
+    {
+        return osErrorISR;
+    }
     
     if (!mutex || (mutex->magic != OS_MUTEX_MAGIC))
     {
         return osErrorParameter;
     }
 
-    status = k_mutex_deinit(&mutex->mutex);
-
-    if (status == K_NO_ERROR)
+    if (mutex->mutex.owner)
     {
-        mutex->magic = ~OS_MUTEX_MAGIC;
-    
-        if (mutex->cb_mem)
-        {
-            free(mutex->cb_mem);
-        }
+        return osErrorResource;
     }
+
+    mutex->magic = ~OS_MUTEX_MAGIC;
     
-    return osXlateKernelStatus[status];
+    if (mutex->cb_mem)
+    {
+        free(mutex->cb_mem);
+    }
+
+    return osOK;
 }    
 
 
@@ -1364,31 +1389,313 @@ uint32_t osSemaphoreGetCount(osSemaphoreId_t semaphore_id)
         return 0;
     }
 
-    return k_sem_count(&semaphore->sem);
+    return semaphore->sem.count;
 }
  
 osStatus_t osSemaphoreDelete(osSemaphoreId_t semaphore_id)
 {
     osSemaphore_t *semaphore = (osSemaphore_t*)semaphore_id;
-    int status;
     
+    if (armv7m_core_is_in_interrupt())
+    {
+        return osErrorISR;
+    }
+
     if (!semaphore || (semaphore->magic != OS_SEMAPHORE_MAGIC))
     {
         return osErrorParameter;
     }
 
-    status = k_sem_deinit(&semaphore->sem);
-
-    if (status == K_NO_ERROR)
+    if (semaphore->sem.waiting.head)
     {
-        semaphore->magic = ~OS_SEMAPHORE_MAGIC;
+        return osErrorResource;
+    }
+
+    semaphore->magic = ~OS_SEMAPHORE_MAGIC;
     
-        if (semaphore->cb_mem)
+    if (semaphore->cb_mem)
+    {
+        free(semaphore->cb_mem);
+    }
+
+    return osOK;
+}
+
+osMessageQueueId_t osMessageQueueNew (uint32_t msg_count, uint32_t msg_size, const osMessageQueueAttr_t *attr)
+{
+    osMessageQueue_t *mq;
+    const char *name;
+    void *msg_base;
+      
+    if (armv7m_core_is_in_interrupt())
+    {
+        return (osMessageQueueId_t)NULL;
+    }
+
+    if (!attr)
+    {
+        attr = &osMessageQueueAttrDefault;
+    }
+
+    name = attr->name;
+
+    mq = (osMessageQueue_t*)attr->cb_mem;
+
+    if (mq)
+    {
+        if (((uint32_t)mq & 3) || (attr->cb_size < sizeof(osMessageQueue_t)))
         {
-            free(semaphore->cb_mem);
+            return (osMessageQueueId_t)NULL;
         }
     }
+    else
+    {
+        if (attr->cb_size != 0)
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+
+    if (!mq)
+    {
+        mq = (osMessageQueue_t*)malloc(sizeof(osMessageQueue_t));
+
+        if (!mq)
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+
+    msg_base = (void*)attr->mq_mem;
+
+    if (msg_base)
+    {
+        if (((uint32_t)msg_base & 3) || (attr->mq_size < (msg_count * msg_size)))
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+    else
+    {
+        if (attr->mq_size != 0)
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+    
+    if (!mq)
+    {
+        mq = (osMessageQueue_t*)malloc(sizeof(osMessageQueue_t));
+
+        if (!mq)
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+
+    if (!msg_base)
+    {
+        msg_base = (void*)malloc(msg_count * msg_size);
+
+        if (!msg_base)
+        {
+            return (osMessageQueueId_t)NULL;
+        }
+    }
+    
+    mq->magic = OS_MESSAGE_QUEUE_MAGIC;
+    mq->name = name;
+    mq->cb_mem = attr->cb_mem ? NULL : mq;
+    mq->mq_mem = attr->mq_mem ? NULL : msg_base;
+    
+    if (k_queue_init(&mq->queue, msg_base, msg_count, msg_size) != K_NO_ERROR)
+    {
+        mq->magic = ~OS_MESSAGE_QUEUE_MAGIC;
+
+        if (!attr->cb_mem)
+        {
+            free(mq);
+        }
+
+        if (!attr->mq_mem)
+        {
+            free(msg_base);
+        }
+        
+        return (osMessageQueueId_t)NULL;
+    }
+
+    return (osMessageQueueId_t)mq;
+}
+ 
+const char *osMessageQueueGetName (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (armv7m_core_is_in_interrupt())
+    {
+        return NULL;
+    }
+    
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return NULL;
+    }
+    
+    return mq->name;
+}
+ 
+osStatus_t osMessageQueuePut (osMessageQueueId_t mq_id, const void *msg_ptr, uint8_t msg_prio, uint32_t timeout)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+    int status;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return osErrorParameter;
+    }
+
+    if (msg_prio != 0)
+    {
+        return osErrorParameter;
+    }
+
+    if (timeout != 0)
+    {
+        return osErrorParameter;
+    }
+    
+    status = k_queue_send(&mq->queue, msg_ptr);
 
     return osXlateKernelStatus[status];
 }
 
+osStatus_t osMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8_t *msg_prio, uint32_t timeout)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+    int status;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return osErrorParameter;
+    }
+
+    if (msg_prio != NULL)
+    {
+        return osErrorParameter;
+    }
+
+    status = k_queue_receive(&mq->queue, msg_ptr, timeout);
+
+    return osXlateKernelStatus[status];
+}
+ 
+uint32_t osMessageQueueGetCapacity (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return 0;
+    }
+
+    return (mq->queue.limit / mq->queue.size);
+}
+ 
+
+uint32_t osMessageQueueGetMsgSize (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return 0;
+    }
+
+    return mq->queue.size;
+}
+ 
+uint32_t osMessageQueueGetCount (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return 0;
+    }
+
+    return mq->queue.count;
+}
+ 
+uint32_t osMessageQueueGetSpace (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return 0;
+    }
+
+    return (mq->queue.limit / mq->queue.size) - mq->queue.count;
+}
+ 
+// Reset a Message Queue to initial empty state.
+/// \param[in]     mq_id         message queue ID obtained by \ref osMessageQueueNew.
+/// \return status code that indicates the execution status of the function.
+osStatus_t osMessageQueueReset (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+    int status;
+
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return osErrorParameter;
+    }
+
+    if (armv7m_core_is_in_interrupt())
+    {
+        return osErrorISR;
+    }
+
+    status = k_queue_flush(&mq->queue, NULL);
+
+    return osXlateKernelStatus[status];
+}
+
+ 
+/// Delete a Message Queue object.
+/// \param[in]     mq_id         message queue ID obtained by \ref osMessageQueueNew.
+/// \return status code that indicates the execution status of the function.
+osStatus_t osMessageQueueDelete (osMessageQueueId_t mq_id)
+{
+    osMessageQueue_t *mq = (osMessageQueue_t*)mq_id;
+
+    if (armv7m_core_is_in_interrupt())
+    {
+        return osErrorISR;
+    }
+    
+    if (!mq || (mq->magic != OS_MESSAGE_QUEUE_MAGIC))
+    {
+        return osErrorParameter;
+    }
+
+    if (mq->queue.waiting.head)
+    {
+        return osErrorResource;
+    }
+
+    mq->magic = ~OS_MESSAGE_QUEUE_MAGIC;
+
+    if (mq->mq_mem)
+    {
+        free(mq->mq_mem);
+    }
+    
+    if (mq->cb_mem)
+    {
+        free(mq->cb_mem);
+    }
+
+    return osOK;
+}

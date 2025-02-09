@@ -42,9 +42,21 @@
 
 #define STM32WB_USBD_MSC_DATA_BLOCK_SIZE         512
 
-extern void MSC_BOT_Notify(uint8_t lun, int acquire);
-
 extern const stm32wb_usbd_class_t stm32wb_usbd_msc_class;
+
+typedef struct _dosfs_device_t dosfs_device_t;
+
+#define STM32WB_USBD_MSC_EVENT_START              0x00000001
+#define STM32WB_USBD_MSC_EVENT_STOP               0x00000002
+#define STM32WB_USBD_MSC_EVENT_EJECT              0x00000004
+#define STM32WB_USBD_MSC_EVENT_ATTACH             0x00000008
+#define STM32WB_USBD_MSC_EVENT_DETACH             0x00000010
+
+typedef void (*stm32wb_usbd_msc_event_callback_t)(void *context, uint32_t events);
+   
+extern bool stm32wb_usbd_msc_attach(dosfs_device_t *device, stm32wb_usbd_msc_event_callback_t callback, void *context);
+extern bool stm32wb_usbd_msc_detach(void);
+
    
 #ifdef __cplusplus
 }

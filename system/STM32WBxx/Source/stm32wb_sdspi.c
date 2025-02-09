@@ -259,15 +259,15 @@ static void stm32wb_sdspi_unselect(stm32wb_sdspi_t *sdspi);
 static void stm32wb_sdspi_mode(stm32wb_sdspi_t *sdspi, uint32_t mode);
 static int stm32wb_sdspi_command(stm32wb_sdspi_t *sdspi, uint8_t index, uint32_t argument, uint32_t wait);
 static int stm32wb_sdspi_wait_ready(stm32wb_sdspi_t *sdspi, uint32_t timeout);
-static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint8_t *data, uint32_t count, uint32_t *p_count_return, uint32_t *p_fault_address);
-static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, const uint8_t *data, uint32_t count, uint32_t *p_count_return, uint32_t *p_fault_return);
+static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint32_t blksz, uint8_t *data, uint32_t count, uint32_t *p_count_return);
+static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, uint32_t blksz, const uint8_t *data, uint32_t count, uint32_t *p_count_return);
 static int stm32wb_sdspi_read_stop(stm32wb_sdspi_t *sdspi);
 static int stm32wb_sdspi_write_stop(stm32wb_sdspi_t *sdspi);
-static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi, uint32_t *p_fault_address);
+static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi);
 
 static int stm32wb_sdspi_idle(stm32wb_sdspi_t *sdspi, uint32_t *p_media);
 static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media);
-static int stm32wb_sdspi_lock(stm32wb_sdspi_t *sdspi, int state, uint32_t address, uint32_t *p_fault_return);
+static int stm32wb_sdspi_lock(stm32wb_sdspi_t *sdspi, int state, uint32_t address);
 static int stm32wb_sdspi_unlock(stm32wb_sdspi_t *sdspi, int status);
 
 #if 0
@@ -805,18 +805,17 @@ static int stm32wb_sdspi_command(stm32wb_sdspi_t *sdspi, uint8_t index, uint32_t
     return status;
 }
 
-static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint8_t *data, uint32_t count, uint32_t *p_count_return, uint32_t *p_fault_return)
+static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint32_t blksz, uint8_t *data, uint32_t count, uint32_t *p_count_return)
 {
     stm32wb_spi_t *spi = sdspi->spi;
     int status = F_NO_ERROR;
     uint8_t token;
     uint16_t crc16;
-    uint32_t total, blksz, tstart, tend;
+    uint32_t total, tstart, tend;
 
     SDSPI_STATISTICS_COUNT(sdcard_receive);
 
     total = count;
-    blksz = (count >= 512) ? 512 : count;
 
     tstart = armv7m_systick_micros();
 
@@ -864,7 +863,7 @@ static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint8_t *data, uint32_t
                 }
                 
                 data  += blksz;
-                total -= blksz;
+                total -= 1;
 
                 tstart = armv7m_systick_micros();
             }
@@ -876,11 +875,6 @@ static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint8_t *data, uint32_t
 
             if (token & SD_DATA_ERROR_CARD_ECC_FAILED)
             {
-                if (p_fault_return)
-                {
-                    *p_fault_return = sdspi->address;
-                }
-
                 status = F_ERR_READ;
             }
             else
@@ -911,17 +905,16 @@ static int stm32wb_sdspi_receive(stm32wb_sdspi_t *sdspi, uint8_t *data, uint32_t
     return status;
 }
 
-static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, const uint8_t *data, uint32_t count, uint32_t *p_count_return, uint32_t *p_fault_return)
+static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, uint32_t blksz, const uint8_t *data, uint32_t count, uint32_t *p_count_return)
 {
     stm32wb_spi_t *spi = sdspi->spi;
     int status = F_NO_ERROR;
     uint8_t token, response;
-    uint32_t total, blksz, tstart, tend;
+    uint32_t total, tstart, tend;
 
     SDSPI_STATISTICS_COUNT(sdcard_transmit);
 
     total = count;
-    blksz = (count >= 512) ? 512 : count;
 
     tstart = armv7m_systick_micros();
 
@@ -969,7 +962,7 @@ static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, const u
                     }
                     else
                     {
-                        status = stm32wb_sdspi_write_sync(sdspi, p_fault_return);
+                        status = stm32wb_sdspi_write_sync(sdspi);
                     }
                 }
 
@@ -984,7 +977,7 @@ static int stm32wb_sdspi_transmit(stm32wb_sdspi_t *sdspi, uint8_t start, const u
                 }
                 
                 data  += blksz;
-                total -= blksz;
+                total -= 1;
 
                 tstart = armv7m_systick_micros();
             }
@@ -1017,12 +1010,16 @@ static int stm32wb_sdspi_read_stop(stm32wb_sdspi_t *sdspi)
 
     SDSPI_STATISTICS_COUNT(sdcard_read_stop);
 
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB8, 1);
+
     status = stm32wb_sdspi_command(sdspi, SD_CMD_STOP_TRANSMISSION, 0, 0);
 
     if (status == F_NO_ERROR)
     {
         sdspi->state = STM32WB_SDSPI_STATE_READY;
     }
+
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB8, 0);
     
     return status;
 }
@@ -1033,6 +1030,8 @@ static int stm32wb_sdspi_write_stop(stm32wb_sdspi_t *sdspi)
     int status = F_NO_ERROR;
 
     SDSPI_STATISTICS_COUNT(sdcard_write_stop);
+
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB2, 1);
     
     /* There need to be 8 clocks before the "Stop Transfer Token",
      * and 8 clocks after it, before the card signals busy properly.
@@ -1049,16 +1048,18 @@ static int stm32wb_sdspi_write_stop(stm32wb_sdspi_t *sdspi)
         sdspi->state = STM32WB_SDSPI_STATE_WRITE_STOP;
     }
 
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB2, 0);
+
     return status;
 }
 
-static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi, uint32_t *p_fault_return)
+static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi)
 {
     int status = F_NO_ERROR;
-    uint32_t count, offset;
-    uint8_t temp[4];
 
     SDSPI_STATISTICS_COUNT(sdcard_write_sync);
+
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB3, 1);
 
     status = stm32wb_sdspi_wait_ready(sdspi, SD_WRITE_STOP_TIMEOUT);
 
@@ -1074,50 +1075,14 @@ static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi, uint32_t *p_fault_re
             {
                 if (sdspi->response[1] & (SD_R2_WP_VIOLATION | SD_R2_WP_ERASE_SKIP | SD_R2_CARD_ECC_FAILED | SD_R2_CC_ERROR | SD_R2_ERROR))
                 {
-                    status = stm32wb_sdspi_command(sdspi, SD_CMD_APP_CMD, 0, 0);
-                        
-                    if (status == F_NO_ERROR)
+                    if (sdspi->response[1] & (SD_R2_WP_VIOLATION | SD_R2_WP_ERASE_SKIP))
                     {
-                        status = stm32wb_sdspi_command(sdspi, SD_ACMD_SEND_NUM_WR_BLOCKS, 0, 0);
-                        
-                        if (status == F_NO_ERROR)
-                        {
-                            status = stm32wb_sdspi_receive(sdspi, &temp[0], 4, &count, NULL);
-                            
-                            if (status == F_NO_ERROR)
-                            {
-                                if (count == 4)
-                                {
-                                    offset = (((uint32_t)temp[0] << 24) |
-                                              ((uint32_t)temp[1] << 16) |
-                                              ((uint32_t)temp[2] <<  8) |
-                                              ((uint32_t)temp[3] <<  0));
-
-                                    if (p_fault_return)
-                                    {
-                                        *p_fault_return = (sdspi->address - sdspi->count) + offset;
-                                    }
-                                    
-                                    if (sdspi->response[1] & (SD_R2_WP_VIOLATION | SD_R2_WP_ERASE_SKIP))
-                                    {
-                                        status = F_ERR_WRITEPROTECT;
-                                    }
-                                    else
-                                    {
-                                        status = F_ERR_WRITE;
-                                    }
-                                }
-                                else
-                                {
-                                    status = F_ERR_ONDRIVE;
-                                }
-                            }
-                        }
+                        status = F_ERR_WRITEPROTECT;
                     }
-                }
-                else
-                {
-                    status = F_ERR_ONDRIVE;
+                    else
+                    {
+                        status = F_ERR_WRITE;
+                    }
                 }
             }
         }
@@ -1127,6 +1092,8 @@ static int stm32wb_sdspi_write_sync(stm32wb_sdspi_t *sdspi, uint32_t *p_fault_re
     {
         SDSPI_STATISTICS_COUNT(sdcard_write_sync_fail);
     }
+
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB3, 0);
 
     return status;
 }
@@ -1350,9 +1317,9 @@ static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media)
 
         if (status == F_NO_ERROR)
         {
-            status = stm32wb_sdspi_receive(sdspi, &sdspi->CID[0], 16, &count, NULL);
+            status = stm32wb_sdspi_receive(sdspi, 16, &sdspi->CID[0], 1, &count);
 
-            if ((status == F_NO_ERROR) && (count != 16))
+            if ((status == F_NO_ERROR) && (count != 1))
             {
                 status = F_ERR_READ;
             }
@@ -1364,9 +1331,9 @@ static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media)
 
             if (status == F_NO_ERROR)
             {
-                status = stm32wb_sdspi_receive(sdspi, &sdspi->CSD[0], 16, &count, NULL);
+                status = stm32wb_sdspi_receive(sdspi, 16, &sdspi->CSD[0], 1, &count);
 
-                if ((status == F_NO_ERROR) && (count != 16))
+                if ((status == F_NO_ERROR) && (count != 1))
                 {
                     status = F_ERR_READ;
                 }
@@ -1383,9 +1350,9 @@ static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media)
 
                 if (status == F_NO_ERROR)
                 {
-                    status = stm32wb_sdspi_receive(sdspi, &sdspi->SCR[0], 8, &count, NULL);
+                    status = stm32wb_sdspi_receive(sdspi, 8, &sdspi->SCR[0], 1, &count);
 
-                    if ((status == F_NO_ERROR) && (count != 8))
+                    if ((status == F_NO_ERROR) && (count != 1))
                     {
                         status = F_ERR_READ;
                     }
@@ -1403,9 +1370,9 @@ static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media)
 
                 if (status == F_NO_ERROR)
                 {
-                    status = stm32wb_sdspi_receive(sdspi, &sdspi->SSR[0], 64, &count, NULL);
+                    status = stm32wb_sdspi_receive(sdspi, 64, &sdspi->SSR[0], 1, &count);
 
-                    if ((status == F_NO_ERROR) && (count != 64))
+                    if ((status == F_NO_ERROR) && (count != 1))
                     {
                         status = F_ERR_READ;
                     }
@@ -1460,7 +1427,7 @@ static int stm32wb_sdspi_reset(stm32wb_sdspi_t *sdspi, uint32_t media)
     return status;
 }
 
-static int stm32wb_sdspi_lock(stm32wb_sdspi_t *sdspi, int state, uint32_t address, uint32_t *p_fault_return)
+static int stm32wb_sdspi_lock(stm32wb_sdspi_t *sdspi, int state, uint32_t address)
 {
     int status = F_NO_ERROR;
     uint32_t media;
@@ -1524,7 +1491,7 @@ static int stm32wb_sdspi_lock(stm32wb_sdspi_t *sdspi, int state, uint32_t addres
                 {
                     if (state != STM32WB_SDSPI_STATE_WRITE_STOP)
                     {
-                        status = stm32wb_sdspi_write_sync(sdspi, p_fault_return);
+                        status = stm32wb_sdspi_write_sync(sdspi);
                     }
                 }
             }
@@ -1569,29 +1536,7 @@ static int stm32wb_sdspi_unlock(stm32wb_sdspi_t *sdspi, int status)
     return status;
 }
 
-static int stm32wb_sdspi_release(void *context)
-{
-    stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
-    int status = F_NO_ERROR;
-
-    if ((sdspi->state != STM32WB_SDSPI_STATE_INIT) && (sdspi->state != STM32WB_SDSPI_STATE_RESET))
-    {
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, NULL);
-        
-        if (status == F_NO_ERROR)
-        {
-            status = stm32wb_sdspi_unlock(sdspi, status);
-
-            stm32wb_sdspi_mode(sdspi, STM32WB_SDSPI_MODE_NONE);
-
-            sdspi->state = STM32WB_SDSPI_STATE_INIT;
-        }
-    }
-
-    return status;
-}
-
-static int stm32wb_sdspi_info(void *context, uint8_t *p_media, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial)
+static int stm32wb_sdspi_start(void *context, uint8_t *p_media, uint8_t *p_write_protected, uint32_t *p_block_count, uint32_t *p_au_size, uint32_t *p_serial)
 {
     stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
     int status = F_NO_ERROR;
@@ -1599,7 +1544,7 @@ static int stm32wb_sdspi_info(void *context, uint8_t *p_media, uint8_t *p_write_
 
     if (sdspi->state < STM32WB_SDSPI_STATE_READY)
     {
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, NULL);
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0);
 
         status = stm32wb_sdspi_unlock(sdspi, status);
     }
@@ -1644,6 +1589,28 @@ static int stm32wb_sdspi_info(void *context, uint8_t *p_media, uint8_t *p_write_
     return status;
 }
 
+static int stm32wb_sdspi_stop(void *context, bool eject)
+{
+    stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
+    int status = F_NO_ERROR;
+
+    if ((sdspi->state != STM32WB_SDSPI_STATE_INIT) && (sdspi->state != STM32WB_SDSPI_STATE_RESET))
+    {
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0);
+        
+        if (status == F_NO_ERROR)
+        {
+            status = stm32wb_sdspi_unlock(sdspi, status);
+
+            stm32wb_sdspi_mode(sdspi, STM32WB_SDSPI_MODE_NONE);
+
+            sdspi->state = STM32WB_SDSPI_STATE_INIT;
+        }
+    }
+
+    return status;
+}
+
 static int stm32wb_sdspi_format(void *context, uint32_t size)
 {
     return F_NO_ERROR;
@@ -1677,7 +1644,7 @@ static int stm32wb_sdspi_erase(void *context, uint32_t address, uint32_t length)
             timeout += 250000;
         }
         
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, NULL);
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0);
 
         if (status == F_NO_ERROR)
         {
@@ -1745,7 +1712,7 @@ static int stm32wb_sdspi_discard(void *context, uint32_t address, uint32_t lengt
     return F_NO_ERROR;
 }
 
-static int stm32wb_sdspi_read(void *context, uint32_t address, uint8_t *data, uint32_t length, uint32_t total, uint32_t *p_fault_return)
+static int stm32wb_sdspi_read(void *context, uint32_t address, uint8_t *data, uint32_t length)
 {
     stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
     int status = F_NO_ERROR;
@@ -1754,185 +1721,85 @@ static int stm32wb_sdspi_read(void *context, uint32_t address, uint8_t *data, ui
     unsigned int retries = DOSFS_CONFIG_SDCARD_DATA_RETRIES;
 #endif /* (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0) */
 
-    if ((length == 1) && (total == 1))
-    {
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, p_fault_return);
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB9, 1);
 
-        if (status == F_NO_ERROR)
+    status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READ_MULTIPLE, address);
+
+    if (status == F_NO_ERROR)
+    {
+        do
         {
-            do
+            if (sdspi->state != STM32WB_SDSPI_STATE_READ_MULTIPLE)
             {
-                status = stm32wb_sdspi_command(sdspi, SD_CMD_READ_SINGLE_BLOCK, (address << sdspi->shift), 1);
+                status = stm32wb_sdspi_command(sdspi, SD_CMD_READ_MULTIPLE_BLOCK, (address << sdspi->shift), 1);
 
                 if (status == F_NO_ERROR)
                 {
+                    sdspi->state = STM32WB_SDSPI_STATE_READ_MULTIPLE;
                     sdspi->address = address;
                     sdspi->count = 0;
-                    
-                    status = stm32wb_sdspi_receive(sdspi, data, DOSFS_BLK_SIZE, &count, p_fault_return);
-                    
-                    count /= DOSFS_BLK_SIZE;
-                        
-                    SDSPI_STATISTICS_COUNT_N(sdcard_read_single, count);
+                }
+            }
 
-                    if (status == F_NO_ERROR)
+            if (status == F_NO_ERROR)
+            {
+                status = stm32wb_sdspi_receive(sdspi, DOSFS_BLK_SIZE, data, length, &count);
+
+                SDSPI_STATISTICS_COUNT_N(sdcard_read_multiple, count);
+                    
+                if (status == F_NO_ERROR)
+                {
+                    if (count != length)
                     {
-                        if (count != length)
-                        {
 #if (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0)
+                        data += (DOSFS_BLK_SIZE * count);
+                            
+                        address += count;
+                        length -= count;
+                            
+                        if (count)
+                        {
+                            SDSPI_STATISTICS_COUNT(sdcard_receive_retry);
+                                
+                            retries = DOSFS_CONFIG_SDCARD_DATA_RETRIES;
+                                
+                            continue;
+                        }
+                        else
+                        {
                             if (retries)
                             {
                                 SDSPI_STATISTICS_COUNT(sdcard_receive_retry);
-                                
+                                    
                                 retries--;
-                                
+                                    
                                 continue;
                             }
+                        }
 #endif /* (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0) */
                             
-                            SDSPI_STATISTICS_COUNT(sdcard_receive_fail);
+                        SDSPI_STATISTICS_COUNT(sdcard_receive_fail);
 
-                            if (p_fault_return)
-                            {
-                                *p_fault_return = sdspi->address;
-                            }
-
-                            status = F_ERR_READ;
-                        }
-                        else
-                        {
-                            data += DOSFS_BLK_SIZE;
-                            
-                            address++;
-                            length--;
-                        }
+                        status = F_ERR_READ;
+                    }
+                    else
+                    {
+                        length = 0;
                     }
                 }
             }
-            while ((status == F_NO_ERROR) && length);
-
-            status = stm32wb_sdspi_unlock(sdspi, status);
         }
-    }
-    else
-    {
-        if (total)
-        {
-            status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, p_fault_return);
-        }
-        else
-        {
-            status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READ_MULTIPLE, address, p_fault_return);
-        }
-
-        if (status == F_NO_ERROR)
-        {
-            do
-            {
-                if (sdspi->state != STM32WB_SDSPI_STATE_READ_MULTIPLE)
-                {
-                    status = stm32wb_sdspi_command(sdspi, SD_CMD_READ_MULTIPLE_BLOCK, (address << sdspi->shift), 1);
-
-                    if (status == F_NO_ERROR)
-                    {
-                        sdspi->state = STM32WB_SDSPI_STATE_READ_MULTIPLE;
-                        sdspi->address = address;
-                        sdspi->count = 0;
-
-                        if (total)
-                        {
-                            sdspi->total = total;
-
-                            total = 0;
-                        }
-                    }
-                }
-
-                if (status == F_NO_ERROR)
-                {
-                    status = stm32wb_sdspi_receive(sdspi, data, length * DOSFS_BLK_SIZE, &count, p_fault_return);
-
-                    count /= DOSFS_BLK_SIZE;
-                        
-                    SDSPI_STATISTICS_COUNT_N(sdcard_read_multiple, count);
-                    
-                    if (status == F_NO_ERROR)
-                    {
-                        if (count != length)
-                        {
-#if (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0)
-                            data += (DOSFS_BLK_SIZE * count);
-                            
-                            address += count;
-                            length -= count;
-
-                            if (count >= sdspi->total)
-                            {
-                                sdspi->total = 0;
-                            }
-                            else
-                            {
-                                sdspi->total -= count;
-                            }
-                            
-                            if (count)
-                            {
-                                SDSPI_STATISTICS_COUNT(sdcard_receive_retry);
-                                
-                                retries = DOSFS_CONFIG_SDCARD_DATA_RETRIES;
-                                
-                                continue;
-                            }
-                            else
-                            {
-                                if (retries)
-                                {
-                                    SDSPI_STATISTICS_COUNT(sdcard_receive_retry);
-                                    
-                                    retries--;
-                                    
-                                    continue;
-                                }
-                            }
-#endif /* (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0) */
-                            
-                            SDSPI_STATISTICS_COUNT(sdcard_receive_fail);
-
-                            if (p_fault_return)
-                            {
-                                *p_fault_return = sdspi->address;
-                            }
-
-                            status = F_ERR_READ;
-                        }
-                        else
-                        {
-                            if (length >= sdspi->total)
-                            {
-                                status = stm32wb_sdspi_read_stop(sdspi);
-                                
-                                sdspi->total = 0;
-                            }
-                            else
-                            {
-                                sdspi->total -= length;
-                            }
-
-                            length = 0;
-                        }
-                    }
-                }
-            }
-            while ((status == F_NO_ERROR) && length);
+        while ((status == F_NO_ERROR) && length);
             
-            status = stm32wb_sdspi_unlock(sdspi, status);
-        }
+        status = stm32wb_sdspi_unlock(sdspi, status);
     }
+
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB9, 0);
 
     return status;
 }
 
-static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, uint32_t total, bool sync, uint32_t *p_fault_return)
+static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *data, uint32_t length, bool sync)
 {
     stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
     int status = F_NO_ERROR;
@@ -1941,9 +1808,11 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
     unsigned int retries = DOSFS_CONFIG_SDCARD_DATA_RETRIES;
 #endif /* (DOSFS_CONFIG_SDCARD_CRC == 1) && (DOSFS_CONFIG_SDCARD_DATA_RETRIES != 0) */
 
-    if ((length == 1) && (total == 1))
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB1, 1);
+    
+    if ((length == 1) && sync && ((sdspi->state != STM32WB_SDSPI_STATE_WRITE_MULTIPLE) || (sdspi->address != address)))
     {
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, p_fault_return);
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0);
 
         if (status == F_NO_ERROR)
         {
@@ -1956,13 +1825,11 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
                     sdspi->address = address;
                     sdspi->count = 0;
                     
-                    status = stm32wb_sdspi_transmit(sdspi, SD_START_WRITE_SINGLE_TOKEN, data, DOSFS_BLK_SIZE, &count, p_fault_return);
+                    status = stm32wb_sdspi_transmit(sdspi, SD_START_WRITE_SINGLE_TOKEN, DOSFS_BLK_SIZE, data, 1, &count);
                 
                     if (status == F_NO_ERROR)
                     {
                         sdspi->state = STM32WB_SDSPI_STATE_WRITE_STOP;
-
-                        count /= DOSFS_BLK_SIZE;
 
                         SDSPI_STATISTICS_COUNT_N(sdcard_write_single, count);
                         
@@ -1981,21 +1848,13 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
                         
                             SDSPI_STATISTICS_COUNT(sdcard_transmit_fail);
 
-                            if (p_fault_return)
-                            {
-                                *p_fault_return = sdspi->address;
-                            }
-
                             status = F_ERR_WRITE;
                         }
                         else
                         {
                             length = 0;
 
-                            if (sync)
-                            {
-                                status = stm32wb_sdspi_write_sync(sdspi, p_fault_return);
-                            }
+                            status = stm32wb_sdspi_write_sync(sdspi);
                         }
                     }
                 }
@@ -2007,24 +1866,7 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
     }
     else
     {
-	if (total)
-	{
-            status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, p_fault_return);
-
-	    if (status == F_NO_ERROR)
-	    {
-                status = stm32wb_sdspi_command(sdspi, SD_CMD_APP_CMD, 0, 0);
-            
-		if (status == F_NO_ERROR)
-		{
-		    status = stm32wb_sdspi_command(sdspi, SD_ACMD_SET_WR_BLK_ERASE_COUNT, total, 0);
-		}
-	    }
-	}
-	else
-	{
-	    status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_WRITE_MULTIPLE, address, p_fault_return);
-	}
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_WRITE_MULTIPLE, address);
 	
         if (status == F_NO_ERROR)
         {
@@ -2041,25 +1883,16 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
 			    sdspi->state = STM32WB_SDSPI_STATE_WRITE_MULTIPLE;
 			    sdspi->address = address;
 			    sdspi->count = 0;
-
-                            if (total)
-                            {
-                                sdspi->total = total;
-
-                                total = 0;
-                            }
 			}
 		    }
                 }
 
                 if (status == F_NO_ERROR)
                 {
-                    status = stm32wb_sdspi_transmit(sdspi, SD_START_WRITE_MULTIPLE_TOKEN, data, length * DOSFS_BLK_SIZE, &count, p_fault_return);
+                    status = stm32wb_sdspi_transmit(sdspi, SD_START_WRITE_MULTIPLE_TOKEN, DOSFS_BLK_SIZE, data, length, &count);
 
                     if (status == F_NO_ERROR)
                     {
-                        count /= DOSFS_BLK_SIZE;
-
                         SDSPI_STATISTICS_COUNT_N(sdcard_write_multiple, count);
                         
                         if (length != count)
@@ -2069,15 +1902,6 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
                             
                             address += count;
                             length -= count;
-
-                            if (count >= sdspi->total)
-                            {
-                                sdspi->total = 0;
-                            }
-                            else
-                            {
-                                sdspi->total -= count;
-                            }
                             
                             if (count)
                             {
@@ -2103,43 +1927,16 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
                             SDSPI_STATISTICS_COUNT(sdcard_transmit_fail);
 
                             status = F_ERR_WRITE;
-
-                            
-                            *p_fault_return = sdspi->address;
                         }
                         else
                         {
-                            if (sdspi->total)
+                            if (sync)
                             {
-                                if (sdspi->total > length)
-                                {
-                                    sdspi->total -= length;
-                                }
-                                else
-                                {
-                                    sdspi->total = 0;
-
-                                    status = stm32wb_sdspi_write_stop(sdspi);
+                                status = stm32wb_sdspi_write_stop(sdspi);
                                 
-                                    if (sync)
-                                    {
-                                        if (status == F_NO_ERROR)
-                                        {
-                                            status = stm32wb_sdspi_write_sync(sdspi, p_fault_return);
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                if (sync)
+                                if (status == F_NO_ERROR)
                                 {
-                                    status = stm32wb_sdspi_write_stop(sdspi);
-                                
-                                    if (status == F_NO_ERROR)
-                                    {
-                                        status = stm32wb_sdspi_write_sync(sdspi, p_fault_return);
-                                    }
+                                    status = stm32wb_sdspi_write_sync(sdspi);
                                 }
                             }
                             
@@ -2154,17 +1951,19 @@ static int stm32wb_sdspi_write(void *context, uint32_t address, const uint8_t *d
         }
     }
 
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB1, 0);
+    
     return status;
 }
 
-static int stm32wb_sdspi_sync(void *context, uint32_t *p_fault_return)
+static int stm32wb_sdspi_sync(void *context)
 {
     stm32wb_sdspi_t *sdspi = (stm32wb_sdspi_t*)context;
     int status = F_NO_ERROR;
 
     if (sdspi->state >= STM32WB_SDSPI_STATE_READ_MULTIPLE)
     {
-        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0, p_fault_return);
+        status = stm32wb_sdspi_lock(sdspi, STM32WB_SDSPI_STATE_READY, 0);
 
         if (status == F_NO_ERROR)
         {
@@ -2176,8 +1975,8 @@ static int stm32wb_sdspi_sync(void *context, uint32_t *p_fault_return)
 }
 
 static const dosfs_device_interface_t stm32wb_sdspi_interface = {
-    stm32wb_sdspi_release,
-    stm32wb_sdspi_info,
+    stm32wb_sdspi_start,
+    stm32wb_sdspi_stop,
     stm32wb_sdspi_format,
     stm32wb_sdspi_erase,
     stm32wb_sdspi_discard,
@@ -2225,5 +2024,16 @@ int stm32wb_sdspi_initialize(stm32wb_spi_t *spi, const stm32wb_sdspi_params_t *p
     
     dosfs_device.lock = 0;
 
+    // stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB9, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+    // stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB8, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+    // stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB1, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+    // stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB2, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+    // stm32wb_gpio_pin_configure(STM32WB_GPIO_PIN_PB3, (STM32WB_GPIO_PARK_PULLUP | STM32WB_GPIO_PUPD_NONE | STM32WB_GPIO_OSPEED_VERY_HIGH | STM32WB_GPIO_OTYPE_PUSHPULL | STM32WB_GPIO_MODE_OUTPUT));
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB9, 0);
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB8, 0);
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB1, 0);
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB2, 0);
+    // stm32wb_gpio_pin_write(STM32WB_GPIO_PIN_PB3, 0);
+    
     return status;
 }

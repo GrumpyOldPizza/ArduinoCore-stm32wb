@@ -47,7 +47,7 @@ typedef struct _dosfs_volume_t        dosfs_volume_t;
 
 #if (DOSFS_CONFIG_VFAT_SUPPORTED == 0)
 
-typedef int (*dosfs_find_callback_t)(dosfs_volume_t *volume, void *private, dosfs_dir_t *dir);
+typedef int (*dosfs_find_callback_t)(dosfs_volume_t *volume, void *context, dosfs_dir_t *dir);
 
 #else /* (DOSFS_CONFIG_VFAT_SUPPORTED == 0) */
 
@@ -56,7 +56,7 @@ typedef int (*dosfs_find_callback_t)(dosfs_volume_t *volume, void *private, dosf
 #define DOSFS_LDIR_SEQUENCE_LAST             0x20
 #define DOSFS_LDIR_SEQUENCE_INDEX            0x1f
 
-typedef int (*dosfs_find_callback_t)(dosfs_volume_t *volume, void *private, dosfs_dir_t *dir, unsigned sequence);
+typedef int (*dosfs_find_callback_t)(dosfs_volume_t *volume, void *context, dosfs_dir_t *dir, unsigned sequence);
 
 #if (DOSFS_CONFIG_UTF8_SUPPORTED == 0)
 typedef uint8_t dosfs_unicode_t;

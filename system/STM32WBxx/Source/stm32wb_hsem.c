@@ -31,6 +31,7 @@
 
 #include "stm32wb_hsem.h"
 #include "stm32wb_system.h"
+#include "stm32wb_gpio.h"
 
 typedef void (*stm32wb_hsem_handler_t)(void);
 

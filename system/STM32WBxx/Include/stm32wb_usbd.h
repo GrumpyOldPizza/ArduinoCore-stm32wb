@@ -176,13 +176,9 @@ typedef struct _stm32wb_usbd_info_t {
     const stm32wb_usbd_class_t * const   *class_table;
 } stm32wb_usbd_info_t;
 
-typedef struct _stm32wb_usbd_params_t {
-    uint8_t                              priority;
-    uint16_t                             pin_vbus;
-} stm32wb_usbd_params_t;
-
-extern bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_usbd_info_t *info, const stm32wb_usbd_params_t *params);
-extern bool stm32wb_usbd_enable(stm32wb_usbd_event_callback_t callback, void *context);
+extern bool stm32wb_usbd_configure(const stm32wb_usbd_device_t *device, const stm32wb_usbd_info_t *info);
+extern bool stm32wb_usbd_notify(stm32wb_usbd_event_callback_t callback, void *context);
+extern bool stm32wb_usbd_enable(void);
 extern bool stm32wb_usbd_disable(void);
 extern bool stm32wb_usbd_start(void);
 extern bool stm32wb_usbd_stop(void);

@@ -47,8 +47,7 @@ typedef struct _armv7m_rtt_control_t {
 } armv7m_rtt_control_t;
 
 static __attribute__((section(".rtt_control"), used)) armv7m_rtt_control_t armv7m_rtt_control;
-
-static __attribute__((section(".rtt_data"), used)) uint8_t armv7m_rtt_tx_data[10*1024];
+static __attribute__((section(".rtt_data"), used)) uint8_t armv7m_rtt_tx_data[10*1024 - sizeof(armv7m_rtt_control_t)];
 
 static const uint32_t armv7m_rtt_tx_data_size = sizeof(armv7m_rtt_tx_data);
 
@@ -185,7 +184,7 @@ void armv7m_rtt_printf(const char * format, ...)
     va_start(ap, format);
 
     out = &scratch[0];
-
+    
     while (1)
     {
         c = *format++;
@@ -438,16 +437,6 @@ static void armv7m_rtt_hook_task_destroy(k_task_t *task)
     armv7m_rtt_printf("RTOS_TASK_DESTROY(task=%08x)\n", task);
 }
 
-static void armv7m_rtt_hook_task_exit(void)
-{
-    armv7m_rtt_printf("RTOS_TASK_EXIT()\n");
-}
-
-static void armv7m_rtt_hook_task_terminate(k_task_t *task)
-{
-    armv7m_rtt_printf("RTOS_TASK_TERMINATE(task=%08x)\n", task);
-}
-
 static void armv7m_rtt_hook_task_block(k_task_t *task, uint32_t cause)
 {
     armv7m_rtt_printf("RTOS_TASK_BLOCK(task=%08x, cause=%02x)\n", task, cause);
@@ -467,8 +456,6 @@ const k_hook_table_t armv7m_rtt_hook_table =
 {
     .task_create    = armv7m_rtt_hook_task_create,
     .task_destroy   = armv7m_rtt_hook_task_destroy,
-    .task_exit      = armv7m_rtt_hook_task_exit,      
-    .task_terminate = armv7m_rtt_hook_task_terminate,
     .task_block     = armv7m_rtt_hook_task_block,
     .task_ready     = armv7m_rtt_hook_task_ready,
     .task_run       = armv7m_rtt_hook_task_run,

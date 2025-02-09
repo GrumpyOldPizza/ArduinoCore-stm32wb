@@ -33,8 +33,21 @@
 extern "C" {
 #endif
 
-#define STM32WB_IPCC_IRQ_PRIORITY       ARMV7M_IRQ_PRIORITY_IPCC
+#if !defined(__STM32WB_BOOT_CODE__)
+#define STM32WB_IPCC_BLE_SUPPORTED                              1
+#define STM32WB_IPCC_BLE_ACLDATA_SUPPORTED                      0
+#define STM32WB_IPCC_TRACE_SUPPORTED                            0
+#else /* !defined(__STM32WB_BOOT_CODE__) */
+#define STM32WB_IPCC_BLE_SUPPORTED                              0
+#define STM32WB_IPCC_BLE_ACLDATA_SUPPORTED                      0
+#define STM32WB_IPCC_TRACE_SUPPORTED                            0
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 
+#define STM32WB_IPCC_IRQ_PRIORITY                               ARMV7M_IRQ_PRIORITY_IPCC
+
+#define STM32WB_IPCC_MB_BASE                                    0x20030000
+#define STM32WB_IPCC_MB_SIZE                                    0x00001000
+  
 #define STM32WB_IPCC_SYS_STATE_NONE                             0
 #define STM32WB_IPCC_SYS_STATE_FUS                              1
 #define STM32WB_IPCC_SYS_STATE_WIRELESS                         2
@@ -46,33 +59,6 @@ extern "C" {
 #define STM32WB_IPCC_SYS_OPCODE_BLE_INIT                        0xfc66
 #define STM32WB_IPCC_SYS_OPCODE_FLASH_ERASE_ACTIVITY            0xfc69
 #define STM32WB_IPCC_SYS_OPCODE_SET_FLASH_ACTIVITY_CONTROL      0xfc73
-
-#define STM32WB_IPCC_SYS_FUS_STATUS_SUCCESS                     0
-#define STM32WB_IPCC_SYS_FUS_STATUS_FAILURE                     1
-  
-#define STM32WB_IPCC_SYS_FUS_STATE_IDLE                         0x00
-#define STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_START       0x10
-#define STM32WB_IPCC_SYS_FUS_STATE_FW_UPGRD_ONGOING_END         0x1f
-#define STM32WB_IPCC_SYS_FUS_STATE_FUS_UPGRD_ONGOING_START      0x20
-#define STM32WB_IPCC_SYS_FUS_STATE_FUS_UPGRD_ONGOING_END        0x2f
-#define STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_START        0x30
-#define STM32WB_IPCC_SYS_FUS_STATE_SERVICE_ONGOING_END          0x3f
-#define STM32WB_IPCC_SYS_FUS_STATE_ERROR                        0xff
-
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_NO_ERROR                0x00
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_NOT_FOUND           0x01
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_CORRUPT             0x02
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_NOT_AUTHENTIC       0x03
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_NOT_ENOUGH_SPACE    0x04
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_USR_ABORT           0x05
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_ERASE               0x06
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_IMG_PROGRAM             0x07
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_AUTH_TAG_ST_NOT_FOUND   0x08
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_AUTH_TAG_CUST_NOT_FOUND 0x09
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_AUTH_KEY_LOCKED         0x0a
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_FW_ROLLBACK             0x11
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_NOT_RUNNING             0xfe
-#define STM32WB_IPCC_SYS_FUS_ERROR_CODE_ERROR_UNKNOWN           0xff
 
 #define STM32WB_IPCC_SYS_ERASE_ACTIVITY_OFF                     0  
 #define STM32WB_IPCC_SYS_ERASE_ACTIVITY_ON                      1  
@@ -105,17 +91,63 @@ extern "C" {
 #define STM32WB_IPCC_SYS_INFO_STACK_TYPE_RLV                    0x80
 
 typedef struct _stm32wb_ipcc_sys_info_t {
-    uint32_t FusVersion;
-    uint32_t FusMemorySize;
-    uint32_t WirelessStackVersion;
-    uint32_t WirelessStackMemorySize;
-    uint32_t WirelessStackType;
+    uint32_t                      SafeBootVersion;
+    uint32_t                      FusVersion;
+    uint32_t                      FusMemorySize;
+    uint32_t                      WirelessStackVersion;
+    uint32_t                      WirelessStackMemorySize;
+    uint32_t                      WirelessStackType;
 } stm32wb_ipcc_sys_info_t;
 
-typedef struct _stm32wb_ipcc_sys_fus_state_t {
-    uint8_t  state;
-    uint8_t  error_code;
-} stm32wb_ipcc_sys_fus_state_t;
+#define STM32WB_IPCC_FUS_MAGIC_WIRELESS_IMAGE                   0x23372991
+#define STM32WB_IPCC_FUS_MAGIC_FUS_IMAGE                        0x32279221
+#define STM32WB_IPCC_FUS_MAGIC_STM_SIGNATURE                    0xd3a12c5e
+#define STM32WB_IPCC_FUS_MAGIC_CUST_SIGNATURE                   0xe2b51d4a
+  
+typedef struct _stm32wb_ipcc_fus_image_t {
+    uint32_t                      Info1;
+    uint32_t                      Info2;
+    uint32_t                      MemorySize;
+    uint32_t                      Version;
+    uint32_t                      Magic;
+} stm32wb_ipcc_fus_image_t;
+
+typedef struct _stm32wb_ipcc_fus_signature_t {
+    uint32_t                      Reserved1;
+    uint32_t                      Reserved2;
+    uint32_t                      MemorySize;
+    uint32_t                      Version;
+    uint32_t                      Magic;
+} stm32wb_ipcc_fus_signature_t;
+  
+#define STM32WB_IPCC_FUS_STATE_IDLE                             0x00
+#define STM32WB_IPCC_FUS_STATE_FW_UPGRD_ONGOING_START           0x10
+#define STM32WB_IPCC_FUS_STATE_FW_UPGRD_ONGOING_END             0x1f
+#define STM32WB_IPCC_FUS_STATE_FUS_UPGRD_ONGOING_START          0x20
+#define STM32WB_IPCC_FUS_STATE_FUS_UPGRD_ONGOING_END            0x2f
+#define STM32WB_IPCC_FUS_STATE_SERVICE_ONGOING_START            0x30
+#define STM32WB_IPCC_FUS_STATE_SERVICE_ONGOING_END              0x3f
+#define STM32WB_IPCC_FUS_STATE_ERROR                            0xff
+
+#define STM32WB_IPCC_FUS_ERROR_CODE_NO_ERROR                    0x00
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_NOT_FOUND               0x01
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_CORRUPT                 0x02
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_NOT_AUTHENTIC           0x03
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_NOT_ENOUGH_SPACE        0x04
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_USR_ABORT               0x05
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_ERASE                   0x06
+#define STM32WB_IPCC_FUS_ERROR_CODE_IMG_PROGRAM                 0x07
+#define STM32WB_IPCC_FUS_ERROR_CODE_AUTH_TAG_ST_NOT_FOUND       0x08
+#define STM32WB_IPCC_FUS_ERROR_CODE_AUTH_TAG_CUST_NOT_FOUND     0x09
+#define STM32WB_IPCC_FUS_ERROR_CODE_AUTH_KEY_LOCKED             0x0a
+#define STM32WB_IPCC_FUS_ERROR_CODE_FW_ROLLBACK                 0x11
+#define STM32WB_IPCC_FUS_ERROR_CODE_NOT_RUNNING                 0xfe
+#define STM32WB_IPCC_FUS_ERROR_CODE_ERROR_UNKNOWN               0xff
+
+typedef struct _stm32wb_ipcc_fus_state_t {
+    uint8_t                       State;
+    uint8_t                       ErrorCode;
+} stm32wb_ipcc_fus_state_t;
 
 typedef void (*stm32wb_ipcc_sys_command_callback_t)(void *context);
 
@@ -124,7 +156,6 @@ typedef void (*stm32wb_ipcc_sys_command_callback_t)(void *context);
 #define STM32WB_IPCC_SYS_COMMAND_STATUS_BUSY                    255
   
 typedef struct _stm32wb_ipcc_sys_command_t {
-    struct _stm32wb_ipcc_sys_command_t  *next;
     union {
 	struct {
 	    uint16_t                        ocf : 10;
@@ -139,19 +170,27 @@ typedef struct _stm32wb_ipcc_sys_command_t {
     uint8_t                             rsize;
     volatile uint8_t                    rlen;
     volatile uint8_t                    status;
+#if !defined(__STM32WB_BOOT_CODE__)
     stm32wb_ipcc_sys_command_callback_t callback;
     void                                *context;
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
 } stm32wb_ipcc_sys_command_t;
-  
-extern void __stm32wb_ipcc_initialize(void);
   
 extern bool stm32wb_ipcc_sys_enable(void);
 extern void stm32wb_ipcc_sys_disable(void);
 extern uint32_t stm32wb_ipcc_sys_state(void);
 extern bool stm32wb_ipcc_sys_info(stm32wb_ipcc_sys_info_t *p_info_return);
 extern bool stm32wb_ipcc_sys_command(stm32wb_ipcc_sys_command_t *command);
-extern bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return);
+
+extern bool stm32wb_ipcc_fus_state(stm32wb_ipcc_fus_state_t *p_state_return);
+extern bool stm32wb_ipcc_fus_command(uint16_t opcode);
   
+#if !defined(__STM32WB_BOOT_CODE__)
+  
+extern bool stm32wb_ipcc_sys_firmware(uint32_t version, uint32_t type, uint32_t address, const uint8_t *image, uint32_t size, const uint8_t *fus, const uint8_t *fus_for_0_5_3, uint32_t *p_code_return);
+
+#if (STM32WB_IPCC_BLE_SUPPORTED == 1)
+
 typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
     uint8_t *pBleBufferAddress;   /**< NOT USED CURRENTLY */
     uint32_t BleBufferSize;       /**< Size of the Buffer allocated in pBleBufferAddress  */
@@ -186,11 +225,10 @@ typedef struct __attribute__((packed)) _stm32wb_ipcc_ble_init_params_t {
   
 typedef void (*stm32wb_ipcc_ble_event_callback_t)(void *context);
 typedef void (*stm32wb_ipcc_ble_command_callback_t)(void *context);
-typedef void (*stm32wb_ipcc_ble_acldata_callback_t)(void *context);
 
-#define STM32WB_IPCC_BLE_STATUS_SUCCESS                         0
-#define STM32WB_IPCC_BLE_STATUS_FAILURE                         1
-#define STM32WB_IPCC_BLE_STATUS_BUSY                            255
+#define STM32WB_IPCC_BLE_COMMAND_STATUS_SUCCESS                 0
+#define STM32WB_IPCC_BLE_COMMAND_STATUS_FAILURE                 1
+#define STM32WB_IPCC_BLE_COMMAND_STATUS_BUSY                    255
 
 typedef struct _stm32wb_ipcc_ble_command_t {
     struct _stm32wb_ipcc_ble_command_t  *next;
@@ -211,12 +249,37 @@ typedef struct _stm32wb_ipcc_ble_command_t {
     stm32wb_ipcc_ble_command_callback_t callback;
     void                                *context;
 } stm32wb_ipcc_ble_command_t;
+
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+
+typedef void (*stm32wb_ipcc_ble_acldata_callback_t)(void *context);
+
+#define STM32WB_IPCC_BLE_ACLDATA_STATUS_SUCCESS                 0
+#define STM32WB_IPCC_BLE_ACLDATA_STATUS_FAILURE                 1
+#define STM32WB_IPCC_BLE_ACLDATA_STATUS_BUSY                    255
+
+typedef struct _stm32wb_ipcc_ble_acldata_t {
+    const void                          *data;
+    uint32_t                            count;
+    volatile uint8_t                    status;
+    stm32wb_ipcc_ble_acldata_callback_t callback;
+    void                                *context;
+} stm32wb_ipcc_ble_acldata_t;
+
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
   
 extern bool stm32wb_ipcc_ble_enable(const stm32wb_ipcc_ble_init_params_t *params, stm32wb_ipcc_ble_event_callback_t callback, void *context);
 extern bool stm32wb_ipcc_ble_disable(void);
 extern bool stm32wb_ipcc_ble_command(stm32wb_ipcc_ble_command_t *command);
-extern bool stm32wb_ipcc_ble_acldata(const uint8_t *data, uint32_t count, volatile uint8_t *p_status_return, stm32wb_ipcc_ble_acldata_callback_t callback, void *context);
+#if (STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1)
+extern bool stm32wb_ipcc_ble_acldata(stm32wb_ipcc_ble_acldata_t *acl_data);
+#endif /* STM32WB_IPCC_BLE_ACLDATA_SUPPORTED == 1 */
 extern uint8_t *stm32wb_ipcc_ble_event(void);
+
+  
+#endif /* STM32WB_IPCC_BLE_SUPPORTED == 1 */
+
+#endif /* !defined(__STM32WB_BOOT_CODE__) */
   
 #ifdef __cplusplus
 }
